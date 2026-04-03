@@ -93,6 +93,11 @@ struct SetWindowFloating {
     bool     floating = false;
 };
 
+struct SetWindowBorderless {
+    WindowId window     = NO_WINDOW;
+    bool     borderless = false;
+};
+
 struct ToggleWindowFloating {
     WindowId window = NO_WINDOW;
 };
@@ -201,6 +206,7 @@ using CoreCommand = std::variant<
     SetWindowHiddenByWorkspace,
     SetWindowSuppressFocusOnce,
     SetWindowFloating,
+    SetWindowBorderless,
     ToggleWindowFloating,
     FocusNextWindow,
     FocusPrevWindow,

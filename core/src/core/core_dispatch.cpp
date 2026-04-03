@@ -140,6 +140,7 @@ void Core::emit_raise_docks() {
     pending_core_events.push_back(event::RaiseDocks{});
 }
 
+
 void Core::emit_display_topology_changed() {
     pending_core_events.push_back(event::DisplayTopologyChanged{});
 }
@@ -166,7 +167,7 @@ void Core::arrange() {
         auto& ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->visible && !w->floating) tiled.push_back(w->id);
+            if (w && w->visible && !w->floating && !w->borderless) tiled.push_back(w->id);
 
         layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
             uint32_t width, uint32_t height,
@@ -183,9 +184,9 @@ void Core::arrange() {
 
         // Apply theme border to floating windows — layout skips them, so their
         // border_width would otherwise stay at 0 (no border drawn by X).
-        // Fullscreen windows keep border_width=0 (set in fullscreen dispatch path).
+        // Fullscreen and borderless windows keep border_width=0.
         for (auto& w : ws.windows) {
-            if (!w || !w->visible || !w->floating || w->fullscreen) continue;
+            if (!w || !w->visible || !w->floating || w->fullscreen || w->borderless) continue;
             if (w->border_width == settings.theme.border_thickness) continue;
             (void)dispatch(command::SetWindowBorderWidth{ w->id,
                                                           (uint32_t)settings.theme.border_thickness });
@@ -242,8 +243,29 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
         }
     }
 
+    int src_mon_idx = monitor_of_workspace(workspace_of_window(cmd.window));
+    int dst_mon_idx = monitor_of_workspace(cmd.workspace_id);
     wsman.move_window_to(cmd.workspace_id, w);
     emit_window_assigned_to_workspace(cmd.window, cmd.workspace_id);
+
+    // Fullscreen window moved to a different monitor: pin geometry to the
+    // destination monitor (same logic as SetWindowFullscreen).
+    if (w->fullscreen && dst_mon_idx != src_mon_idx) {
+        const auto& mons = monitor_states();
+        if (dst_mon_idx >= 0 && dst_mon_idx < (int)mons.size()) {
+            const auto& dm        = mons[(size_t)dst_mon_idx];
+            int         top_inset = std::max(0, monitor_top_inset_applied);
+            w->x      = std::max(0, dm.x);
+            w->y      = std::max(0, dm.y - top_inset);
+            w->width  = (uint32_t)std::max(1, dm.width);
+            w->height = (uint32_t)std::max(1, dm.height + top_inset);
+            mark_window_x(cmd.window);
+            mark_window_y(cmd.window);
+            mark_window_width(cmd.window);
+            mark_window_height(cmd.window);
+        }
+    }
+
     sync_workspace_visibility();
     arrange();
 
@@ -316,9 +338,10 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
 
     if (!mon) {
         const auto& mons = wsman.get_monitors();
-        int         f    = wsman.get_focused_monitor();
-        if (f >= 0 && f < (int)mons.size())
-            mon = &mons[(size_t)f];
+        // Prefer the monitor that owns the workspace (may be inactive).
+        int owner = wsman.monitor_of_workspace(ws_id);
+        if (owner >= 0 && owner < (int)mons.size())
+            mon = &mons[(size_t)owner];
         else if (!mons.empty())
             mon = &mons.front();
     }
@@ -444,6 +467,18 @@ bool Core::dispatch(const command::SetWindowFloating& cmd) {
     if (!w)
         return false;
     w->floating = cmd.floating;
+    return true;
+}
+
+bool Core::dispatch(const command::SetWindowBorderless& cmd) {
+    auto w = wsman.find_window_in_all(cmd.window);
+    if (!w)
+        return false;
+    w->borderless = cmd.borderless;
+    if (cmd.borderless && w->border_width != 0) {
+        w->border_width = 0;
+        emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);
+    }
     return true;
 }
 

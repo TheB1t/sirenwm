@@ -282,13 +282,12 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         : core.workspace_of_window(transient_for);
     bool managed_transient = (transient_parent_ws >= 0);
 
-    // Borderless fullscreen via Motif hints: game requests no decorations
-    // and covers the full monitor — promote to floating before rules so the
-    // layout engine never tiles it.
+    // Borderless windows (MOTIF no-decorations): promote to borderless mode
+    // so the layout engine skips them but they are not treated as floating.
     bool motif_borderless = motif_no_decorations(xconn, ev->window);
     if (motif_borderless) {
-        LOG_INFO("MapRequest(%d): _MOTIF_WM_HINTS no-decoration, promoting to floating", ev->window);
-        (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
+        LOG_INFO("MapRequest(%d): _MOTIF_WM_HINTS no-decoration, promoting to borderless", ev->window);
+        (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
     }
 
     if (managed_transient) {
@@ -532,22 +531,34 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     uint16_t m = ev->value_mask;
 
     // DWM-compatible behavior:
-    // - floating clients can honor their own ConfigureRequest geometry;
+    // - floating and borderless clients can honor their own ConfigureRequest geometry;
     // - tiled clients get a synthetic ConfigureNotify with current geometry.
-    bool floating = core.is_window_floating(ev->window);
+    bool floating   = core.is_window_floating(ev->window);
+    bool borderless = window->borderless;
 
     if (m & XCB_CONFIG_WINDOW_BORDER_WIDTH)
         (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, ev->border_width });
-    if (m & XCB_CONFIG_WINDOW_SIBLING)
-        (void)core.dispatch(command::SetWindowSibling{ ev->window, ev->sibling });
-    if (m & XCB_CONFIG_WINDOW_STACK_MODE)
-        (void)core.dispatch(command::SetWindowStackMode{ ev->window, ev->stack_mode });
+    // Fullscreen windows must not restack themselves — they would bury the bars.
+    // Raise docks instead so bars stay on top.
+    if (m & XCB_CONFIG_WINDOW_STACK_MODE) {
+        if (window->fullscreen) {
+            runtime.emit(core, event::RaiseDocks{});
+        } else {
+            if (m & XCB_CONFIG_WINDOW_SIBLING)
+                (void)core.dispatch(command::SetWindowSibling{ ev->window, ev->sibling });
+            (void)core.dispatch(command::SetWindowStackMode{ ev->window, ev->stack_mode });
+        }
+    } else {
+        if (m & XCB_CONFIG_WINDOW_SIBLING)
+            (void)core.dispatch(command::SetWindowSibling{ ev->window, ev->sibling });
+    }
 
     // Borderless-fullscreen detection: a tiled window requesting geometry that
     // covers its monitor is a game going fullscreen without _NET_WM_STATE.
     // Promote it to floating so the request is honoured.
+    // Skip if already borderless — borderless windows manage their own geometry.
     bool borderless_fs = false;
-    if (!floating &&
+    if (!floating && !borderless &&
         (m & (XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT))) {
         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
         const auto& mons    = core.monitor_states();
@@ -563,7 +574,17 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         }
     }
 
-    if (floating) {
+    if (floating || borderless) {
+        // Fullscreen windows have their geometry pinned by the WM — reject
+        // position/size requests from the app and send back current geometry.
+        if (window->fullscreen && !borderless_fs) {
+            send_synthetic_configure_notify(xconn, ev->window,
+                window->x, window->y,
+                window->width, window->height,
+                window->border_width);
+            return;
+        }
+
         int32_t  nx = window->x;
         int32_t  ny = window->y;
         uint32_t nw = window->width;

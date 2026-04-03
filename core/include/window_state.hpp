@@ -11,6 +11,7 @@ struct WindowState {
     bool        visible                    = false;
     bool        floating                   = false;
     bool        fullscreen                 = false;
+    bool        borderless                 = false; // _MOTIF_WM_HINTS no-decorations, layout skips, geometry self-managed
     bool        floating_before_fullscreen = false;
     uint32_t    border_before_fullscreen   = 0;
     bool        suppress_focus_once        = false;

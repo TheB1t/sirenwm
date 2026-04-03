@@ -62,6 +62,7 @@ enum class BackendEffectKind {
     FocusRoot,
     UpdateWindow,
     WarpPointer,
+
 };
 
 struct BackendEffect {
@@ -182,6 +183,7 @@ class Core {
         bool dispatch(const command::SetWindowHiddenByWorkspace& cmd);
         bool dispatch(const command::SetWindowSuppressFocusOnce& cmd);
         bool dispatch(const command::SetWindowFloating& cmd);
+        bool dispatch(const command::SetWindowBorderless& cmd);
         bool dispatch(const command::ToggleWindowFloating& cmd);
         bool dispatch(const command::FocusNextWindow& cmd);
         bool dispatch(const command::FocusPrevWindow& cmd);
@@ -290,6 +292,24 @@ class Core {
                 if (!w)
                     continue;
                 if (w->fullscreen && w->visible)
+                    return true;
+            }
+            return false;
+        }
+
+        bool monitor_has_visible_borderless(int mon_idx) const {
+            auto mon = monitor_state(mon_idx);
+            if (!mon)
+                return false;
+
+            auto ws = workspace_state(mon->active_ws);
+            if (!ws)
+                return false;
+
+            for (auto& w : ws->windows) {
+                if (!w)
+                    continue;
+                if (w->borderless && w->visible)
                     return true;
             }
             return false;

@@ -271,6 +271,11 @@ void Runtime::save_restart_state(const Core& core) {
         int ws_id = core.workspace_of_window(id);
         if (ws_id < 0)
             continue;
+        // Skip borderless windows (Proton/Wine service windows) — they are
+        // recreated by the application and must not be restored by the WM.
+        auto ws = core.window_state_any(id);
+        if (ws && ws->borderless)
+            continue;
         out << id << " " << ws_id << " " << (core.is_window_floating(id) ? 1 : 0) << "\n";
     }
 
