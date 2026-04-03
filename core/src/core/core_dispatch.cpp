@@ -19,6 +19,14 @@ void Core::emit_backend_effect(BackendEffectKind kind, WindowId window) {
     pending_backend_effects.push_back(BackendEffect{ kind, window });
 }
 
+void Core::emit_warp_pointer(int16_t x, int16_t y) {
+    BackendEffect e;
+    e.kind = BackendEffectKind::WarpPointer;
+    e.x    = x;
+    e.y    = y;
+    pending_backend_effects.push_back(e);
+}
+
 WindowFlush& Core::ensure_window_flush(WindowId win) {
     auto& flush = pending_window_flushes[win];
     flush.window = win;
@@ -474,7 +482,12 @@ bool Core::dispatch(const command::FocusMonitor& cmd) {
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
         return false;
-    return dispatch(command::SwitchWorkspace{ mon->active_ws, n });
+    bool ok = dispatch(command::SwitchWorkspace{ mon->active_ws, n });
+    if (ok)
+        emit_warp_pointer(
+            (int16_t)(mon->x + mon->width  / 2),
+            (int16_t)(mon->y + mon->height / 2));
+    return ok;
 }
 
 bool Core::dispatch(const command::MoveWindowToMonitor& cmd) {

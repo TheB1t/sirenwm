@@ -98,6 +98,10 @@ void X11Backend::apply_core_backend_effects() {
                         apply_window_flush(xconn, *flush, *window);
                 }
                 break;
+            case BackendEffectKind::WarpPointer:
+                if (input_port_impl)
+                    input_port_impl->warp_pointer_abs(e.x, e.y);
+                break;
         }
     }
 }

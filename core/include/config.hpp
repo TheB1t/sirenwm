@@ -90,6 +90,10 @@ class Config {
             Runtime& runtime,
             bool reset_lua_vm = true);
 
+        // Parse-only check: compile the Lua file without executing it.
+        // Returns true if the file has no syntax errors.
+        static bool check_syntax(const std::string& path);
+
         void bind_runtime_handles(Core& core, Runtime& runtime) {
             bound_core_    = &core;
             bound_runtime_ = &runtime;

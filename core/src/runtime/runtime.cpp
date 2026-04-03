@@ -279,6 +279,11 @@ void Runtime::save_restart_state(const Core& core) {
 }
 
 void Runtime::request_exec_restart(Core& core) {
+    const auto& path = core.get_config_path();
+    if (!path.empty() && !Config::check_syntax(path)) {
+        LOG_ERR("restart: aborted — syntax error in %s", path.c_str());
+        return;
+    }
     save_restart_state(core);
     exec_restart_pending = true;
     request_stop();
@@ -307,6 +312,11 @@ bool Runtime::reload_runtime_config(Core& core) {
     const auto& config_path = core.get_config_path();
     if (config_path.empty()) {
         LOG_ERR("reload: aborted — config_path is empty");
+        return false;
+    }
+
+    if (!Config::check_syntax(config_path)) {
+        LOG_ERR("reload: aborted — syntax error in %s, config unchanged", config_path.c_str());
         return false;
     }
 

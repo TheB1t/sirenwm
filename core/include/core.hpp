@@ -61,11 +61,14 @@ enum class BackendEffectKind {
     FocusWindow,
     FocusRoot,
     UpdateWindow,
+    WarpPointer,
 };
 
 struct BackendEffect {
     BackendEffectKind kind   = BackendEffectKind::UpdateWindow;
     WindowId          window = NO_WINDOW;
+    int16_t           x      = 0;
+    int16_t           y      = 0;
 };
 
 struct WindowFlush {
@@ -106,6 +109,7 @@ class Core {
         int monitor_bottom_inset_applied = 0;
 
         void         emit_backend_effect(BackendEffectKind kind, WindowId window = NO_WINDOW);
+        void         emit_warp_pointer(int16_t x, int16_t y);
         WindowFlush& ensure_window_flush(WindowId win);
         void         mark_window_event_mask(WindowId win);
         void         mark_window_x(WindowId win);

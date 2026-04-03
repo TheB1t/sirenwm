@@ -67,16 +67,12 @@ static int lua_root_index(LuaContext& lua, void* userdata) {
         for (const auto& mod : mods)
             loader_runtime(userdata).use(core, mod);
         loader_runtime(userdata).emit_lua_init(core);
-
-        // Return freshly registered siren[key], if now present.
-        lua.push_value(2);
-        lua.raw_get(1);
-        if (!lua.is_nil(-1))
-            return 1;
-        lua.pop();
     }
 
-    lua.push_nil();
+    // Fall through to rawget so user-assigned fields (e.g. siren.monitors)
+    // are always readable after being set via __newindex.
+    lua.push_value(2);
+    lua.raw_get(1);
     return 1;
 }
 

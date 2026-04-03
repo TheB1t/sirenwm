@@ -2,6 +2,13 @@
 #include <config_loader.hpp>
 #include <core.hpp>
 #include <runtime.hpp>
+#include <log.hpp>
+
+extern "C" {
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+}
 
 #include <unordered_set>
 #include <unordered_map>
@@ -184,4 +191,17 @@ std::vector<std::string> Config::validate() const {
 
 bool Config::load(const std::string& path, Core& core, Runtime& runtime, bool reset_lua_vm) {
     return config_loader::load(*this, path, core, runtime, reset_lua_vm);
+}
+
+bool Config::check_syntax(const std::string& path) {
+    lua_State* L = luaL_newstate();
+    if (!L)
+        return false;
+    int rc = luaL_loadfile(L, path.c_str());
+    if (rc != LUA_OK) {
+        const char* err = lua_tostring(L, -1);
+        LOG_ERR("config syntax check failed: %s", err ? err : "<unknown>");
+    }
+    lua_close(L);
+    return rc == LUA_OK;
 }

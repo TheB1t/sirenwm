@@ -131,8 +131,8 @@ for i = 1, 9 do
     table.insert(siren.binds, { "mod+shift+" .. i, function() siren.windows.move_to(i)  end })
 end
 
--- Monitor focus and window move bindings (mod+ctrl+1..n)
-for i = 1, #siren.monitor.list() do
+-- Monitor focus and window move bindings (mod+ctrl+1..8; invalid indices silently ignored)
+for i = 1, 8 do
     table.insert(siren.binds, { "mod+ctrl+"       .. i, function() siren.monitor.focus(i) end })
     table.insert(siren.binds, { "mod+ctrl+shift+" .. i, function() siren.windows.move_to_monitor(i) end })
 end
