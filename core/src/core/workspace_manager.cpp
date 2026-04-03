@@ -345,6 +345,13 @@ void WorkspaceManager::rebuild_window_indexes() {
 // WorkspaceManager — public methods
 // ────────────────────────────────────────────────────────────────────────────
 
+void WorkspaceManager::update_workspace_defs(const std::vector<WorkspaceDef>& defs) {
+    for (int i = 0; i < (int)defs.size() && i < (int)workspaces.size(); ++i) {
+        workspaces[i].name          = defs[i].name;
+        workspaces[i].monitor_alias = defs[i].monitor;
+    }
+}
+
 void WorkspaceManager::init_from_defs(const std::vector<WorkspaceDef>& defs,
     const std::vector<MonitorAlias>& aliases,
     const MonitorCompose& compose) {

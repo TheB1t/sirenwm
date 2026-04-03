@@ -90,6 +90,10 @@ class WorkspaceManager {
             const std::vector<MonitorAlias>& aliases,
             const MonitorCompose& compose = {});
 
+        // Update workspace names/monitor aliases from new defs without
+        // disturbing existing windows or assignments. Safe to call on reload.
+        void update_workspace_defs(const std::vector<WorkspaceDef>& defs);
+
         void assign_workspaces(const std::vector<MonitorAlias>& aliases,
             const MonitorCompose& compose = {});
 

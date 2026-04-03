@@ -144,7 +144,10 @@ class Core {
 
         void set_config_path(const std::string& path) { config_path = path; }
         const std::string& get_config_path() const { return config_path; }
-        void apply_settings(CoreSettings next) { settings = std::move(next); }
+        void apply_settings(CoreSettings next) {
+            settings = std::move(next);
+            wsman.update_workspace_defs(settings.workspace_defs);
+        }
         const CoreSettings& current_settings() const { return settings; }
         void mark_runtime_started(bool started) { runtime_started = started; }
         int  monitor_top_inset()    const { return monitor_top_inset_applied; }
