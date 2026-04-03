@@ -2,6 +2,8 @@
 
 X11 tiling window manager with Lua configuration and a clean module architecture.
 
+![SirenWM](picture.png)
+
 ## About
 
 SirenWM is a keyboard-first tiling WM for X11. Configuration is plain Lua — no recompile needed for everyday changes. The codebase has explicit architecture boundaries so adding behavior means writing Lua or a module, not touching core logic.
