@@ -4,21 +4,7 @@ X11 tiling window manager with Lua configuration and a clean module architecture
 
 ## About
 
-SirenWM is a keyboard-first tiling WM for X11. It covers the common tiling workflow — workspaces, multi-monitor, floating, focus cycling, window rules — and exposes all of it through a Lua config file rather than requiring you to patch and recompile the source.
-
-The goal is a maintainable codebase with explicit architecture boundaries, where adding or changing behavior means writing Lua or a feature module — not touching core window management logic.
-
-**Good fit if you want:**
-
-- Lua config with hot reload and no compile step for everyday changes
-- Multi-monitor with explicit output composition and workspace pinning
-- A codebase you can read and extend without archeology
-
-**Not a good fit if you want:**
-
-- A compositor (no blur, transparency pipeline, or animations)
-- Wayland
-- A minimal ~2000 line codebase à la dwm
+SirenWM is a keyboard-first tiling WM for X11. Configuration is plain Lua — no recompile needed for everyday changes. The codebase has explicit architecture boundaries so adding behavior means writing Lua or a module, not touching core logic.
 
 ## Features
 
