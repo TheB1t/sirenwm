@@ -430,6 +430,7 @@ void BarModule::on_reload(Core& core) {
     (void)core.dispatch(command::ReconcileNow{});
     rebuild_trays(core);
     rebalance_tray_icons();
+    raise_all();
     redraw();
 }
 
@@ -519,6 +520,7 @@ void BarModule::on(Core& core, event::DisplayTopologyChanged) {
     (void)core.dispatch(command::ReconcileNow{});
     rebuild_trays(core);
     rebalance_tray_icons();
+    raise_all();
     redraw();
 }
 

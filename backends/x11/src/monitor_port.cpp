@@ -84,7 +84,10 @@ bool configure_output(xcb::Screen& screen,
     }
 
     if (!output->connected()) {
-        LOG_WARN("RandR: '%s' not connected, skipping", layout.output.c_str());
+        // Output was physically disconnected — release its CRTC so the
+        // screen geometry shrinks and the WM topology reflects reality.
+        output->disable();
+        LOG_INFO("RandR: '%s' disconnected, CRTC released", layout.output.c_str());
         return true;
     }
 
