@@ -1,0 +1,98 @@
+#pragma once
+
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include <backend/events.hpp>
+#include <backend/render_port.hpp>
+#include <backend/tray_host.hpp>
+
+class Core;
+class Runtime;
+
+namespace backend {
+class InputPort;
+class MonitorPort;
+} // namespace backend
+
+struct ExistingWindowSnapshot {
+    WindowId window = NO_WINDOW;
+
+    // Current native visibility state observed during startup scan.
+    bool currently_viewable = false;
+
+    // Backend-level default manage heuristic for fresh scan candidates.
+    bool default_manage = true;
+
+    // Restart restore metadata (if loaded from restart snapshot file).
+    bool from_restart         = false;
+    int  restart_workspace_id = -1;
+    bool restart_floating     = false;
+
+    // Actual X geometry at scan time — used to seed WindowState so floating
+    // windows have correct coordinates before the first ConfigureNotify arrives.
+    bool     has_geometry = false;
+    int32_t  geo_x = 0, geo_y = 0;
+    uint32_t geo_w = 0, geo_h = 0;
+
+    // Recommended per-window event mask for managed windows.
+    uint32_t event_mask = 0;
+
+    // Metadata snapshot used by rules/policy.
+    std::string wm_instance;
+    std::string wm_class;
+    bool        wm_type_dialog  = false;
+    bool        wm_type_utility = false;
+    bool        wm_type_splash  = false;
+    bool        wm_type_modal   = false;
+    bool        wm_fixed_size   = false;
+};
+
+class Backend {
+    public:
+        virtual ~Backend() = default;
+
+        // Backend as adapter:
+        // - expose native event fd
+        // - pump/coalesce native events and emit typed runtime events
+        // - render/flush frame side effects
+        virtual int  event_fd() const    = 0;
+        virtual void pump_events(std::size_t max_events_per_tick) = 0;
+        virtual void render_frame()      = 0;
+        virtual void on_reload_applied() = 0;
+        virtual void shutdown() {}
+        virtual std::vector<ExistingWindowSnapshot> scan_existing_windows() { return {}; }
+
+        // Returns monitor_idx -> active_ws_id from the last exec-restart snapshot.
+        // Empty when not available (first start or reload).
+        virtual const std::unordered_map<int, int>& consumed_restart_monitor_ws() const {
+            static const std::unordered_map<int, int> empty;
+            return empty;
+        }
+
+        // Called by Runtime once, after core.init() and before module on_start callbacks.
+        virtual void on_start(Core&) {}
+
+        // Called by Runtime for each core-emitted domain event, after module dispatch.
+        virtual void on(event::WorkspaceSwitched) {}
+        virtual void on(event::WindowAssignedToWorkspace) {}
+        virtual void on(event::FocusChanged) {}
+        virtual void on(event::RaiseDocks) {}
+        virtual void on(event::DisplayTopologyChanged) {}
+        virtual void on(event::WindowAdopted) {}
+
+        // Close a window using platform-specific protocol (e.g. WM_DELETE_WINDOW / kill).
+        virtual bool close_window(WindowId) { return false; }
+
+        // Optional capabilities for UI modules.
+        virtual backend::InputPort*   input_port()   { return nullptr; }
+        virtual backend::MonitorPort* monitor_port() { return nullptr; }
+        virtual backend::RenderPort* render_port() { return nullptr; }
+        virtual std::unique_ptr<backend::TrayHost>
+        create_tray_host(WindowId, int, int, int, bool) { return nullptr; }
+        virtual std::string window_title(WindowId) const { return {}; }
+        virtual uint32_t window_pid(WindowId) const { return 0; }
+};

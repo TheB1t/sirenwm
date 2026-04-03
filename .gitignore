@@ -1,0 +1,9 @@
+build/
+build*
+output/
+.cache/
+.vscode/
+glad/
+*.log*
+tests/
+tools/
