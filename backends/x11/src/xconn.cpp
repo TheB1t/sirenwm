@@ -2,6 +2,7 @@
 // This file is the ONLY place in the codebase where Xlib.h is included.
 #include <X11/Xlib.h>
 #include <X11/Xlib-xcb.h>
+#include <X11/XKBlib.h>
 
 #include <xconn.hpp>
 #include <xcb/randr.hpp>
@@ -19,6 +20,15 @@ XConnection::XConnection() {
         exit(1);
     }
     conn = XGetXCBConnection(dpy);
+
+    // Subscribe to XKB state-change events before handing the event queue to XCB.
+    // XkbSelectEvents must be called while Xlib still owns the queue.
+    int xkb_opcode = 0, xkb_event = 0, xkb_error = 0, xkb_major = XkbMajorVersion, xkb_minor = XkbMinorVersion;
+    if (XkbQueryExtension(dpy, &xkb_opcode, &xkb_event, &xkb_error, &xkb_major, &xkb_minor)) {
+        XkbSelectEvents(dpy, XkbUseCoreKbd, XkbStateNotifyMask, XkbStateNotifyMask);
+        xkb_event_type_ = xkb_event;
+    }
+
     XSetEventQueueOwner(dpy, XCBOwnsEventQueue);
 
     // Mark the X connection fd FD_CLOEXEC so it is not inherited by child

@@ -829,10 +829,20 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
         case XCB_LEAVE_NOTIFY:     handle_enter_notify((xcb_enter_notify_event_t*)ev); break;
 
         default: {
-            int base = runtime.get_backend_extension_event_base();
-            if (base >= 0 && (type == base + XCB_RANDR_SCREEN_CHANGE_NOTIFY ||
-                type == base + XCB_RANDR_NOTIFY)) {
+            int randr_base = runtime.get_backend_extension_event_base();
+            if (randr_base >= 0 && (type == randr_base + XCB_RANDR_SCREEN_CHANGE_NOTIFY ||
+                type == randr_base + XCB_RANDR_NOTIFY)) {
                 runtime.dispatch_display_change();
+                break;
+            }
+            int xkb_base = xconn.xkb_event_type();
+            if (xkb_base >= 0 && type == (uint8_t)xkb_base) {
+                // XKB state notify — group (layout) may have changed.
+                auto* kp = keyboard_port_impl.get();
+                if (kp) {
+                    std::string layout = kp->current_layout();
+                    runtime.emit(core, event::KeyboardLayoutChanged{ layout });
+                }
                 break;
             }
             LOG_DEBUG("No case for %d", type);

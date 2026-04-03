@@ -16,6 +16,7 @@ class Runtime;
 namespace backend {
 class InputPort;
 class MonitorPort;
+class KeyboardPort;
 } // namespace backend
 
 struct ExistingWindowSnapshot {
@@ -88,9 +89,10 @@ class Backend {
         virtual bool close_window(WindowId) { return false; }
 
         // Optional capabilities for UI modules.
-        virtual backend::InputPort*   input_port()   { return nullptr; }
-        virtual backend::MonitorPort* monitor_port() { return nullptr; }
-        virtual backend::RenderPort* render_port() { return nullptr; }
+        virtual backend::InputPort*    input_port()    { return nullptr; }
+        virtual backend::MonitorPort*  monitor_port()  { return nullptr; }
+        virtual backend::RenderPort*   render_port()   { return nullptr; }
+        virtual backend::KeyboardPort* keyboard_port() { return nullptr; }
         virtual std::unique_ptr<backend::TrayHost>
         create_tray_host(WindowId, int, int, int, bool) { return nullptr; }
         virtual std::string window_title(WindowId) const { return {}; }

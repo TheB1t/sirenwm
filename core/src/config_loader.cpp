@@ -1,6 +1,7 @@
 #include <config_loader.hpp>
 
 #include <backend/backend.hpp>
+#include <backend/keyboard_port.hpp>
 #include <config.hpp>
 #include <runtime/config_runtime.hpp>
 #include <core.hpp>
@@ -186,6 +187,17 @@ static int lua_windows_move_to_monitor(LuaContext& lua, void* userdata) {
     return 0;
 }
 
+// siren.sys.kbd_layout() -> "us" | "ru" | ...
+static int lua_sys_kbd_layout(LuaContext& lua, void* userdata) {
+    auto* kp = loader_runtime(userdata).backend().keyboard_port();
+    if (!kp) {
+        lua.push_nil();
+        return 1;
+    }
+    lua.push_string(kp->current_layout());
+    return 1;
+}
+
 // siren.theme_get() -> { font, bg, fg, alt_bg, alt_fg, accent }
 static int lua_theme_get(LuaContext& lua, void* userdata) {
     const auto& t = loader_config(userdata).get_theme();
@@ -312,6 +324,7 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
     register_root_fn("exec_restart", lua_root_exec_restart);
 
     register_ns_fn("workspace", "switch", lua_workspace_switch);
+    register_ns_fn("sys",     "kbd_layout", lua_sys_kbd_layout);
     register_ns_fn("monitor", "focused", lua_monitor_focused);
     register_ns_fn("monitor", "list",    lua_monitor_list);
     register_ns_fn("monitor", "focus",   lua_monitor_focus);

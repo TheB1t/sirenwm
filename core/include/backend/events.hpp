@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 #include <cstdint>
+#include <string>
 
 using WindowId = uint32_t;
 static constexpr WindowId NO_WINDOW = 0;
@@ -71,5 +72,8 @@ struct TrayIconDocked { WindowId icon; };
 
 // Emitted after a window has been placed on a workspace (rules, move, or initial mapping).
 struct WindowAssignedToWorkspace { WindowId window; int workspace_id; };
+
+// Emitted when the active XKB group (keyboard layout) changes.
+struct KeyboardLayoutChanged { std::string layout; };
 
 } // namespace event

@@ -43,6 +43,7 @@ class BarModule : public Module {
         void on(Core&, event::PropertyNotify ev) override;
         void on(Core&, event::WindowAssignedToWorkspace) override { rebalance_tray_icons(); redraw(); }
         void on(Core&, event::TrayIconDocked ev) override;
+        void on(Core&, event::KeyboardLayoutChanged) override { redraw(); }
 
     private:
         BarConfig top_cfg;

@@ -9,6 +9,7 @@
 
 #include <backend/backend.hpp>
 #include <backend/input_port.hpp>
+#include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 #include <xconn.hpp>
 
@@ -23,9 +24,10 @@ class X11Backend final : public Backend {
 
         WindowId root_window = NO_WINDOW;
         std::array<bool, 256> key_down {};
-        std::unique_ptr<backend::RenderPort> render_port_impl;
-        std::unique_ptr<backend::InputPort> input_port_impl;
-        std::unique_ptr<backend::MonitorPort> monitor_port_impl;
+        std::unique_ptr<backend::RenderPort>   render_port_impl;
+        std::unique_ptr<backend::InputPort>    input_port_impl;
+        std::unique_ptr<backend::MonitorPort>  monitor_port_impl;
+        std::unique_ptr<backend::KeyboardPort> keyboard_port_impl;
         xcb_key_symbols_t* key_syms = nullptr;
         uint32_t net_wm_name        = 0;
         uint32_t utf8_string        = 0;
@@ -137,9 +139,10 @@ class X11Backend final : public Backend {
         bool                                close_window(WindowId window) override;
         void                                shutdown() override;
         std::vector<ExistingWindowSnapshot> scan_existing_windows() override;
-        backend::InputPort*                 input_port()   override;
-        backend::MonitorPort*               monitor_port() override;
-        backend::RenderPort*                render_port() override;
+        backend::InputPort*                 input_port()    override;
+        backend::MonitorPort*               monitor_port()  override;
+        backend::RenderPort*                render_port()   override;
+        backend::KeyboardPort*              keyboard_port() override;
         xcb_key_symbols_t*                  key_symbols();
         std::unique_ptr<backend::TrayHost>
         create_tray_host(WindowId owner_bar_window, int bar_x, int bar_y,

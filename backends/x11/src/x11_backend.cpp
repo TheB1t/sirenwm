@@ -11,9 +11,10 @@
 X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     : core(core_ref), runtime(runtime_ref) {
     root_window       = xconn.root_window();
-    render_port_impl  = backend::x11::create_render_port(xconn);
-    input_port_impl   = backend::x11::create_input_port(xconn, key_syms);
-    monitor_port_impl = backend::x11::create_monitor_port(xconn, runtime_ref);
+    render_port_impl   = backend::x11::create_render_port(xconn);
+    input_port_impl    = backend::x11::create_input_port(xconn, key_syms);
+    monitor_port_impl  = backend::x11::create_monitor_port(xconn, runtime_ref);
+    keyboard_port_impl = backend::x11::create_keyboard_port(xconn);
     auto atoms = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
     net_wm_name       = atoms["_NET_WM_NAME"];
     utf8_string       = atoms["UTF8_STRING"];
@@ -149,6 +150,10 @@ void X11Backend::shutdown() {
 
 backend::MonitorPort* X11Backend::monitor_port() {
     return monitor_port_impl.get();
+}
+
+backend::KeyboardPort* X11Backend::keyboard_port() {
+    return keyboard_port_impl.get();
 }
 
 backend::RenderPort* X11Backend::render_port() {

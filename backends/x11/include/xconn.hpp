@@ -21,6 +21,7 @@ class XConnection {
     xcb_connection_t* conn = nullptr;
     xcb_screen_t* screen   = nullptr;
     bool dirty             = false;
+    int  xkb_event_type_   = -1;
 
     public:
         XConnection();
@@ -30,6 +31,8 @@ class XConnection {
         const xcb_connection_t* raw_conn() const { return conn; }
         xcb_screen_t* raw_screen() { return screen; }
         const xcb_screen_t* raw_screen() const { return screen; }
+        Display* xlib_display() { return dpy; }
+        int xkb_event_type() const { return xkb_event_type_; }
 
         struct WindowAttributes {
             bool     valid             = false;
