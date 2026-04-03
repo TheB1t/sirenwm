@@ -42,6 +42,7 @@ class LuaContext {
         void        set_field(int idx, const char* key) const;
         void        raw_get(int idx) const;
         void        raw_set(int idx) const;
+        void        raw_seti(int idx, int n) const;
         void        push_value(int idx) const;
         void        push_integer(int64_t v) const;
         void        push_number(double v) const;

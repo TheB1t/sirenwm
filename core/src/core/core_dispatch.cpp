@@ -469,6 +469,28 @@ bool Core::dispatch(const command::FocusPrevWindow&) {
     return true;
 }
 
+bool Core::dispatch(const command::FocusMonitor& cmd) {
+    int n = cmd.monitor_index;
+    auto mon = monitor_state(n);
+    if (!mon || mon->active_ws < 0)
+        return false;
+    return dispatch(command::SwitchWorkspace{ mon->active_ws, n });
+}
+
+bool Core::dispatch(const command::MoveWindowToMonitor& cmd) {
+    int n = cmd.monitor_index;
+    auto mon = monitor_state(n);
+    if (!mon || mon->active_ws < 0)
+        return false;
+    WindowId win = cmd.window;
+    if (win == NO_WINDOW) {
+        auto w = wsman.current().focused();
+        if (!w) return false;
+        win = w->id;
+    }
+    return dispatch(command::MoveWindowToWorkspace{ win, mon->active_ws });
+}
+
 bool Core::dispatch(const command::ToggleFocusedWindowFloating&) {
     auto w = wsman.current().focused();
     if (!w)

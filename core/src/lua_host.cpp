@@ -147,6 +147,10 @@ void LuaContext::raw_set(int idx) const {
     idx = abs_index(idx);
     lua_rawset(as_state(state_), idx);
 }
+void LuaContext::raw_seti(int idx, int n) const {
+    idx = abs_index(idx);
+    lua_rawseti(as_state(state_), idx, n);
+}
 void LuaContext::push_value(int idx) const { lua_pushvalue(as_state(state_), idx); }
 void LuaContext::push_integer(int64_t v) const { lua_pushinteger(as_state(state_), (lua_Integer)v); }
 void LuaContext::push_number(double v) const { lua_pushnumber(as_state(state_), (lua_Number)v); }

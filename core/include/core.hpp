@@ -178,6 +178,8 @@ class Core {
         bool dispatch(const command::ToggleWindowFloating& cmd);
         bool dispatch(const command::FocusNextWindow& cmd);
         bool dispatch(const command::FocusPrevWindow& cmd);
+        bool dispatch(const command::FocusMonitor& cmd);
+        bool dispatch(const command::MoveWindowToMonitor& cmd);
         bool dispatch(const command::ToggleFocusedWindowFloating& cmd);
         bool dispatch(const command::SwitchWorkspaceLocalIndex& cmd);
         bool dispatch(const command::HideWindow& cmd);

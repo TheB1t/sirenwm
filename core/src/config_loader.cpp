@@ -159,6 +159,37 @@ static int lua_monitor_focused(LuaContext& lua, void* userdata) {
     return 1;
 }
 
+// siren.monitor.list() -> array of { index, x, y, width, height, name }
+static int lua_monitor_list(LuaContext& lua, void* userdata) {
+    const auto& mons = loader_core(userdata).monitor_states();
+    lua.new_table();
+    for (int i = 0; i < (int)mons.size(); i++) {
+        lua.new_table();
+        lua.push_integer(i);           lua.set_field(-2, "index");
+        lua.push_integer(mons[i].x);   lua.set_field(-2, "x");
+        lua.push_integer(mons[i].y);   lua.set_field(-2, "y");
+        lua.push_integer(mons[i].width);  lua.set_field(-2, "width");
+        lua.push_integer(mons[i].height); lua.set_field(-2, "height");
+        lua.push_string(mons[i].name); lua.set_field(-2, "name");
+        lua.raw_seti(-2, i + 1);
+    }
+    return 1;
+}
+
+// siren.monitor.focus(n) — focus monitor n (1-indexed)
+static int lua_monitor_focus(LuaContext& lua, void* userdata) {
+    int n = lua.to_integer(1) - 1; // convert to 0-indexed
+    (void)loader_core(userdata).dispatch(command::FocusMonitor{ n });
+    return 0;
+}
+
+// siren.windows.move_to_monitor(n) — move focused window to monitor n (1-indexed)
+static int lua_windows_move_to_monitor(LuaContext& lua, void* userdata) {
+    int n = lua.to_integer(1) - 1; // convert to 0-indexed
+    (void)loader_core(userdata).dispatch(command::MoveWindowToMonitor{ NO_WINDOW, n });
+    return 0;
+}
+
 // siren.theme_get() -> { font, bg, fg, alt_bg, alt_fg, accent }
 static int lua_theme_get(LuaContext& lua, void* userdata) {
     const auto& t = loader_config(userdata).get_theme();
@@ -286,11 +317,14 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
 
     register_ns_fn("workspace", "switch", lua_workspace_switch);
     register_ns_fn("monitor", "focused", lua_monitor_focused);
+    register_ns_fn("monitor", "list",    lua_monitor_list);
+    register_ns_fn("monitor", "focus",   lua_monitor_focus);
     register_root_fn("theme_get",              lua_theme_get);
     register_ns_fn("windows", "close", lua_windows_close);
     register_ns_fn("windows", "focus_next", lua_windows_focus_next);
     register_ns_fn("windows", "focus_prev", lua_windows_focus_prev);
     register_ns_fn("windows", "move_to", lua_windows_move_to);
+    register_ns_fn("windows", "move_to_monitor", lua_windows_move_to_monitor);
     register_ns_fn("windows", "toggle_floating", lua_windows_toggle_floating);
     register_ns_fn("windows", "zoom", lua_windows_zoom);
     register_ns_fn("windows", "set_layout", lua_windows_set_layout);

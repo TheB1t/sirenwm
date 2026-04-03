@@ -128,6 +128,13 @@ struct AdjustMasterFactor {
 struct IncMaster {
     int delta = 0;
 };
+struct FocusMonitor {
+    int monitor_index = -1;
+};
+struct MoveWindowToMonitor {
+    WindowId window        = NO_WINDOW;
+    int      monitor_index = -1;
+};
 struct Zoom {};
 struct ReconcileNow {};
 struct RemoveWindowFromAllWorkspaces {
@@ -207,6 +214,8 @@ using CoreCommand = std::variant<
     SetMasterFactor,
     AdjustMasterFactor,
     IncMaster,
+    FocusMonitor,
+    MoveWindowToMonitor,
     Zoom,
     ReconcileNow,
     RemoveWindowFromAllWorkspaces,

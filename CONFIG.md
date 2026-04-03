@@ -165,6 +165,7 @@ siren.windows.close()
 siren.windows.focus_next()
 siren.windows.focus_prev()
 siren.windows.move_to(n)            -- move focused window to workspace n (1-based)
+siren.windows.move_to_monitor(n)    -- move focused window to monitor n (1-based)
 siren.windows.toggle_floating()
 siren.windows.zoom()                -- swap focused window with master
 siren.windows.set_layout("tile")
@@ -176,6 +177,8 @@ siren.workspace.switch(n)           -- switch to workspace n (1-based)
 
 -- Monitors
 siren.monitor.focused()             -- returns { index, x, y, width, height, name }
+siren.monitor.list()                -- returns array of { index, x, y, width, height, name }
+siren.monitor.focus(n)              -- focus monitor n (1-based)
 ```
 
 ---
