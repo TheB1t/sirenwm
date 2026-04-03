@@ -23,16 +23,16 @@ The goal is a maintainable codebase with explicit architecture boundaries, where
 ## Features
 
 - Tile and monocle layouts with configurable master factor, gap, and border
-- Multi-monitor with RandR compose graph, hotplug, and workspace migration
+- Multi-monitor with RandR hotplug, compose graph, and workspace migration
 - Per-monitor workspace pools with deterministic topology restore
 - Full state preservation across hot reload and exec-restart
-- Focus-follows-mouse with cross-monitor and Electron app support
-- Window rules by WM_CLASS class/instance
-- Hot config reload (`siren.reload()`) and exec-restart (`siren.restart()`)
+- Focus-follows-mouse with cross-monitor support
+- Window rules by WM_CLASS
+- Hot config reload and exec-restart with Lua syntax pre-check
 - Cairo/Pango status bar with widget API and system tray (XEmbed)
-- Mod+drag move/resize for floating windows
-- Autostart process management with once/restart/restart-on-error policies
-- ICCCM WM_DELETE_WINDOW and WM_TAKE_FOCUS protocol support
+- Mod+drag move and resize for floating windows
+- Autostart process management
+- ICCCM WM_DELETE_WINDOW and WM_TAKE_FOCUS support
 
 ## Getting Started
 
