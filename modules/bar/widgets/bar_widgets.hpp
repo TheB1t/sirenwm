@@ -33,6 +33,7 @@ class PaintContext {
             const std::string& fg,
             const std::string& bg,
             int pad = 8);
+        void draw_rect(int x, int y, int w, int h, const std::string& color);
         void present();
 
     private:

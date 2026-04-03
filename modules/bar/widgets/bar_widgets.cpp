@@ -141,6 +141,16 @@ int PaintContext::draw_text(int x,
     return total_w;
 }
 
+void PaintContext::draw_rect(int x, int y, int w, int h, const std::string& color) {
+    if (!cr_)
+        return;
+    double r = 0.0, g = 0.0, b = 0.0;
+    parse_hex_color(color, r, g, b);
+    cairo_set_source_rgb(cr_, r, g, b);
+    cairo_rectangle(cr_, x, y, w, h);
+    cairo_fill(cr_);
+}
+
 void PaintContext::present() {
     window_.present();
 }
@@ -154,6 +164,10 @@ std::vector<TagHit> TagsWidget::draw(PaintContext& paint,
         const std::string& fg = tag.focused ? cfg.colors.focused_fg : cfg.colors.normal_fg;
         const std::string& bg = tag.focused ? cfg.colors.focused_bg : cfg.colors.bar_bg;
         int                tw = paint.draw_text(cursor_x, tag.name, fg, bg);
+        if (tag.has_windows) {
+            constexpr int sq = 4;
+            paint.draw_rect(cursor_x + 2, 2, sq, sq, fg);
+        }
         hits.push_back({ cursor_x, cursor_x + tw, tag.id });
         cursor_x += tw;
     }
