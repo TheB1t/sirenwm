@@ -39,7 +39,7 @@ bool should_apply_fullscreen_now(Core& core, WindowId win) {
 }
 
 static uint32_t parse_color_hex(const std::string& s) {
-    // Accepts "#rrggbb" only; returns 0 on failure.
+    // Accepts "#rrggbb" only.
     if (s.size() == 7 && s[0] == '#') {
         char*    end = nullptr;
         uint32_t rgb = (uint32_t)strtoul(s.c_str() + 1, &end, 16);
@@ -331,8 +331,7 @@ bool X11Backend::handle(event::CloseWindowRequest ev) {
 }
 
 void X11Backend::notify(event::WindowMapped ev) {
-    // Paint initial border. Skip if this window is already the tracked focused
-    // window — ewmh_on_focus_changed already set the focused color.
+    // Paint initial border; skip if already focused (color set by update_focus).
     if (ev.window != border_last_focused)
         set_border_color(ev.window, border_unfocused_pixel);
 
@@ -342,7 +341,7 @@ void X11Backend::notify(event::WindowMapped ev) {
         xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, ev.window,
             WM_STATE, WM_STATE, 32, 2, data);
     }
-    // _NET_WM_DESKTOP: set the workspace index so external tools (panels, pagers) can track windows.
+    // _NET_WM_DESKTOP: expose workspace index to panels and pagers.
     if (NET_WM_DESKTOP != XCB_ATOM_NONE) {
         int ws = core.workspace_of_window(ev.window);
         if (ws >= 0)
@@ -351,11 +350,9 @@ void X11Backend::notify(event::WindowMapped ev) {
     ewmh_update_client_list();
     {
         auto w = core.window_state_any(ev.window);
-        // Skip fullscreen-apply for windows that manage their own geometry
-        // (MOTIF no-decorations / Proton games). Applying SetWindowFullscreen
-        // would pin them to mon.x/mon.y and break Wine's render child placement.
-        // wm_no_decorations windows (e.g. Telegram media viewer) are already
-        // placed as borderless — skip fullscreen entirely, it would hide tray.
+        // Self-managed windows already know their position; pinning to mon.x/mon.y
+        // breaks render child placement. wm_no_decorations windows are already
+        // borderless — applying fullscreen on top would cause bars/tray to lower.
         bool skip_fullscreen = w && w->wm_no_decorations;
         bool self_managed    = w && (w->wm_static_gravity || w->fullscreen_self_managed);
         if (!skip_fullscreen && ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
@@ -373,9 +370,7 @@ void X11Backend::notify(event::WindowMapped ev) {
     // not offset their render children to compensate for a non-existent frame.
     ewmh_set_frame_extents(ev.window, 0u);
 
-    // Re-raise bars/tray after a borderless or fullscreen window is mapped.
-    // The window's xcb_map_window lands it on top of the stack; bars must be
-    // raised again so tray icons remain visible above it.
+    // xcb_map_window puts the window on top; re-raise bars so tray stays visible.
     {
         auto w = core.window_state_any(ev.window);
         if (w && (w->borderless || w->fullscreen))
@@ -385,8 +380,8 @@ void X11Backend::notify(event::WindowMapped ev) {
 
 void X11Backend::notify(event::WindowUnmapped ev) {
     if (WM_STATE != XCB_ATOM_NONE && ev.window != NO_WINDOW) {
-        // ICCCM §4.1.4: WithdrawnState when truly unmanaged; IconicState when
-        // hidden by workspace switch so compositors (picom) keep tracking it.
+        // ICCCM §4.1.4: WithdrawnState when unmanaged; IconicState when hidden
+        // by workspace switch so compositors keep tracking the window.
         uint32_t state   = ev.withdrawn ? 0u /* WithdrawnState */ : 3u /* IconicState */;
         uint32_t data[2] = { state, XCB_WINDOW_NONE };
         xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, ev.window,
@@ -414,8 +409,8 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
     xconn.set_property(root_window, NET_CURRENT_DESKTOP,
         XCB_ATOM_CARDINAL, (uint32_t)ev.workspace_id);
 
-    // A window may set _NET_WM_STATE_FULLSCREEN while routed to a hidden
-    // workspace by rules. Apply fullscreen only once that workspace is visible.
+    // A window may carry _NET_WM_STATE_FULLSCREEN while on a hidden workspace;
+    // defer apply until the workspace becomes visible.
     auto ws = core.workspace_state(ev.workspace_id);
     if (!ws)
         return;
@@ -424,8 +419,8 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
         if (!w) continue;
         auto win = w->id;
         if (core.is_window_hidden_by_workspace(win)) continue;
-        if (w->wm_static_gravity || w->fullscreen_self_managed) continue; // self-managed: never pin to mon coords
-        if (w->wm_no_decorations) continue; // already borderless, fullscreen would hide tray
+        if (w->wm_static_gravity || w->fullscreen_self_managed) continue; // self-managed: skip geometry pin
+        if (w->wm_no_decorations) continue; // already borderless; fullscreen would lower bars/tray
         if (!core.is_window_fullscreen(win) && ewmh_has_fullscreen_state(win))
             ewmh_apply_fullscreen(win, true);
     }
@@ -454,10 +449,8 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         else if (action == 2) enable = !core.is_window_fullscreen(ev.window);
         else return true;
 
-        // Skip geometry pinning for self-managed windows (StaticGravity / Proton games).
-        // They already know their position and pinning them to mon.x/mon.y breaks layout.
-        // Also skip for MOTIF no-decorations windows (e.g. Telegram media viewer) that
-        // are already borderless — applying fullscreen state would hide tray/bars.
+        // Self-managed windows control their own position; pinning to mon.x/mon.y breaks them.
+        // no_decorations windows are already borderless — applying fullscreen would lower bars/tray.
         bool self_managed = window->wm_static_gravity || window->fullscreen_self_managed
                             || window->wm_no_decorations;
         if (enable) {
