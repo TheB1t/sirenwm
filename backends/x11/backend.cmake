@@ -23,7 +23,7 @@ list(APPEND SWM_BACKEND_INCLUDE_DIRS
 )
 
 list(APPEND SWM_BACKEND_LINK_LIBS
-    X11 X11-xcb xcb xcb-randr xkbfile
+    X11 X11-xcb xcb xcb-randr xkbfile Xfixes
     ${CAIRO_LIBRARIES}
     ${CAIROXCB_LIBRARIES}
     ${XCBKEYSYMS_LIBRARIES}

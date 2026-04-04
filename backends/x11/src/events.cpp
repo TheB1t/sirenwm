@@ -294,8 +294,8 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     int  ws_id         = core.workspace_of_window(ev->window);
     bool ws_visible    = (ws_id >= 0) && core.is_workspace_visible(ws_id);
 
-    // Apply intent classified by core from geometry facts supplied at metadata time.
-    if (mapped_window && mapped_window->intent == WindowIntent::Borderless &&
+    // Core classified this window as needing borderless treatment at map time.
+    if (mapped_window && mapped_window->promote_to_borderless &&
         !mapped_window->borderless && !mapped_window->floating) {
         int         mon_idx   = core.monitor_of_workspace(ws_id);
         const auto& mons      = core.monitor_states();

@@ -144,6 +144,15 @@ void Core::emit_display_topology_changed() {
     pending_core_events.push_back(event::DisplayTopologyChanged{});
 }
 
+void Core::emit_borderless_activated(WindowId window, int monitor_index) {
+    pending_core_events.push_back(event::BorderlessActivated{ window, monitor_index });
+}
+
+void Core::emit_borderless_deactivated() {
+    pending_core_events.push_back(event::BorderlessDeactivated{});
+}
+
+
 void Core::emit_window_assigned_to_workspace(WindowId window, int workspace_id) {
     pending_core_events.push_back(event::WindowAssignedToWorkspace{ window, workspace_id });
 }
@@ -434,21 +443,17 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     w->wm_static_gravity = cmd.wm_static_gravity;
     w->wm_no_decorations = cmd.wm_no_decorations;
 
-    // Classify window intent from geometry facts supplied by the backend.
+    // Classify from geometry facts supplied by the backend.
     // Self-managed: client had _NET_WM_STATE_FULLSCREEN before MapRequest and
-    //   covers the monitor (not XEMBED) — client owns its geometry.
-    // Borderless: WM pins geometry to monitor (MOTIF no-decos or fixed-size).
-    bool self_managed = cmd.pre_fullscreen_state && !cmd.is_xembed && cmd.covers_monitor;
+    //   covers the monitor (not XEMBED) — client controls its own geometry.
+    // WM-borderless: WM pins geometry to monitor (MOTIF no-decos or fixed-size covers monitor).
+    bool self_managed  = cmd.pre_fullscreen_state && !cmd.is_xembed && cmd.covers_monitor;
     bool wm_borderless = !self_managed && cmd.covers_monitor &&
         (cmd.wm_no_decorations || cmd.wm_fixed_size);
+    bool will_be_borderless = self_managed || wm_borderless;
 
-    if (self_managed || wm_borderless)
-        w->intent = WindowIntent::Borderless;
-    else
-        w->intent = WindowIntent::Normal;
-
-    // Keep fullscreen_self_managed in sync for code still reading it during migration.
     w->fullscreen_self_managed = self_managed;
+    w->promote_to_borderless   = will_be_borderless;
 
     // Transient routing: assign to parent's workspace and float.
     if (cmd.transient_for != NO_WINDOW) {
@@ -466,9 +471,7 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
         dispatch(command::SetWindowFloating{ cmd.window, true });
 
     // Fixed-size non-borderless windows float.
-    // Skip if intent is Borderless — those will be promoted by the backend, not floated.
-    if (!w->floating && !w->borderless && w->wm_fixed_size &&
-        w->intent != WindowIntent::Borderless)
+    if (!w->floating && !w->borderless && w->wm_fixed_size && !will_be_borderless)
         dispatch(command::SetWindowFloating{ cmd.window, true });
 
     return true;
@@ -519,10 +522,25 @@ bool Core::dispatch(const command::SetWindowBorderless& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->borderless = cmd.borderless;
+    w->borderless          = cmd.borderless;
+    w->promote_to_borderless = false; // consumed
     if (cmd.borderless && w->border_width != 0) {
         w->border_width = 0;
         emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);
+    }
+    if (cmd.borderless) {
+        int ws_id   = wsman.workspace_of_window(cmd.window);
+        int mon_idx = wsman.monitor_of_workspace(ws_id);
+        if (mon_idx >= 0)
+            emit_borderless_activated(cmd.window, mon_idx);
+    } else {
+        // Check if any borderless window remains on any monitor.
+        const auto& mons = wsman.all_monitor_states();
+        bool any = false;
+        for (int i = 0; i < (int)mons.size() && !any; ++i)
+            any = (monitor_has_visible_borderless(i) != NO_WINDOW);
+        if (!any)
+            emit_borderless_deactivated();
     }
     return true;
 }

@@ -77,6 +77,13 @@ class X11Backend final : public Backend {
         void set_border_color(WindowId win, uint32_t pixel);
         void reload_border_colors();
 
+        // Pointer barriers: confine cursor to monitor when a borderless window is active.
+        // PointerBarrier is unsigned long (Xlib); avoid pulling Xlib.h into this header.
+        unsigned long barriers_[4]    = { 0, 0, 0, 0 };
+        WindowId      barrier_window_ = NO_WINDOW;
+        void set_pointer_barriers(WindowId win, int mon_idx);
+        void clear_pointer_barriers();
+
         // EWMH internals
         void ewmh_intern_atoms();
         void ewmh_update_client_list();
@@ -138,6 +145,8 @@ class X11Backend final : public Backend {
         void                                on(event::WindowAssignedToWorkspace ev) override;
         void                                on(event::FocusChanged ev) override;
         void                                on(event::WindowAdopted ev) override;
+        void                                on(event::BorderlessActivated ev) override;
+        void                                on(event::BorderlessDeactivated ev) override;
         bool                                close_window(WindowId window) override;
         void                                shutdown() override;
         std::vector<ExistingWindowSnapshot> scan_existing_windows() override;

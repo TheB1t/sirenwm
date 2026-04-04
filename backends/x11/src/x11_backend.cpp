@@ -8,6 +8,9 @@
 #include <cstdlib>
 #include <ctime>
 
+// Include Xfixes after all project headers to avoid Xlib macro pollution.
+#include <X11/extensions/Xfixes.h>
+
 X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     : core(core_ref), runtime(runtime_ref) {
     root_window        = xconn.root_window();
@@ -138,6 +141,58 @@ void X11Backend::on(event::WindowAdopted ev) {
     notify(event::WindowMapped{ ev.window });
     if (!ev.currently_visible)
         notify(event::WindowUnmapped{ ev.window, false });
+}
+
+void X11Backend::on(event::BorderlessActivated ev) {
+    set_pointer_barriers(ev.window, ev.monitor_index);
+}
+
+void X11Backend::on(event::BorderlessDeactivated) {
+    clear_pointer_barriers();
+}
+
+void X11Backend::clear_pointer_barriers() {
+    if (barrier_window_ == NO_WINDOW)
+        return;
+    Display* dpy = xconn.xlib_display();
+    for (auto& b : barriers_) {
+        if (b) {
+            XFixesDestroyPointerBarrier(dpy, b);
+            b = 0;
+        }
+    }
+    barrier_window_ = NO_WINDOW;
+    LOG_DEBUG("pointer barriers cleared");
+}
+
+void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
+    if (barrier_window_ == win)
+        return;
+    clear_pointer_barriers();
+
+    const auto& mons = core.monitor_states();
+    if (mon_idx < 0 || mon_idx >= (int)mons.size())
+        return;
+
+    const auto& mon = mons[(size_t)mon_idx];
+    int top    = std::max(0, core.monitor_top_inset());
+    int bottom = std::max(0, core.monitor_bottom_inset());
+    int x1 = mon.x;
+    int y1 = mon.y - top;
+    int x2 = mon.x + mon.width;
+    int y2 = mon.y + mon.height + bottom;
+
+    Display* dpy  = xconn.xlib_display();
+    Window   root = (Window)root_window;
+
+    barriers_[0] = XFixesCreatePointerBarrier(dpy, root, x1, y1, x1, y2, BarrierPositiveX, 0, nullptr);
+    barriers_[1] = XFixesCreatePointerBarrier(dpy, root, x2, y1, x2, y2, BarrierNegativeX, 0, nullptr);
+    barriers_[2] = XFixesCreatePointerBarrier(dpy, root, x1, y1, x2, y1, BarrierPositiveY, 0, nullptr);
+    barriers_[3] = XFixesCreatePointerBarrier(dpy, root, x1, y2, x2, y2, BarrierNegativeY, 0, nullptr);
+
+    barrier_window_ = win;
+    LOG_DEBUG("pointer barriers set for window %d: [%d,%d %dx%d]",
+        win, x1, y1, x2 - x1, y2 - y1);
 }
 
 bool X11Backend::close_window(WindowId window) {

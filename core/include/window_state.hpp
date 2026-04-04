@@ -17,15 +17,6 @@ enum class WindowType {
     Desktop,  // desktop window (_NET_WM_WINDOW_TYPE_DESKTOP)
 };
 
-// Window presentation intent derived from hints at map time.
-// Drives layout and decoration policy; replaces fullscreen_self_managed + wm_no_decorations.
-enum class WindowIntent {
-    Normal,      // tiled/managed normally
-    Floating,    // floating, managed by WM geometry
-    Fullscreen,  // fullscreen managed by WM (WM sets geometry + hides decorations)
-    Borderless,  // fullscreen self-managed (client owns geometry, WM only tracks it)
-};
-
 struct WindowState {
     WindowId    id                         = NO_WINDOW;
 
@@ -41,12 +32,12 @@ struct WindowState {
     std::string wm_instance;
     std::string wm_class;
     WindowType  type                    = WindowType::Normal;
-    WindowIntent intent                 = WindowIntent::Normal;
     bool        wm_fixed_size           = false;
     bool        wm_never_focus          = false; // WM_HINTS.input == False
     bool        wm_static_gravity       = false; // WM_NORMAL_HINTS win_gravity == StaticGravity
-    bool        wm_no_decorations       = false; // _MOTIF_WM_HINTS decorations == 0 (raw hint, kept for EWMH reactions)
-    bool        fullscreen_self_managed = false; // intent == Borderless shorthand (kept during migration)
+    bool        wm_no_decorations       = false; // _MOTIF_WM_HINTS decorations == 0
+    bool        fullscreen_self_managed = false; // client owns geometry (pre-map _NET_WM_STATE_FULLSCREEN)
+    bool        promote_to_borderless   = false; // set by core at MapRequest: backend should make this borderless
     int         ignore_unmap_count      = 0;     // WM-initiated unmaps pending; suppress UnmapNotify
 
     int32_t     x            = 0;
@@ -58,8 +49,5 @@ struct WindowState {
     uint32_t    stack_mode   = 0;
     uint32_t    event_mask   = 0;
 
-    // Convenience queries
-    bool is_dialog() const  { return type == WindowType::Dialog || type == WindowType::Modal; }
-    bool is_borderless_intent() const { return intent == WindowIntent::Borderless; }
-    bool is_fullscreen_intent() const { return intent == WindowIntent::Fullscreen; }
+    bool is_dialog() const { return type == WindowType::Dialog || type == WindowType::Modal; }
 };

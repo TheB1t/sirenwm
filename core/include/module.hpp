@@ -60,6 +60,8 @@ class Module {
         virtual void on(Core&, event::WindowAssignedToWorkspace) {}
         virtual void on(Core&, event::TrayIconDocked) {}
         virtual void on(Core&, event::KeyboardLayoutChanged) {}
+        virtual void on(Core&, event::BorderlessActivated) {}
+        virtual void on(Core&, event::BorderlessDeactivated) {}
 
         // Returns true if the event was handled (stops further dispatch).
         virtual bool on(Core&, event::ClientMessageEv) { return false; }

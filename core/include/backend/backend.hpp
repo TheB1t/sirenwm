@@ -82,6 +82,8 @@ class Backend {
         virtual void on(event::RaiseDocks) {}
         virtual void on(event::DisplayTopologyChanged) {}
         virtual void on(event::WindowAdopted) {}
+        virtual void on(event::BorderlessActivated) {}
+        virtual void on(event::BorderlessDeactivated) {}
 
         // Close a window using platform-specific protocol (e.g. WM_DELETE_WINDOW / kill).
         virtual bool close_window(WindowId) { return false; }

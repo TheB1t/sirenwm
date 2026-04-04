@@ -397,6 +397,19 @@ void X11Backend::update_focus(event::FocusChanged ev) {
     if (ev.window != NO_WINDOW)
         set_border_color(ev.window, border_focused_pixel);
     border_last_focused = ev.window;
+
+    // Sync pointer barriers to focused window: activate when a borderless window
+    // gains focus, deactivate when focus moves away. This covers all focus paths —
+    // workspace switch, window close, EnterNotify, and EWMH-driven changes.
+    auto w = (ev.window != NO_WINDOW) ? core.window_state_any(ev.window) : nullptr;
+    if (w && w->borderless) {
+        int ws_id  = core.workspace_of_window(ev.window);
+        int mon_idx = core.monitor_of_workspace(ws_id);
+        if (mon_idx >= 0)
+            set_pointer_barriers(ev.window, mon_idx);
+    } else {
+        clear_pointer_barriers();
+    }
 }
 
 void X11Backend::notify(event::FocusChanged ev) {

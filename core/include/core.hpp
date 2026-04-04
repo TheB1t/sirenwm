@@ -52,7 +52,9 @@ using CoreDomainEvent   = std::variant<
     event::WorkspaceSwitched,
     event::RaiseDocks,
     event::DisplayTopologyChanged,
-    event::WindowAssignedToWorkspace
+    event::WindowAssignedToWorkspace,
+    event::BorderlessActivated,
+    event::BorderlessDeactivated
 >;
 
 enum class BackendEffectKind {
@@ -127,6 +129,8 @@ class Core {
         void         emit_raise_docks();
         void         emit_display_topology_changed();
         void         emit_window_assigned_to_workspace(WindowId window, int workspace_id);
+        void         emit_borderless_activated(WindowId window, int monitor_index);
+        void         emit_borderless_deactivated();
 
     public:
         Core() = default;
