@@ -50,14 +50,6 @@ void apply_window_flush(XConnection& xconn, const WindowFlush& flush, const Wind
         mask       |= XCB_CONFIG_WINDOW_BORDER_WIDTH;
         values[n++] = state.border_width;
     }
-    if (flush.sibling_dirty) {
-        mask       |= XCB_CONFIG_WINDOW_SIBLING;
-        values[n++] = state.sibling;
-    }
-    if (flush.stack_mode_dirty) {
-        mask       |= XCB_CONFIG_WINDOW_STACK_MODE;
-        values[n++] = state.stack_mode;
-    }
 
     if (n > 0)
         xconn.configure_window(flush.window, mask, values);

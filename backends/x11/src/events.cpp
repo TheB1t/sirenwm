@@ -613,17 +613,21 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     if (m & XCB_CONFIG_WINDOW_BORDER_WIDTH)
         (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, ev->border_width });
     // Reject restack requests from fullscreen windows — raise docks instead.
+    // Restack (sibling/stack_mode) is X11-specific and applied directly without routing through core.
     if (m & XCB_CONFIG_WINDOW_STACK_MODE) {
         if (window->fullscreen) {
             runtime.emit(core, event::RaiseDocks{});
         } else {
-            if (m & XCB_CONFIG_WINDOW_SIBLING)
-                (void)core.dispatch(command::SetWindowSibling{ ev->window, ev->sibling });
-            (void)core.dispatch(command::SetWindowStackMode{ ev->window, ev->stack_mode });
+            uint16_t restack_mask = XCB_CONFIG_WINDOW_STACK_MODE;
+            uint32_t restack_vals[2] = {};
+            int      ri = 0;
+            if (m & XCB_CONFIG_WINDOW_SIBLING) {
+                restack_mask    |= XCB_CONFIG_WINDOW_SIBLING;
+                restack_vals[ri++] = ev->sibling;
+            }
+            restack_vals[ri] = ev->stack_mode;
+            xconn.configure_window(ev->window, restack_mask, restack_vals);
         }
-    } else {
-        if (m & XCB_CONFIG_WINDOW_SIBLING)
-            (void)core.dispatch(command::SetWindowSibling{ ev->window, ev->sibling });
     }
 
     // A tiled window requesting monitor-covering geometry is going fullscreen

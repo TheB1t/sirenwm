@@ -69,17 +69,6 @@ void Core::mark_window_border_width(WindowId win) {
     emit_backend_effect(BackendEffectKind::UpdateWindow, win);
 }
 
-void Core::mark_window_sibling(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.sibling_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
-
-void Core::mark_window_stack_mode(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.stack_mode_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
 
 void Core::sync_workspace_visibility() {
     auto n = (int)wsman.all().size();
@@ -772,23 +761,6 @@ bool Core::dispatch(const command::SetWindowBorderWidth& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowSibling& cmd) {
-    auto w = wsman.find_window_in_all(cmd.window);
-    if (!w)
-        return false;
-    w->sibling = cmd.sibling;
-    mark_window_sibling(cmd.window);
-    return true;
-}
-
-bool Core::dispatch(const command::SetWindowStackMode& cmd) {
-    auto w = wsman.find_window_in_all(cmd.window);
-    if (!w)
-        return false;
-    w->stack_mode = cmd.stack_mode;
-    mark_window_stack_mode(cmd.window);
-    return true;
-}
 
 bool Core::dispatch(const command::SyncWindowFromConfigureNotify& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);

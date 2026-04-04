@@ -45,8 +45,6 @@ struct WindowState {
     uint32_t    width        = 0;
     uint32_t    height       = 0;
     uint32_t    border_width = 0;
-    uint32_t    sibling      = 0;
-    uint32_t    stack_mode   = 0;
     uint32_t    event_mask   = 0;
 
     bool is_dialog() const { return type == WindowType::Dialog || type == WindowType::Modal; }

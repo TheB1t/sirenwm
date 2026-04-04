@@ -176,16 +176,6 @@ struct SetWindowBorderWidth {
     uint32_t border_width = 0;
 };
 
-struct SetWindowSibling {
-    WindowId window  = NO_WINDOW;
-    uint32_t sibling = 0;
-};
-
-struct SetWindowStackMode {
-    WindowId window     = NO_WINDOW;
-    uint32_t stack_mode = 0;
-};
-
 struct SyncWindowFromConfigureNotify {
     WindowId window       = NO_WINDOW;
     int32_t  x            = 0;
@@ -234,8 +224,6 @@ using CoreCommand = std::variant<
     SetWindowPosition,
     SetWindowSize,
     SetWindowBorderWidth,
-    SetWindowSibling,
-    SetWindowStackMode,
     SyncWindowFromConfigureNotify
 >;
 

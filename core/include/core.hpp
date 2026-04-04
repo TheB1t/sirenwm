@@ -83,12 +83,8 @@ struct WindowFlush {
     bool     width_dirty        = false;
     bool     height_dirty       = false;
     bool     border_width_dirty = false;
-    bool     sibling_dirty      = false;
-    bool     stack_mode_dirty   = false;
-
     bool has_config_changes() const {
-        return x_dirty || y_dirty || width_dirty || height_dirty ||
-               border_width_dirty || sibling_dirty || stack_mode_dirty;
+        return x_dirty || y_dirty || width_dirty || height_dirty || border_width_dirty;
     }
 };
 
@@ -120,8 +116,6 @@ class Core {
         void         mark_window_width(WindowId win);
         void         mark_window_height(WindowId win);
         void         mark_window_border_width(WindowId win);
-        void         mark_window_sibling(WindowId win);
-        void         mark_window_stack_mode(WindowId win);
         void         sync_workspace_visibility();
         void         sync_current_focus();
         void         emit_focus_changed(WindowId window);
@@ -210,8 +204,6 @@ class Core {
         bool dispatch(const command::SetWindowPosition& cmd);
         bool dispatch(const command::SetWindowSize& cmd);
         bool dispatch(const command::SetWindowBorderWidth& cmd);
-        bool dispatch(const command::SetWindowSibling& cmd);
-        bool dispatch(const command::SetWindowStackMode& cmd);
         bool dispatch(const command::SyncWindowFromConfigureNotify& cmd);
 
         const std::vector<MonitorState>& monitor_states() const {
