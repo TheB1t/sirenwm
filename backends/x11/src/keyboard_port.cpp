@@ -41,16 +41,24 @@ struct XkbSnapshot {
 };
 
 static std::optional<XkbSnapshot> read_snapshot(Display* dpy) {
-    XkbRF_VarDefsRec vd  = {};
+    XkbRF_VarDefsRec vd         = {};
     char*            rules_file = nullptr;
     if (!XkbRF_GetNamesProp(dpy, &rules_file, &vd))
         return std::nullopt;
 
     XkbSnapshot snap;
-    if (rules_file) { snap.rules   = rules_file; XFree(rules_file); }
-    if (vd.model)   { snap.model   = vd.model;   XFree(vd.model);   }
-    if (vd.options) { snap.options = vd.options;  XFree(vd.options); }
-    if (vd.variant) { snap.variant = vd.variant;  XFree(vd.variant); }
+    if (rules_file) {
+        snap.rules = rules_file; XFree(rules_file);
+    }
+    if (vd.model) {
+        snap.model = vd.model;   XFree(vd.model);
+    }
+    if (vd.options) {
+        snap.options = vd.options;  XFree(vd.options);
+    }
+    if (vd.variant) {
+        snap.variant = vd.variant;  XFree(vd.variant);
+    }
     snap.layouts = split_layouts(vd.layout);
     if (vd.layout)  XFree(vd.layout);
     return snap;
@@ -70,10 +78,10 @@ static void apply_snapshot(Display* dpy, const XkbSnapshot& snap) {
     vd.options = snap.options.empty()  ? nullptr : const_cast<char*>(snap.options.c_str());
 
     // Resolve rules file path — look in standard locations.
-    const char* rules_name = snap.rules.empty() ? "evdev" : snap.rules.c_str();
-    std::string rules_path = std::string("/usr/share/X11/xkb/rules/") + rules_name;
+    const char*     rules_name = snap.rules.empty() ? "evdev" : snap.rules.c_str();
+    std::string     rules_path = std::string("/usr/share/X11/xkb/rules/") + rules_name;
 
-    XkbRF_RulesRec* rules = XkbRF_Load(const_cast<char*>(rules_path.c_str()), (char*)"C", True, True);
+    XkbRF_RulesRec* rules      = XkbRF_Load(const_cast<char*>(rules_path.c_str()), (char*)"C", True, True);
     if (!rules) {
         // Try without locale suffix.
         rules = XkbRF_Load(const_cast<char*>(rules_path.c_str()), nullptr, True, True);
@@ -91,7 +99,7 @@ static void apply_snapshot(Display* dpy, const XkbSnapshot& snap) {
     }
 
     XkbDescPtr desc = XkbGetKeyboardByName(dpy, XkbUseCoreKbd, &comp,
-        XkbGBN_AllComponentsMask, XkbGBN_AllComponentsMask, True);
+            XkbGBN_AllComponentsMask, XkbGBN_AllComponentsMask, True);
 
     // Free component name strings allocated by XkbRF_GetComponents.
     if (comp.keymap)   XFree(comp.keymap);
@@ -121,7 +129,7 @@ static void apply_snapshot(Display* dpy, const XkbSnapshot& snap) {
 } // namespace
 
 class X11KeyboardPort final : public KeyboardPort {
-    Display*                  dpy_;
+    Display* dpy_;
     std::optional<XkbSnapshot> saved_;
 
     public:

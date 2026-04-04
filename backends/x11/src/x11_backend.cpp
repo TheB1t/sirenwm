@@ -10,15 +10,15 @@
 
 X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     : core(core_ref), runtime(runtime_ref) {
-    root_window       = xconn.root_window();
+    root_window        = xconn.root_window();
     render_port_impl   = backend::x11::create_render_port(xconn);
     input_port_impl    = backend::x11::create_input_port(xconn, key_syms);
     monitor_port_impl  = backend::x11::create_monitor_port(xconn, runtime_ref);
     keyboard_port_impl = backend::x11::create_keyboard_port(xconn);
     auto atoms = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
-    net_wm_name       = atoms["_NET_WM_NAME"];
-    utf8_string       = atoms["UTF8_STRING"];
-    net_wm_pid        = atoms["_NET_WM_PID"];
+    net_wm_name        = atoms["_NET_WM_NAME"];
+    utf8_string        = atoms["UTF8_STRING"];
+    net_wm_pid         = atoms["_NET_WM_PID"];
     uint32_t root_event_mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
         | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_POINTER_MOTION
         | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW

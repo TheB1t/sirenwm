@@ -25,12 +25,12 @@ static bool parse_keyboard_table(LuaContext& lua, int idx,
 
     lua.get_field(idx, "layouts");
     if (lua.is_string(-1)) {
-        std::string raw = lua.to_string(-1);
+        std::string            raw = lua.to_string(-1);
         // Split comma-separated layout string.
         std::string::size_type pos = 0;
         while (pos < raw.size()) {
-            auto comma = raw.find(',', pos);
-            std::string tok = (comma == std::string::npos)
+            auto        comma = raw.find(',', pos);
+            std::string tok   = (comma == std::string::npos)
                 ? raw.substr(pos)
                 : raw.substr(pos, comma - pos);
             if (!tok.empty())

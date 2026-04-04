@@ -16,7 +16,7 @@ class KeyboardModule : public Module {
 
     private:
         std::vector<std::string> layouts_;
-        std::string              options_;
+        std::string options_;
 
         void apply();
 };

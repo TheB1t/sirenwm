@@ -257,7 +257,6 @@ void BarModule::redraw() {
                 backend::TrayHost* bar_tray = tray_in_zone
                     ? tray_for_monitor(bar->monitor_index()) : nullptr;
 
-
                 BarState state = state_provider(bar->monitor_index());
                 bar::widgets::PaintContext paint(*bar, cfg.font);
                 paint.clear(cfg.colors.bar_bg);
@@ -293,7 +292,7 @@ void BarModule::raise_all() {
     for (auto& b : bars) {
         backend::TrayHost* t = tray_for_monitor(b->monitor_index());
         if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
-                         core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
+            core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
             b->lower();
             if (t) t->raise(b->id()); // keep tray visible above fullscreen/borderless
             continue;
@@ -304,7 +303,7 @@ void BarModule::raise_all() {
 
     for (auto& b : bottom_bars) {
         if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
-                         core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
+            core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
             b->lower();
             continue;
         }

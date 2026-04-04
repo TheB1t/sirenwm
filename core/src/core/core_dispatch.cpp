@@ -140,7 +140,6 @@ void Core::emit_raise_docks() {
     pending_core_events.push_back(event::RaiseDocks{});
 }
 
-
 void Core::emit_display_topology_changed() {
     pending_core_events.push_back(event::DisplayTopologyChanged{});
 }
@@ -167,7 +166,8 @@ void Core::arrange() {
         auto& ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->visible && !w->floating && !w->borderless && !w->wm_static_gravity && !w->fullscreen_self_managed) tiled.push_back(w->id);
+            if (w && w->visible && !w->floating && !w->borderless && !w->wm_static_gravity &&
+                !w->fullscreen_self_managed) tiled.push_back(w->id);
 
         layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
             uint32_t width, uint32_t height,
@@ -345,9 +345,9 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
     }
 
     if (!mon) {
-        const auto& mons = wsman.get_monitors();
+        const auto& mons  = wsman.get_monitors();
         // Prefer the monitor that owns the workspace (may be inactive).
-        int owner = wsman.monitor_of_workspace(ws_id);
+        int         owner = wsman.monitor_of_workspace(ws_id);
         if (owner >= 0 && owner < (int)mons.size())
             mon = &mons[(size_t)owner];
         else if (!mons.empty())
@@ -426,17 +426,17 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->wm_instance       = cmd.wm_instance;
-    w->wm_class          = cmd.wm_class;
-    w->wm_type_dialog    = cmd.wm_type_dialog;
-    w->wm_type_utility   = cmd.wm_type_utility;
-    w->wm_type_splash    = cmd.wm_type_splash;
-    w->wm_type_modal     = cmd.wm_type_modal;
-    w->wm_fixed_size            = cmd.wm_fixed_size;
-    w->wm_never_focus           = cmd.wm_never_focus;
-    w->wm_static_gravity        = cmd.wm_static_gravity;
-    w->wm_no_decorations        = cmd.wm_no_decorations;
-    w->fullscreen_self_managed  = cmd.fullscreen_self_managed;
+    w->wm_instance             = cmd.wm_instance;
+    w->wm_class                = cmd.wm_class;
+    w->wm_type_dialog          = cmd.wm_type_dialog;
+    w->wm_type_utility         = cmd.wm_type_utility;
+    w->wm_type_splash          = cmd.wm_type_splash;
+    w->wm_type_modal           = cmd.wm_type_modal;
+    w->wm_fixed_size           = cmd.wm_fixed_size;
+    w->wm_never_focus          = cmd.wm_never_focus;
+    w->wm_static_gravity       = cmd.wm_static_gravity;
+    w->wm_no_decorations       = cmd.wm_no_decorations;
+    w->fullscreen_self_managed = cmd.fullscreen_self_managed;
     return true;
 }
 
@@ -524,7 +524,7 @@ bool Core::dispatch(const command::FocusPrevWindow&) {
 }
 
 bool Core::dispatch(const command::FocusMonitor& cmd) {
-    int n = cmd.monitor_index;
+    int  n   = cmd.monitor_index;
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
         return false;
@@ -537,7 +537,7 @@ bool Core::dispatch(const command::FocusMonitor& cmd) {
 }
 
 bool Core::dispatch(const command::MoveWindowToMonitor& cmd) {
-    int n = cmd.monitor_index;
+    int  n   = cmd.monitor_index;
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
         return false;

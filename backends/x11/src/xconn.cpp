@@ -190,10 +190,10 @@ bool XConnection::has_static_gravity(xcb_window_t win) const {
         return false;
     bool result = false;
     if (reply->format == 32 && reply->value_len >= 1) {
-        auto*    data  = static_cast<uint32_t*>(xcb_get_property_value(reply));
+        auto* data = static_cast<uint32_t*>(xcb_get_property_value(reply));
         // WM_SIZE_HINTS: flags at data[0], win_gravity at data[9]
         // PWinGravity flag = bit 9 (0x200); StaticGravity = 10
-        constexpr uint32_t P_WIN_GRAVITY = (1u << 9);
+        constexpr uint32_t P_WIN_GRAVITY  = (1u << 9);
         constexpr uint32_t STATIC_GRAVITY = 10u;
         if (reply->value_len >= 10 && (data[0] & P_WIN_GRAVITY))
             result = (data[9] == STATIC_GRAVITY);
@@ -203,8 +203,8 @@ bool XConnection::has_static_gravity(xcb_window_t win) const {
 }
 
 bool XConnection::motif_no_decorations(xcb_window_t win) const {
-    auto atoms = intern_atoms({ "_MOTIF_WM_HINTS" });
-    xcb_atom_t atom = atoms["_MOTIF_WM_HINTS"];
+    auto       atoms = intern_atoms({ "_MOTIF_WM_HINTS" });
+    xcb_atom_t atom  = atoms["_MOTIF_WM_HINTS"];
     if (atom == XCB_ATOM_NONE)
         return false;
     auto  cookie = xcb_get_property(conn, 0, win, atom, XCB_ATOM_ANY, 0, 5);
@@ -213,7 +213,7 @@ bool XConnection::motif_no_decorations(xcb_window_t win) const {
         return false;
     bool result = false;
     if (reply->format == 32 && reply->value_len >= 3) {
-        auto*    data  = static_cast<uint32_t*>(xcb_get_property_value(reply));
+        auto* data = static_cast<uint32_t*>(xcb_get_property_value(reply));
         // flags bit 1 (0x2) = MWM_HINTS_DECORATIONS; decorations=0 means no frame
         result = (data[0] & 0x2u) && (data[2] == 0u);
     }

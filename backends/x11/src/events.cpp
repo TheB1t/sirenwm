@@ -74,7 +74,6 @@ static event::ButtonEv make_button_ev(xcb_button_press_event_t* ev, bool release
     };
 }
 
-
 static bool is_override_redirect_window(XConnection& xconn, xcb_window_t win) {
     auto attrs = xconn.get_window_attributes(win);
     return attrs.valid && attrs.override_redirect;
@@ -117,15 +116,15 @@ static const WindowTypeAtoms& window_type_atoms(XConnection& xconn) {
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
-    bool        wm_type_dialog    = false;
-    bool        wm_type_utility   = false;
-    bool        wm_type_splash    = false;
-    bool        wm_type_modal     = false;
-    bool        wm_fixed_size            = false;
-    bool        wm_never_focus           = false;
-    bool        wm_static_gravity        = false;
-    bool        wm_no_decorations        = false; // _MOTIF_WM_HINTS decorations=0
-    bool        fullscreen_self_managed  = false;
+    bool        wm_type_dialog          = false;
+    bool        wm_type_utility         = false;
+    bool        wm_type_splash          = false;
+    bool        wm_type_modal           = false;
+    bool        wm_fixed_size           = false;
+    bool        wm_never_focus          = false;
+    bool        wm_static_gravity       = false;
+    bool        wm_no_decorations       = false;  // _MOTIF_WM_HINTS decorations=0
+    bool        fullscreen_self_managed = false;
 };
 
 static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
@@ -140,27 +139,27 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
     out.wm_type_utility   = has_atom(types, atoms.utility);
     out.wm_type_splash    = has_atom(types, atoms.splash);
     out.wm_type_modal     = has_atom(types, atoms.modal);
-    out.wm_fixed_size      = xconn.has_fixed_size_hints(window);
-    out.wm_never_focus     = xconn.get_wm_hints_no_input(window);
-    out.wm_static_gravity  = xconn.has_static_gravity(window);
-    out.wm_no_decorations  = xconn.motif_no_decorations(window);
+    out.wm_fixed_size     = xconn.has_fixed_size_hints(window);
+    out.wm_never_focus    = xconn.get_wm_hints_no_input(window);
+    out.wm_static_gravity = xconn.has_static_gravity(window);
+    out.wm_no_decorations = xconn.motif_no_decorations(window);
     return out;
 }
 
 static void apply_window_metadata(Core& core, WindowId window, WindowMetadata meta) {
     (void)core.dispatch(command::SetWindowMetadata{
-            .window            = window,
-            .wm_instance       = std::move(meta.wm_instance),
-            .wm_class          = std::move(meta.wm_class),
-            .wm_type_dialog    = meta.wm_type_dialog,
-            .wm_type_utility   = meta.wm_type_utility,
-            .wm_type_splash    = meta.wm_type_splash,
-            .wm_type_modal     = meta.wm_type_modal,
-            .wm_fixed_size            = meta.wm_fixed_size,
-            .wm_never_focus           = meta.wm_never_focus,
-            .wm_static_gravity        = meta.wm_static_gravity,
-            .wm_no_decorations        = meta.wm_no_decorations,
-            .fullscreen_self_managed  = meta.fullscreen_self_managed,
+            .window                  = window,
+            .wm_instance             = std::move(meta.wm_instance),
+            .wm_class                = std::move(meta.wm_class),
+            .wm_type_dialog          = meta.wm_type_dialog,
+            .wm_type_utility         = meta.wm_type_utility,
+            .wm_type_splash          = meta.wm_type_splash,
+            .wm_type_modal           = meta.wm_type_modal,
+            .wm_fixed_size           = meta.wm_fixed_size,
+            .wm_never_focus          = meta.wm_never_focus,
+            .wm_static_gravity       = meta.wm_static_gravity,
+            .wm_no_decorations       = meta.wm_no_decorations,
+            .fullscreen_self_managed = meta.fullscreen_self_managed,
         });
 }
 
@@ -257,17 +256,17 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         if (ewmh_has_fullscreen_state(ev->window)) {
             xcb_atom_t xembed_atom = xconn.intern_atom_reply(
                 xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
-            bool is_xembed = xconn.has_property_32(ev->window, xembed_atom, 2);
+            bool       is_xembed   = xconn.has_property_32(ev->window, xembed_atom, 2);
             if (!is_xembed) {
                 // Container windows may carry the fullscreen state without covering the
                 // monitor — only mark self-managed if the window is actually fullscreen-sized.
                 auto geo = xconn.get_window_geometry(ev->window);
                 if (geo) {
-                    const auto& mons = core.monitor_states();
-                    int top      = std::max(0, core.monitor_top_inset());
-                    int bottom   = std::max(0, core.monitor_bottom_inset());
-                    int outer_w  = (int)(geo->width  + 2 * geo->border_width);
-                    int outer_h  = (int)(geo->height + 2 * geo->border_width);
+                    const auto& mons    = core.monitor_states();
+                    int         top     = std::max(0, core.monitor_top_inset());
+                    int         bottom  = std::max(0, core.monitor_bottom_inset());
+                    int         outer_w = (int)(geo->width  + 2 * geo->border_width);
+                    int         outer_h = (int)(geo->height + 2 * geo->border_width);
                     for (const auto& mon : mons) {
                         int usable_h = mon.height - top - bottom;
                         if (outer_w >= mon.width && outer_h >= usable_h) {
@@ -297,7 +296,6 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         : core.workspace_of_window(transient_for);
     bool managed_transient = (transient_parent_ws >= 0);
 
-
     if (managed_transient) {
         (void)core.dispatch(command::AssignWindowWorkspace{ ev->window, transient_parent_ws });
         (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
@@ -320,25 +318,25 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     //   Self-managed fullscreen (pre-map _NET_WM_STATE_FULLSCREEN) + no_decos → borderless only,
     //     no geometry override (client already knows its position).
     {
-        int mon_idx = core.monitor_of_workspace(ws_id);
-        const auto& mons = core.monitor_states();
-        bool promote_borderless = false;
+        int         mon_idx            = core.monitor_of_workspace(ws_id);
+        const auto& mons               = core.monitor_states();
+        bool        promote_borderless = false;
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
             const auto& mon = mons[(size_t)mon_idx];
 
             // SDL2 reads _NET_WM_STRUT and subtracts bar height from its window size,
             // so compare against usable area, not the full monitor height.
-            int top_inset    = std::max(0, core.monitor_top_inset());
-            int bottom_inset = std::max(0, core.monitor_bottom_inset());
-            int usable_h     = mon.height - top_inset - bottom_inset;
+            int  top_inset      = std::max(0, core.monitor_top_inset());
+            int  bottom_inset   = std::max(0, core.monitor_bottom_inset());
+            int  usable_h       = mon.height - top_inset - bottom_inset;
             bool covers_monitor = false;
             if (mapped_window && !mapped_window->floating && !mapped_window->borderless &&
                 !mapped_window->fullscreen_self_managed) {
                 auto geo = xconn.get_window_geometry(ev->window);
                 if (geo) {
-                    uint32_t bw = geo->border_width;
-                    int outer_w = (int)(geo->width  + 2 * bw);
-                    int outer_h = (int)(geo->height + 2 * bw);
+                    uint32_t bw      = geo->border_width;
+                    int      outer_w = (int)(geo->width  + 2 * bw);
+                    int      outer_h = (int)(geo->height + 2 * bw);
                     covers_monitor = (outer_w >= mon.width && outer_h >= usable_h);
                 }
             }
@@ -564,9 +562,9 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
 void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
     auto window = core.window_state_any(ev->window);
     if (window) {
-        const auto& atoms        = window_type_atoms(xconn);
-        static xcb_atom_t motif_atom = xconn.intern_atoms({"_MOTIF_WM_HINTS"})["_MOTIF_WM_HINTS"];
-        bool        refresh_meta =
+        const auto&       atoms        = window_type_atoms(xconn);
+        static xcb_atom_t motif_atom   = xconn.intern_atoms({"_MOTIF_WM_HINTS"})["_MOTIF_WM_HINTS"];
+        bool              refresh_meta =
             ev->atom == XCB_ATOM_WM_CLASS ||
             ev->atom == atoms.net_wm_window_type ||
             ev->atom == XCB_ATOM_WM_NORMAL_HINTS ||
@@ -589,15 +587,15 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                         runtime.emit(core, event::RaiseDocks{});
                         (void)core.dispatch(command::ReconcileNow{});
                     } else {
-                        int mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
-                        const auto& mons = core.monitor_states();
+                        int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
+                        const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-                            const auto& mon = mons[(size_t)mon_idx];
+                            const auto& mon    = mons[(size_t)mon_idx];
                             // mon.y/height are inset-adjusted; recover physical extents.
-                            int top    = std::max(0, core.monitor_top_inset());
-                            int bottom = std::max(0, core.monitor_bottom_inset());
-                            int phy_y  = mon.y - top;
-                            int phy_h  = mon.height + top + bottom;
+                            int         top    = std::max(0, core.monitor_top_inset());
+                            int         bottom = std::max(0, core.monitor_bottom_inset());
+                            int         phy_y  = mon.y - top;
+                            int         phy_h  = mon.height + top + bottom;
                             LOG_INFO("PropertyNotify(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
                                 ev->window, mon.x, phy_y, mon.width, phy_h);
                             (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
@@ -688,24 +686,25 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            const auto& mon        = mons[(size_t)mon_idx];
+            const auto& mon      = mons[(size_t)mon_idx];
             // SDL2 subtracts bar insets from its requested size; compare against usable area.
-            int usable_h = mon.height
+            int         usable_h = mon.height
                 - std::max(0, core.monitor_top_inset())
                 - std::max(0, core.monitor_bottom_inset());
             if ((int)ev->width >= mon.width && (int)ev->height >= usable_h) {
-                LOG_INFO("ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
+                LOG_INFO(
+                    "ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
                     ev->window, ev->width, ev->height, mon.width, usable_h);
                 (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
                 borderless    = true;
                 borderless_fs = true;
                 // Override to full monitor area (client requested reduced size due to _NET_WM_STRUT).
-                ev->x      = (int16_t)mon.x;
-                ev->y      = (int16_t)mon.y;
-                ev->width  = (uint16_t)mon.width;
-                ev->height = (uint16_t)mon.height;
-                m |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
-                   | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+                ev->x         = (int16_t)mon.x;
+                ev->y         = (int16_t)mon.y;
+                ev->width     = (uint16_t)mon.width;
+                ev->height    = (uint16_t)mon.height;
+                m            |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
+                    | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
                 runtime.emit(core, event::RaiseDocks{});
             }
         }
@@ -714,8 +713,8 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     if (floating || borderless || static_gravity) {
         // WM-pinned windows (fullscreen, WM-placed borderless): reject geometry requests.
         bool pinned = (window->fullscreen && !borderless_fs) ||
-                      (window->borderless && (window->wm_no_decorations || window->wm_fixed_size) &&
-                       !borderless_fs && !window->fullscreen_self_managed);
+            (window->borderless && (window->wm_no_decorations || window->wm_fixed_size) &&
+                !borderless_fs && !window->fullscreen_self_managed);
         if (pinned) {
             send_synthetic_configure_notify(xconn, ev->window,
                 window->x, window->y,

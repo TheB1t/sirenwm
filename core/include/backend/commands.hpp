@@ -41,8 +41,8 @@ struct UnmapWindow {
 };
 
 struct SetWindowFullscreen {
-    WindowId window           = NO_WINDOW;
-    bool     enabled          = false;
+    WindowId window            = NO_WINDOW;
+    bool     enabled           = false;
     bool     preserve_geometry = false; // don't pin x/y/w/h to monitor (self-managed clients)
 };
 
@@ -60,15 +60,15 @@ struct SetWindowMetadata {
     WindowId    window = NO_WINDOW;
     std::string wm_instance;
     std::string wm_class;
-    bool        wm_type_dialog    = false;
-    bool        wm_type_utility   = false;
-    bool        wm_type_splash    = false;
-    bool        wm_type_modal     = false;
-    bool        wm_fixed_size            = false;
-    bool        wm_never_focus           = false;
-    bool        wm_static_gravity        = false;
-    bool        wm_no_decorations        = false;
-    bool        fullscreen_self_managed  = false;
+    bool        wm_type_dialog          = false;
+    bool        wm_type_utility         = false;
+    bool        wm_type_splash          = false;
+    bool        wm_type_modal           = false;
+    bool        wm_fixed_size           = false;
+    bool        wm_never_focus          = false;
+    bool        wm_static_gravity       = false;
+    bool        wm_no_decorations       = false;
+    bool        fullscreen_self_managed = false;
 };
 
 struct SetWindowEventMask {

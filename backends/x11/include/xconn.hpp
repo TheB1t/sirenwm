@@ -21,7 +21,7 @@ class XConnection {
     xcb_connection_t* conn = nullptr;
     xcb_screen_t* screen   = nullptr;
     bool dirty             = false;
-    int  xkb_event_type_   = -1;
+    int xkb_event_type_    = -1;
 
     public:
         XConnection();

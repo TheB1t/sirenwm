@@ -35,11 +35,11 @@ struct RestartState {
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
-    bool        wm_type_dialog     = false;
-    bool        wm_type_utility    = false;
-    bool        wm_type_splash     = false;
-    bool        wm_type_modal      = false;
-    bool        wm_fixed_size      = false;
+    bool        wm_type_dialog  = false;
+    bool        wm_type_utility = false;
+    bool        wm_type_splash  = false;
+    bool        wm_type_modal   = false;
+    bool        wm_fixed_size   = false;
 };
 
 bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
@@ -119,7 +119,7 @@ WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
     out.wm_type_utility = has_atom(types, atoms.utility);
     out.wm_type_splash  = has_atom(types, atoms.splash);
     out.wm_type_modal   = has_atom(types, atoms.modal);
-    out.wm_fixed_size  = xconn.has_fixed_size_hints(window);
+    out.wm_fixed_size   = xconn.has_fixed_size_hints(window);
     return out;
 }
 

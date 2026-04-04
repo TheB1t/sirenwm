@@ -24,9 +24,9 @@ class X11Backend final : public Backend {
 
         WindowId root_window = NO_WINDOW;
         std::array<bool, 256> key_down {};
-        std::unique_ptr<backend::RenderPort>   render_port_impl;
-        std::unique_ptr<backend::InputPort>    input_port_impl;
-        std::unique_ptr<backend::MonitorPort>  monitor_port_impl;
+        std::unique_ptr<backend::RenderPort> render_port_impl;
+        std::unique_ptr<backend::InputPort> input_port_impl;
+        std::unique_ptr<backend::MonitorPort> monitor_port_impl;
         std::unique_ptr<backend::KeyboardPort> keyboard_port_impl;
         xcb_key_symbols_t* key_syms = nullptr;
         uint32_t net_wm_name        = 0;

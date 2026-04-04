@@ -452,7 +452,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         // Self-managed windows control their own position; pinning to mon.x/mon.y breaks them.
         // no_decorations windows are already borderless — applying fullscreen would lower bars/tray.
         bool self_managed = window->wm_static_gravity || window->fullscreen_self_managed
-                            || window->wm_no_decorations;
+            || window->wm_no_decorations;
         if (enable) {
             if (!self_managed && should_apply_fullscreen_now(core, ev.window))
                 ewmh_apply_fullscreen(ev.window, true);

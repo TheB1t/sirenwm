@@ -19,16 +19,16 @@ struct WindowState {
 
     std::string wm_instance;
     std::string wm_class;
-    bool        wm_type_dialog     = false;
-    bool        wm_type_utility    = false;
-    bool        wm_type_splash     = false;
-    bool        wm_type_modal      = false;
-    bool        wm_fixed_size      = false;
-    bool        wm_never_focus     = false; // WM_HINTS.input == False
-    bool        wm_static_gravity  = false; // WM_NORMAL_HINTS win_gravity == StaticGravity
-    bool        wm_no_decorations  = false; // _MOTIF_WM_HINTS decorations == 0
+    bool        wm_type_dialog          = false;
+    bool        wm_type_utility         = false;
+    bool        wm_type_splash          = false;
+    bool        wm_type_modal           = false;
+    bool        wm_fixed_size           = false;
+    bool        wm_never_focus          = false; // WM_HINTS.input == False
+    bool        wm_static_gravity       = false; // WM_NORMAL_HINTS win_gravity == StaticGravity
+    bool        wm_no_decorations       = false; // _MOTIF_WM_HINTS decorations == 0
     bool        fullscreen_self_managed = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
-    int         ignore_unmap_count = 0; // WM-initiated unmaps pending; suppress UnmapNotify
+    int         ignore_unmap_count      = 0; // WM-initiated unmaps pending; suppress UnmapNotify
 
     int32_t     x            = 0;
     int32_t     y            = 0;
