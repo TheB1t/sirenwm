@@ -73,11 +73,6 @@ struct SetWindowMetadata {
     WindowId     transient_for        = NO_WINDOW;
 };
 
-struct SetWindowEventMask {
-    WindowId window = NO_WINDOW;
-    uint32_t mask   = 0;
-};
-
 struct SetWindowVisible {
     WindowId window  = NO_WINDOW;
     bool     visible = false;
@@ -196,7 +191,6 @@ using CoreCommand = std::variant<
     EnsureWindow,
     AssignWindowWorkspace,
     SetWindowMetadata,
-    SetWindowEventMask,
     SetWindowVisible,
     SetWindowHiddenByWorkspace,
     SetWindowSuppressFocusOnce,

@@ -277,11 +277,11 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         apply_window_metadata(core, ev->window, std::move(meta));
     }
 
-    (void)core.dispatch(command::SetWindowEventMask{
-        ev->window,
-        XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_ENTER_WINDOW |
-        XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_PROPERTY_CHANGE
-    });
+    {
+        uint32_t mask = XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_ENTER_WINDOW
+                      | XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_PROPERTY_CHANGE;
+        xconn.change_window_attributes(ev->window, XCB_CW_EVENT_MASK, &mask);
+    }
 
     // Rules apply only to non-transient windows; transients are routed in SetWindowMetadata.
     xcb_window_t transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);

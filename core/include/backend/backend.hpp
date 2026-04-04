@@ -40,9 +40,6 @@ struct ExistingWindowSnapshot {
     int32_t  geo_x = 0, geo_y = 0;
     uint32_t geo_w = 0, geo_h = 0;
 
-    // Recommended per-window event mask for managed windows.
-    uint32_t event_mask = 0;
-
     // Metadata snapshot used by rules/policy.
     std::string  wm_instance;
     std::string  wm_class;

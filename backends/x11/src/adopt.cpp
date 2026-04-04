@@ -214,7 +214,6 @@ std::vector<ExistingWindowSnapshot> X11Backend::scan_existing_windows() {
         snap.currently_viewable = (attrs.map_state == XCB_MAP_STATE_VIEWABLE);
         snap.default_manage     = default_manage;
         snap.from_restart       = from_restart;
-        snap.event_mask         = kManagedEventMask;
         snap.wm_instance        = std::move(meta.wm_instance);
         snap.wm_class           = std::move(meta.wm_class);
         snap.type               = meta.type;
@@ -223,6 +222,9 @@ std::vector<ExistingWindowSnapshot> X11Backend::scan_existing_windows() {
             snap.restart_workspace_id = it_state->second.ws_id;
             snap.restart_floating     = it_state->second.floating;
         }
+
+        if (snap.default_manage)
+            xconn.change_window_attributes(win, XCB_CW_EVENT_MASK, &kManagedEventMask);
 
         if (auto geo = xconn.get_window_geometry(win)) {
             snap.has_geometry = true;

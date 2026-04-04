@@ -9,7 +9,7 @@ std::optional<WindowFlush> Core::take_window_flush(WindowId win) {
     WindowFlush out = it->second;
     pending_window_flushes.erase(it);
 
-    if (!out.event_mask_dirty && !out.has_config_changes())
+    if (!out.has_config_changes())
         return std::nullopt;
 
     return out;
@@ -33,11 +33,6 @@ WindowFlush& Core::ensure_window_flush(WindowId win) {
     return flush;
 }
 
-void Core::mark_window_event_mask(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.event_mask_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
 
 void Core::mark_window_x(WindowId win) {
     auto& flush = ensure_window_flush(win);
@@ -466,14 +461,6 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowEventMask& cmd) {
-    auto w = wsman.find_window_in_all(cmd.window);
-    if (!w)
-        return false;
-    w->event_mask = cmd.mask;
-    mark_window_event_mask(cmd.window);
-    return true;
-}
 
 bool Core::dispatch(const command::SetWindowVisible& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);

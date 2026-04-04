@@ -18,11 +18,6 @@ bool is_randr_event_type(const Runtime& runtime, uint8_t type) {
 }
 
 void apply_window_flush(XConnection& xconn, const WindowFlush& flush, const WindowState& state) {
-    if (flush.event_mask_dirty) {
-        uint32_t event_mask = state.event_mask;
-        xconn.change_window_attributes(flush.window, XCB_CW_EVENT_MASK, &event_mask);
-    }
-
     if (!flush.has_config_changes())
         return;
 

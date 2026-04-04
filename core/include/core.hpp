@@ -76,8 +76,6 @@ struct BackendEffect {
 
 struct WindowFlush {
     WindowId window             = NO_WINDOW;
-    bool     event_mask_dirty   = false;
-
     bool     x_dirty            = false;
     bool     y_dirty            = false;
     bool     width_dirty        = false;
@@ -110,7 +108,6 @@ class Core {
         void         emit_backend_effect(BackendEffectKind kind, WindowId window = NO_WINDOW);
         void         emit_warp_pointer(int16_t x, int16_t y);
         WindowFlush& ensure_window_flush(WindowId win);
-        void         mark_window_event_mask(WindowId win);
         void         mark_window_x(WindowId win);
         void         mark_window_y(WindowId win);
         void         mark_window_width(WindowId win);
@@ -176,7 +173,6 @@ class Core {
         bool dispatch(const command::EnsureWindow& cmd);
         bool dispatch(const command::AssignWindowWorkspace& cmd);
         bool dispatch(const command::SetWindowMetadata& cmd);
-        bool dispatch(const command::SetWindowEventMask& cmd);
         bool dispatch(const command::SetWindowVisible& cmd);
         bool dispatch(const command::SetWindowHiddenByWorkspace& cmd);
         bool dispatch(const command::SetWindowSuppressFocusOnce& cmd);

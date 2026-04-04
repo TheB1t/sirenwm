@@ -51,10 +51,6 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .wm_fixed_size = snap.wm_fixed_size,
             });
 
-        (void)core.dispatch(command::SetWindowEventMask{
-                .window = snap.window,
-                .mask   = snap.event_mask,
-            });
         (void)core.dispatch(command::SetWindowVisible{
                 .window  = snap.window,
                 .visible = snap.currently_viewable,
