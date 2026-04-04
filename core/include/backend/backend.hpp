@@ -20,6 +20,12 @@ class MonitorPort;
 class KeyboardPort;
 } // namespace backend
 
+struct StartupSnapshot {
+    std::vector<struct ExistingWindowSnapshot> windows;
+    // monitor_idx -> active_ws_id from exec-restart state file; empty on first start.
+    std::unordered_map<int, int> monitor_active_ws;
+};
+
 struct ExistingWindowSnapshot {
     WindowId window = NO_WINDOW;
 
@@ -60,14 +66,7 @@ class Backend {
         virtual void render_frame()      = 0;
         virtual void on_reload_applied() = 0;
         virtual void shutdown() {}
-        virtual std::vector<ExistingWindowSnapshot> scan_existing_windows() { return {}; }
-
-        // Returns monitor_idx -> active_ws_id from the last exec-restart snapshot.
-        // Empty when not available (first start or reload).
-        virtual const std::unordered_map<int, int>& consumed_restart_monitor_ws() const {
-            static const std::unordered_map<int, int> empty;
-            return empty;
-        }
+        virtual StartupSnapshot scan_existing_windows() { return {}; }
 
         // Called by Runtime once, after core.init() and before module on_start callbacks.
         virtual void on_start(Core&) {}

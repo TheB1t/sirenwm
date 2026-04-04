@@ -332,7 +332,7 @@ bool X11Backend::handle(event::CloseWindowRequest ev) {
 
 void X11Backend::notify(event::WindowMapped ev) {
     // Paint initial border; skip if already focused (color set by update_focus).
-    if (ev.window != border_last_focused)
+    if (ev.window != border_painted_focused_)
         set_border_color(ev.window, border_unfocused_pixel);
 
     // ICCCM §4.1.3: set WM_STATE to NormalState when managing a window.
@@ -392,11 +392,11 @@ void X11Backend::notify(event::WindowUnmapped ev) {
 
 void X11Backend::update_focus(event::FocusChanged ev) {
     xconn.set_property(root_window, NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, ev.window);
-    if (border_last_focused != NO_WINDOW && border_last_focused != ev.window)
-        set_border_color(border_last_focused, border_unfocused_pixel);
+    if (border_painted_focused_ != NO_WINDOW && border_painted_focused_ != ev.window)
+        set_border_color(border_painted_focused_, border_unfocused_pixel);
     if (ev.window != NO_WINDOW)
         set_border_color(ev.window, border_focused_pixel);
-    border_last_focused = ev.window;
+    border_painted_focused_ = ev.window;
 
     // Sync pointer barriers to focused window: activate when a borderless window
     // gains focus, deactivate when focus moves away. This covers all focus paths —

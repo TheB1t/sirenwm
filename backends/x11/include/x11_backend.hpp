@@ -32,7 +32,6 @@ class X11Backend final : public Backend {
         uint32_t net_wm_name        = 0;
         uint32_t utf8_string        = 0;
         uint32_t net_wm_pid         = 0;
-        std::unordered_map<int, int> restart_monitor_active_ws;
 
         // EWMH/ICCCM atoms
         xcb_window_t ewmh_wm_window                 = XCB_WINDOW_NONE;
@@ -72,7 +71,7 @@ class X11Backend final : public Backend {
         // Border colors (derived from theme on start/reload)
         uint32_t border_focused_pixel   = 0;
         uint32_t border_unfocused_pixel = 0;
-        WindowId border_last_focused    = NO_WINDOW;
+        WindowId border_painted_focused_ = NO_WINDOW; // render cache: which window currently has focused border color
 
         void set_border_color(WindowId win, uint32_t pixel);
         void reload_border_colors();
@@ -156,7 +155,7 @@ class X11Backend final : public Backend {
         void                                on(event::BorderlessDeactivated ev) override;
         bool                                close_window(WindowId window) override;
         void                                shutdown() override;
-        std::vector<ExistingWindowSnapshot> scan_existing_windows() override;
+        StartupSnapshot scan_existing_windows() override;
         backend::InputPort*                 input_port()    override;
         backend::MonitorPort*               monitor_port()  override;
         backend::RenderPort*                render_port()   override;
@@ -176,9 +175,4 @@ class X11Backend final : public Backend {
         void ewmh_update_desktop_props();
         void focus_window(WindowId win);
 
-        // Returns monitor_idx -> active_ws_id mapping saved during last exec-restart.
-        // Empty if no restart state was loaded.
-        const std::unordered_map<int, int>& consumed_restart_monitor_ws() const override {
-            return restart_monitor_active_ws;
-        }
 };

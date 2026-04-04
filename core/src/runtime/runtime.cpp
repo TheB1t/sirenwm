@@ -18,12 +18,12 @@
 namespace {
 
 void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
-    auto snapshots = backend.scan_existing_windows();
-    if (snapshots.empty())
+    auto startup = backend.scan_existing_windows();
+    if (startup.windows.empty())
         return;
 
     int adopted = 0;
-    for (const auto& snap : snapshots) {
+    for (const auto& snap : startup.windows) {
         if (snap.window == NO_WINDOW)
             continue;
 
@@ -87,7 +87,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         return;
 
     // Restore active workspace per monitor from restart snapshot.
-    const auto& mon_ws = backend.consumed_restart_monitor_ws();
+    const auto& mon_ws = startup.monitor_active_ws;
     const auto& mons   = core.monitor_states();
     if (!mon_ws.empty()) {
         for (int i = 0; i < (int)mons.size(); i++) {

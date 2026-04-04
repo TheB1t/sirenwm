@@ -122,16 +122,17 @@ WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
 
 } // namespace
 
-std::vector<ExistingWindowSnapshot> X11Backend::scan_existing_windows() {
+StartupSnapshot X11Backend::scan_existing_windows() {
     constexpr int      ICCCM_ICONIC_STATE = 3;
     constexpr uint32_t kManagedEventMask  =
         XCB_EVENT_MASK_STRUCTURE_NOTIFY |
         XCB_EVENT_MASK_ENTER_WINDOW |
         XCB_EVENT_MASK_FOCUS_CHANGE;
 
-    std::vector<ExistingWindowSnapshot> out;
+    StartupSnapshot result;
+    auto& out = result.windows;
     if (root_window == NO_WINDOW)
-        return out;
+        return result;
 
     auto atoms = xconn.intern_atoms({
         "_NET_WM_WINDOW_TYPE",
@@ -161,7 +162,7 @@ std::vector<ExistingWindowSnapshot> X11Backend::scan_existing_windows() {
     if (has_restart_state) {
         LOG_INFO("scan_existing_windows: loaded restart snapshot with %d window(s) and %d monitor(s)",
             (int)restart_wins.size(), (int)rstate.monitor_active_ws.size());
-        restart_monitor_active_ws = std::move(rstate.monitor_active_ws);
+        result.monitor_active_ws = std::move(rstate.monitor_active_ws);
     }
 
     out.reserve(children.size());
@@ -242,5 +243,5 @@ std::vector<ExistingWindowSnapshot> X11Backend::scan_existing_windows() {
     }
 
     LOG_INFO("scan_existing_windows: discovered %d candidate window(s)", (int)out.size());
-    return out;
+    return result;
 }
