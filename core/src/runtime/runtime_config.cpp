@@ -1,6 +1,13 @@
 #include <runtime_config.hpp>
 #include <lua_host.hpp>
 
+// GCC 14 false positive: -Wfree-nonheap-object triggered by recursive
+// std::variant<..., std::unordered_map<std::string, RuntimeValue>> destruction
+// during inlined assignment. The object is stack-allocated; the warning is wrong.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic ignored "-Wfree-nonheap-object"
+#endif
+
 namespace {
 
 constexpr int kMaxRuntimeDepth = 32;
