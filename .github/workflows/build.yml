@@ -1,0 +1,115 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-ubuntu:
+    name: Ubuntu ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["24.04"]
+    container:
+      image: ubuntu:${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            cmake make pkg-config g++ \
+            libx11-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
+            libxkbcommon-dev libxkbfile-dev liblua5.4-dev \
+            libcairo2-dev libcairo-gobject2 libpango1.0-dev \
+            libfontconfig1-dev libfreetype-dev libpng-dev \
+            libspdlog-dev
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build -j$(nproc)
+
+  build-debian:
+    name: Debian ${{ matrix.codename }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - codename: bookworm
+          - codename: trixie
+    container:
+      image: debian:${{ matrix.codename }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            cmake make pkg-config g++ \
+            libx11-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
+            libxkbcommon-dev libxkbfile-dev liblua5.4-dev \
+            libcairo2-dev libpango1.0-dev \
+            libfontconfig1-dev libfreetype-dev libpng-dev \
+            libspdlog-dev
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build -j$(nproc)
+
+  build-fedora:
+    name: Fedora 41
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:41
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            cmake make pkgconf gcc-c++ \
+            libX11-devel libxcb-devel \
+            xcb-util-keysyms-devel \
+            libxkbcommon-devel libxkbfile-devel lua-devel \
+            cairo-devel pango-devel \
+            fontconfig-devel freetype-devel libpng-devel \
+            spdlog-devel
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build -j$(nproc)
+
+  build-arch:
+    name: Arch Linux
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm \
+            cmake make pkgconf gcc \
+            libx11 libxcb xcb-util-keysyms \
+            libxkbcommon libxkbfile lua \
+            cairo pango fontconfig freetype2 libpng \
+            spdlog
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build -j$(nproc)
