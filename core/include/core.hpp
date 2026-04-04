@@ -293,6 +293,9 @@ class Core {
                     continue;
                 if (w->fullscreen && w->visible)
                     return true;
+                // Self-managed fullscreen (Wine/Proton): borderless but fullscreen=false.
+                if (w->fullscreen_self_managed && w->borderless && w->visible)
+                    return true;
             }
             return false;
         }

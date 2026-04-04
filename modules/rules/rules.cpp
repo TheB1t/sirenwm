@@ -150,12 +150,12 @@ void RulesModule::on(Core& core, event::ApplyWindowRules ev) {
 
     // DWM-like defaults:
     // - utility/dialog/splash/modal windows float
-    // - fixed-size windows (min==max hints) float
+    // - fixed-size windows are handled in handle_map_request: fullscreen-sized
+    //   ones become borderless, smaller ones get floating set there explicitly.
     bool default_float = window->wm_type_dialog ||
         window->wm_type_utility ||
         window->wm_type_splash ||
-        window->wm_type_modal ||
-        window->wm_fixed_size;
+        window->wm_type_modal;
     if (default_float)
         (void)core.dispatch(command::SetWindowFloating{ win, true });
 

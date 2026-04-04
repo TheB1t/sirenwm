@@ -295,7 +295,7 @@ void BarModule::raise_all() {
         if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
                          core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
             b->lower();
-            if (t) t->lower();
+            if (t) t->raise(b->id()); // keep tray visible above fullscreen/borderless
             continue;
         }
         b->raise();

@@ -354,8 +354,11 @@ void X11Backend::notify(event::WindowMapped ev) {
         // Skip fullscreen-apply for windows that manage their own geometry
         // (MOTIF no-decorations / Proton games). Applying SetWindowFullscreen
         // would pin them to mon.x/mon.y and break Wine's render child placement.
-        bool self_managed = w && (w->wm_static_gravity || w->fullscreen_self_managed);
-        if (ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
+        // wm_no_decorations windows (e.g. Telegram media viewer) are already
+        // placed as borderless — skip fullscreen entirely, it would hide tray.
+        bool skip_fullscreen = w && w->wm_no_decorations;
+        bool self_managed    = w && (w->wm_static_gravity || w->fullscreen_self_managed);
+        if (!skip_fullscreen && ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
             if (self_managed)
                 (void)core.dispatch(command::SetWindowFullscreen{
                     ev.window, true, /*preserve_geometry=*/ true });
@@ -369,6 +372,15 @@ void X11Backend::notify(event::WindowMapped ev) {
     // not WM-added decoration. Report [0,0,0,0] so clients (Wine/Proton) do
     // not offset their render children to compensate for a non-existent frame.
     ewmh_set_frame_extents(ev.window, 0u);
+
+    // Re-raise bars/tray after a borderless or fullscreen window is mapped.
+    // The window's xcb_map_window lands it on top of the stack; bars must be
+    // raised again so tray icons remain visible above it.
+    {
+        auto w = core.window_state_any(ev.window);
+        if (w && (w->borderless || w->fullscreen))
+            runtime.emit(core, event::RaiseDocks{});
+    }
 }
 
 void X11Backend::notify(event::WindowUnmapped ev) {
@@ -413,6 +425,7 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
         auto win = w->id;
         if (core.is_window_hidden_by_workspace(win)) continue;
         if (w->wm_static_gravity || w->fullscreen_self_managed) continue; // self-managed: never pin to mon coords
+        if (w->wm_no_decorations) continue; // already borderless, fullscreen would hide tray
         if (!core.is_window_fullscreen(win) && ewmh_has_fullscreen_state(win))
             ewmh_apply_fullscreen(win, true);
     }
@@ -443,7 +456,10 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
 
         // Skip geometry pinning for self-managed windows (StaticGravity / Proton games).
         // They already know their position and pinning them to mon.x/mon.y breaks layout.
-        bool self_managed = window->wm_static_gravity || window->fullscreen_self_managed;
+        // Also skip for MOTIF no-decorations windows (e.g. Telegram media viewer) that
+        // are already borderless — applying fullscreen state would hide tray/bars.
+        bool self_managed = window->wm_static_gravity || window->fullscreen_self_managed
+                            || window->wm_no_decorations;
         if (enable) {
             if (!self_managed && should_apply_fullscreen_now(core, ev.window))
                 ewmh_apply_fullscreen(ev.window, true);

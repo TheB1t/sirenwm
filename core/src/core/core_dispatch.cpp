@@ -167,7 +167,7 @@ void Core::arrange() {
         auto& ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->visible && !w->floating && !w->borderless && !w->wm_static_gravity) tiled.push_back(w->id);
+            if (w && w->visible && !w->floating && !w->borderless && !w->wm_static_gravity && !w->fullscreen_self_managed) tiled.push_back(w->id);
 
         layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
             uint32_t width, uint32_t height,

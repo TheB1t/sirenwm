@@ -254,7 +254,36 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         auto meta = read_window_metadata(xconn, ev->window);
         // If _NET_WM_STATE_FULLSCREEN is already set before MapRequest, the client
         // manages its own geometry (Wine/Proton pattern). Never pin to mon.x/mon.y.
-        meta.fullscreen_self_managed = ewmh_has_fullscreen_state(ev->window);
+        // Exception: XEMBED windows (e.g. Telegram media viewer) set pre-fullscreen
+        // state as a Qt/app pattern but do NOT self-manage geometry — exclude them.
+        if (ewmh_has_fullscreen_state(ev->window)) {
+            xcb_atom_t xembed_atom = xconn.intern_atom_reply(
+                xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
+            bool is_xembed = xconn.has_property_32(ev->window, xembed_atom, 2);
+            if (!is_xembed) {
+                // Only treat as self-managed if the window is actually fullscreen-sized.
+                // Wine creates intermediate container windows with pre_fs=1 that are
+                // smaller than the monitor — these must not skip geometry pinning.
+                auto geo = xconn.get_window_geometry(ev->window);
+                if (geo) {
+                    const auto& mons = core.monitor_states();
+                    int top      = std::max(0, core.monitor_top_inset());
+                    int bottom   = std::max(0, core.monitor_bottom_inset());
+                    int outer_w  = (int)(geo->width  + 2 * geo->border_width);
+                    int outer_h  = (int)(geo->height + 2 * geo->border_width);
+                    // Check against any monitor — self-managed if covers at least one.
+                    for (const auto& mon : mons) {
+                        int usable_h = mon.height - top - bottom;
+                        if (outer_w >= mon.width && outer_h >= usable_h) {
+                            meta.fullscreen_self_managed = true;
+                            break;
+                        }
+                    }
+                }
+                // No geometry available — do not assume self-managed.
+                // A real fullscreen game will have geometry by the time it maps.
+            }
+        }
         LOG_INFO("MapRequest(%d): class='%s' no_decos=%d static_grav=%d fixed=%d pre_fs=%d",
             ev->window, meta.wm_class.c_str(),
             (int)meta.wm_no_decorations, (int)meta.wm_static_gravity,
@@ -294,25 +323,90 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     // _MOTIF_WM_HINTS decorations=0: client requests no WM decorations.
     // Treat as borderless — skip layout, no border, honour own geometry.
     // Place on its monitor so it covers the full screen.
-    if (mapped_window && !mapped_window->floating && !mapped_window->borderless &&
-        !mapped_window->fullscreen_self_managed && mapped_window->wm_no_decorations) {
+    //
+    // Fixed-size fullscreen: wm_fixed_size windows whose size (accounting for
+    // a 1px border on each side) matches the monitor are treated the same way.
+    // Pattern: LibGDX/LWJGL games (e.g. Slay the Spire) that set min==max==
+    // monitor resolution without any EWMH/MOTIF hints.
+    {
         int mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons = core.monitor_states();
+        bool promote_borderless = false;
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
             const auto& mon = mons[(size_t)mon_idx];
-            int top   = std::max(0, core.monitor_top_inset());
-            int bottom = std::max(0, core.monitor_bottom_inset());
-            int phy_y = mon.y - top;
-            int phy_h = mon.height + top + bottom;
-            LOG_INFO("MapRequest(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
-                ev->window, mon.x, phy_y, mon.width, phy_h);
-            (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
-            (void)core.dispatch(command::SetWindowGeometry{
-                ev->window, mon.x, phy_y,
-                (uint32_t)mon.width, (uint32_t)phy_h });
-            runtime.emit(core, event::RaiseDocks{});
-            mapped_window = core.window_state_any(ev->window);
+
+            // Check if window geometry covers the monitor (fullscreen-sized).
+            // SDL2 subtracts bar height, so compare against usable area.
+            // Both MOTIF no-decorations and fixed-size windows use this check.
+            int top_inset    = std::max(0, core.monitor_top_inset());
+            int bottom_inset = std::max(0, core.monitor_bottom_inset());
+            int usable_h     = mon.height - top_inset - bottom_inset;
+            bool covers_monitor = false;
+            if (mapped_window && !mapped_window->floating && !mapped_window->borderless &&
+                !mapped_window->fullscreen_self_managed) {
+                auto geo = xconn.get_window_geometry(ev->window);
+                if (geo) {
+                    uint32_t bw = geo->border_width;
+                    int outer_w = (int)(geo->width  + 2 * bw);
+                    int outer_h = (int)(geo->height + 2 * bw);
+                    covers_monitor = (outer_w >= mon.width && outer_h >= usable_h);
+                }
+            }
+
+            bool motif_borderless = mapped_window && !mapped_window->floating &&
+                !mapped_window->borderless && !mapped_window->fullscreen_self_managed &&
+                mapped_window->wm_no_decorations && covers_monitor;
+
+            bool fixed_fullscreen = mapped_window && !mapped_window->floating &&
+                !mapped_window->borderless && !mapped_window->fullscreen_self_managed &&
+                mapped_window->wm_fixed_size && covers_monitor;
+
+            // Wine/Proton: pre_fs=1 + no_decos=1 at MapRequest.
+            // MOTIF PropertyNotify may not fire on subsequent launches — set
+            // borderless immediately so bars lower without waiting for it.
+            bool self_managed_borderless = mapped_window && !mapped_window->borderless &&
+                mapped_window->fullscreen_self_managed && mapped_window->wm_no_decorations;
+
+            promote_borderless = motif_borderless || fixed_fullscreen || self_managed_borderless;
+            // Re-map of an already-borderless window: reapply geometry so the
+            // client cannot drift (Telegram media viewer unmaps/remaps itself).
+            bool repin_borderless = !promote_borderless && mapped_window &&
+                mapped_window->borderless && !mapped_window->fullscreen_self_managed;
+
+            if (promote_borderless || repin_borderless) {
+                int phy_y = mon.y - top_inset;
+                int phy_h = mon.height + top_inset + bottom_inset;
+                if (promote_borderless) {
+                    LOG_INFO("MapRequest(%d): %s, promoting to borderless at %d,%d %dx%d",
+                        ev->window,
+                        self_managed_borderless ? "self-managed (Wine/Proton)" :
+                        fixed_fullscreen        ? "fixed-size fullscreen"      : "MOTIF no-decorations",
+                        mon.x, phy_y, mon.width, phy_h);
+                    (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
+                    (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
+                } else {
+                    LOG_DEBUG("MapRequest(%d): re-map of borderless, repinning geometry at %d,%d %dx%d",
+                        ev->window, mon.x, phy_y, mon.width, phy_h);
+                }
+                // Self-managed windows position themselves; don't override geometry.
+                if (!self_managed_borderless) {
+                    (void)core.dispatch(command::SetWindowGeometry{
+                        ev->window, mon.x, phy_y,
+                        (uint32_t)mon.width, (uint32_t)phy_h });
+                }
+                if (promote_borderless)
+                    runtime.emit(core, event::RaiseDocks{});
+                mapped_window = core.window_state_any(ev->window);
+            }
         }
+    }
+
+    // Fixed-size non-fullscreen windows float (moved here from rules so we can
+    // distinguish fullscreen-sized fixed windows that became borderless above).
+    if (mapped_window && !mapped_window->borderless && !mapped_window->floating &&
+        mapped_window->wm_fixed_size) {
+        (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
+        mapped_window = core.window_state_any(ev->window);
     }
 
     if (mapped_window && ws_visible && mapped_window->floating) {
@@ -497,30 +591,43 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
             ev->atom == motif_atom;
         if (refresh_meta) {
             auto meta = read_window_metadata(xconn, ev->window);
+            // Preserve fullscreen_self_managed — it is set once at MapRequest
+            // and must not be reset by subsequent property changes.
+            meta.fullscreen_self_managed = window->fullscreen_self_managed;
             if (ev->atom == motif_atom) {
                 LOG_INFO("PropertyNotify(%d): _MOTIF_WM_HINTS changed, no_decos=%d",
                     ev->window, (int)meta.wm_no_decorations);
                 // Promote to borderless if MOTIF says no decorations and we haven't yet.
-                if (meta.wm_no_decorations && !window->borderless &&
-                    !window->fullscreen_self_managed) {
-                    int mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
-                    const auto& mons = core.monitor_states();
-                    if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-                        const auto& mon = mons[(size_t)mon_idx];
-                        // mon.y/height are inset-adjusted; recover physical coords
-                        int top    = std::max(0, core.monitor_top_inset());
-                        int bottom = std::max(0, core.monitor_bottom_inset());
-                        int phy_y  = mon.y - top;
-                        int phy_h  = mon.height + top + bottom;
-                        LOG_INFO("PropertyNotify(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
-                            ev->window, mon.x, phy_y, mon.width, phy_h);
+                if (meta.wm_no_decorations && !window->borderless) {
+                    if (window->fullscreen_self_managed) {
+                        // Wine/Proton: already manages its own geometry — just mark
+                        // borderless and remove border, do not override coordinates.
+                        LOG_INFO("PropertyNotify(%d): MOTIF no-decorations (self-managed), marking borderless",
+                            ev->window);
                         (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
                         (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
-                        (void)core.dispatch(command::SetWindowGeometry{
-                            ev->window, mon.x, phy_y,
-                            (uint32_t)mon.width, (uint32_t)phy_h });
                         runtime.emit(core, event::RaiseDocks{});
                         (void)core.dispatch(command::ReconcileNow{});
+                    } else {
+                        int mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
+                        const auto& mons = core.monitor_states();
+                        if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
+                            const auto& mon = mons[(size_t)mon_idx];
+                            // mon.y/height are inset-adjusted; recover physical coords
+                            int top    = std::max(0, core.monitor_top_inset());
+                            int bottom = std::max(0, core.monitor_bottom_inset());
+                            int phy_y  = mon.y - top;
+                            int phy_h  = mon.height + top + bottom;
+                            LOG_INFO("PropertyNotify(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
+                                ev->window, mon.x, phy_y, mon.width, phy_h);
+                            (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
+                            (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
+                            (void)core.dispatch(command::SetWindowGeometry{
+                                ev->window, mon.x, phy_y,
+                                (uint32_t)mon.width, (uint32_t)phy_h });
+                            runtime.emit(core, event::RaiseDocks{});
+                            (void)core.dispatch(command::ReconcileNow{});
+                        }
                     }
                 }
             }
@@ -635,7 +742,8 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         // Fullscreen or WM-placed borderless: geometry is pinned by the WM.
         // Reject position/size requests from the app and send back current geometry.
         bool pinned = (window->fullscreen && !borderless_fs) ||
-                      (window->borderless && window->wm_no_decorations && !borderless_fs);
+                      (window->borderless && (window->wm_no_decorations || window->wm_fixed_size) &&
+                       !borderless_fs && !window->fullscreen_self_managed);
         if (pinned) {
             send_synthetic_configure_notify(xconn, ev->window,
                 window->x, window->y,
