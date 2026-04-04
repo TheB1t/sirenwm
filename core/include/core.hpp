@@ -335,8 +335,6 @@ class Core {
         }
 
         bool consume_window_suppress_focus_once(WindowId win);
-        // Returns true if this UnmapNotify was WM-initiated (counter > 0) and consumes it.
-        bool consume_wm_unmap(WindowId win);
 
         void update_window(WindowId win);
 

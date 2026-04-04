@@ -65,8 +65,10 @@ void X11Backend::apply_core_backend_effects() {
                     xconn.map_window(e.window);
                 break;
             case BackendEffectKind::UnmapWindow:
-                if (e.window != NO_WINDOW)
+                if (e.window != NO_WINDOW) {
+                    note_wm_unmap(e.window);
                     xconn.unmap_window(e.window);
+                }
                 break;
             case BackendEffectKind::FocusWindow:
                 if (e.window != NO_WINDOW)

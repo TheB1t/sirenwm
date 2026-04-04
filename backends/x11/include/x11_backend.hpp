@@ -77,6 +77,13 @@ class X11Backend final : public Backend {
         void set_border_color(WindowId win, uint32_t pixel);
         void reload_border_colors();
 
+        // Pending WM-initiated unmaps: X11 sends two UnmapNotify per xcb_unmap_window
+        // (SubstructureNotify on root + StructureNotify on the window itself).
+        // Backend tracks this to distinguish WM-initiated unmaps from client withdrawals.
+        std::unordered_map<WindowId, int> pending_wm_unmaps_;
+        void   note_wm_unmap(WindowId win) { pending_wm_unmaps_[win] += 2; }
+        bool   consume_wm_unmap(WindowId win);
+
         // Pointer barriers: confine cursor to monitor when a borderless window is active.
         // PointerBarrier is unsigned long (Xlib); avoid pulling Xlib.h into this header.
         unsigned long barriers_[4]    = { 0, 0, 0, 0 };

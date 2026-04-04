@@ -85,8 +85,7 @@ void Core::sync_workspace_visibility() {
                 if (w->visible) {
                     w->hidden_by_workspace = true;
                     w->visible             = false;
-                    w->ignore_unmap_count += 2; // X sends two UnmapNotify per xcb_unmap_window
-                    emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
+                                emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
                 }
                 continue;
             }
@@ -316,7 +315,6 @@ bool Core::dispatch(const command::UnmapWindow& cmd) {
         return false;
     if (w->visible) {
         w->visible             = false;
-        w->ignore_unmap_count += 2;
         emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
     }
     return true;
@@ -607,7 +605,6 @@ bool Core::dispatch(const command::HideWindow& cmd) {
     w->hidden_by_workspace = true;
     if (w->visible) {
         w->visible             = false;
-        w->ignore_unmap_count += 2;
         emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
     }
     return true;
@@ -803,13 +800,6 @@ std::vector<WindowId> Core::visible_window_ids() const {
     return out;
 }
 
-bool Core::consume_wm_unmap(WindowId win) {
-    auto w = wsman.find_window_in_all(win);
-    if (!w || w->ignore_unmap_count <= 0)
-        return false;
-    w->ignore_unmap_count--;
-    return true;
-}
 
 bool Core::consume_window_suppress_focus_once(WindowId win) {
     auto w = wsman.find_window_in_all(win);

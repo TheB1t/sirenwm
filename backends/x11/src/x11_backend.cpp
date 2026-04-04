@@ -143,6 +143,15 @@ void X11Backend::on(event::WindowAdopted ev) {
         notify(event::WindowUnmapped{ ev.window, false });
 }
 
+bool X11Backend::consume_wm_unmap(WindowId win) {
+    auto it = pending_wm_unmaps_.find(win);
+    if (it == pending_wm_unmaps_.end() || it->second <= 0)
+        return false;
+    if (--it->second == 0)
+        pending_wm_unmaps_.erase(it);
+    return true;
+}
+
 void X11Backend::on(event::BorderlessActivated ev) {
     set_pointer_barriers(ev.window, ev.monitor_index);
 }

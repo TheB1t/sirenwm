@@ -401,8 +401,8 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
     // A pending WM unmap means the MapNotify is from our own map_window call
     // immediately before an unmap (workspace visibility sync race). Do not clear
     // hidden_by_workspace — the window is about to be unmapped again.
-    auto ws               = core.window_state_any(ev->window);
-    bool pending_wm_unmap = ws && ws->ignore_unmap_count > 0;
+    bool pending_wm_unmap = pending_wm_unmaps_.count(ev->window) > 0 &&
+                            pending_wm_unmaps_.at(ev->window) > 0;
 
     (void)core.dispatch(command::SetWindowVisible{ ev->window, !pending_wm_unmap });
     if (!pending_wm_unmap)
@@ -458,7 +458,7 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     }
 
     // WM-initiated unmap (workspace visibility sync): not a client withdrawal.
-    if (core.consume_wm_unmap(ev->window)) {
+    if (consume_wm_unmap(ev->window)) {
         LOG_DEBUG("UnmapNotify(%d): WM-initiated, ignoring", ev->window);
         notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
         return;

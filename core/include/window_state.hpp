@@ -38,7 +38,6 @@ struct WindowState {
     bool        wm_no_decorations       = false; // _MOTIF_WM_HINTS decorations == 0
     bool        fullscreen_self_managed = false; // client owns geometry (pre-map _NET_WM_STATE_FULLSCREEN)
     bool        promote_to_borderless   = false; // set by core at MapRequest: backend should make this borderless
-    int         ignore_unmap_count      = 0;     // WM-initiated unmaps pending; suppress UnmapNotify
 
     int32_t     x            = 0;
     int32_t     y            = 0;
