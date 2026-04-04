@@ -49,6 +49,7 @@ class RenderWindow {
 
         virtual void     set_visible(bool visible) = 0;
         virtual void     raise()                   = 0;
+        virtual void     lower()                   = 0;
         virtual void     move_to(int x, int y)     = 0;
         virtual void     reserve_top_strut(int strut_height, int x_start, int x_end)    = 0;
         virtual void     reserve_bottom_strut(int strut_height, int x_start, int x_end) = 0;

@@ -291,17 +291,24 @@ void BarModule::redraw() {
 
 void BarModule::raise_all() {
     for (auto& b : bars) {
+        backend::TrayHost* t = tray_for_monitor(b->monitor_index());
         if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
                          core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
-            // Skip raise — fullscreen/borderless window sits above bars.
+            b->lower();
+            if (t) t->lower();
             continue;
         }
         b->raise();
+        if (t) t->raise(b->id());
+    }
 
-        // Raise this monitor's tray above its bar.
-        backend::TrayHost* t = tray_for_monitor(b->monitor_index());
-        if (t)
-            t->raise(b->id());
+    for (auto& b : bottom_bars) {
+        if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
+                         core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
+            b->lower();
+            continue;
+        }
+        b->raise();
     }
 }
 
@@ -326,7 +333,8 @@ void BarModule::create_bars(int bar_h, const std::vector<MonRect>& mons) {
         auto bar = render_port->create_window(info);
         if (!bar)
             continue;
-        bar->reserve_top_strut(bar_h, m.x, m.x + m.w - 1);
+        // No strut: apps calculate their usable area from _NET_WM_STRUT.
+        // We manage the inset purely inside Core so games see the full monitor.
         bars.push_back(std::move(bar));
     }
 }
@@ -352,7 +360,7 @@ void BarModule::create_bottom_bars(int bar_h, const std::vector<MonRect>& mons) 
         auto bar = render_port->create_window(info);
         if (!bar)
             continue;
-        bar->reserve_bottom_strut(bar_h, m.x, m.x + m.w - 1);
+        // No strut — see create_bars().
         bottom_bars.push_back(std::move(bar));
     }
 }

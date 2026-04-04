@@ -150,6 +150,8 @@ class XConnection {
         std::optional<xcb_window_t> get_transient_for_window(xcb_window_t win) const;
         int          get_wm_state_value(xcb_window_t win, xcb_atom_t wm_state_atom) const;
         bool         has_fixed_size_hints(xcb_window_t win) const;
+        bool         has_static_gravity(xcb_window_t win) const;
+        bool         motif_no_decorations(xcb_window_t win) const;
         bool         get_wm_hints_no_input(xcb_window_t win) const;
         bool         has_property_32(xcb_window_t win, xcb_atom_t prop, uint32_t min_items) const;
         xcb_cursor_t create_left_ptr_cursor();

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <spdlog/spdlog.h>
-#include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <fmt/printf.h>
 #include <memory>
@@ -11,13 +11,15 @@
 // Initialize the global spdlog logger.
 // Must be called once at startup before any LOG_* macro is used.
 // Subsequent calls are no-ops.
+// Uses append mode (truncate=false) so exec-restart does not wipe the log.
+// Flush on every info-or-above message so nothing is lost on crash/kill.
 inline void log_init(const std::string& log_path = "runtime.log",
     spdlog::level::level_enum level              = spdlog::level::debug) {
     if (spdlog::get("swm"))
         return;
 
-    auto file_sink   = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_path, 1024 * 1024, 2, /*rotate_on_open=*/ true);
+    auto file_sink   = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+        log_path, /*truncate=*/ false);
     auto stderr_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
 
     auto logger      = std::make_shared<spdlog::logger>("swm",
@@ -25,7 +27,7 @@ inline void log_init(const std::string& log_path = "runtime.log",
 
     logger->set_level(level);
     logger->set_pattern("[%H:%M:%S.%e] [%^%-5l%$] %v");
-    logger->flush_on(spdlog::level::err);
+    logger->flush_on(spdlog::level::debug);
 
     spdlog::register_logger(logger);
     spdlog::set_default_logger(logger);

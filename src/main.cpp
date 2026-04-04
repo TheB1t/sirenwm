@@ -61,21 +61,14 @@ int main(int argc, char** argv) {
     signal(SIGINT, signal_handler);
 
     // Resolve the binary path for exec-restart.
-    // Prefer /proc/self/exe so that if the binary on disk is replaced while we
-    // are running, execv() picks up the new file rather than the deleted inode.
+    // Use argv[0] resolved to an absolute path so that when the binary on disk
+    // is replaced (cmake does an atomic rename), execv picks up the new file.
+    // /proc/self/exe is intentionally avoided: it follows the old inode after
+    // a rename, so it would re-exec the pre-build binary.
     std::string exec_path;
     {
         char resolved[PATH_MAX] = {};
-        if (readlink("/proc/self/exe", resolved, sizeof(resolved) - 1) > 0) {
-            // Strip " (deleted)" suffix that the kernel appends when the inode
-            // has been unlinked but the path on disk now points to a new file.
-            std::string       s(resolved);
-            const std::string suffix = " (deleted)";
-            if (s.size() > suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0)
-                s.erase(s.size() - suffix.size());
-            exec_path = s;
-        }
-        if (exec_path.empty() && argc > 0 && argv && argv[0]) {
+        if (argc > 0 && argv && argv[0]) {
             if (realpath(argv[0], resolved))
                 exec_path = resolved;
             else
@@ -146,6 +139,7 @@ int main(int argc, char** argv) {
         // on transparent windows (render freeze in the replacement process).
         runtime.stop(core, /*is_exec_restart=*/ true);
         LOG_INFO("restart: replacing process via %s", exec_path.c_str());
+        spdlog::shutdown();
         char* exec_argv[] = { (char*)exec_path.c_str(), nullptr };
         execv(exec_path.c_str(), exec_argv);
         LOG_ERR("restart: execv failed: %s", std::strerror(errno));

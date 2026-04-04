@@ -155,6 +155,14 @@ class X11RenderWindow final : public backend::RenderWindow {
             xcb_flush(conn_);
         }
 
+        void lower() override {
+            if (!conn_ || win_ == XCB_WINDOW_NONE)
+                return;
+            uint32_t vals[] = { XCB_STACK_MODE_BELOW };
+            xcb_configure_window(conn_, win_, XCB_CONFIG_WINDOW_STACK_MODE, vals);
+            xcb_flush(conn_);
+        }
+
         void move_to(int x, int y) override {
             if (!conn_ || win_ == XCB_WINDOW_NONE)
                 return;

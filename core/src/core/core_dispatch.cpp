@@ -167,11 +167,18 @@ void Core::arrange() {
         auto& ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->visible && !w->floating && !w->borderless) tiled.push_back(w->id);
+            if (w && w->visible && !w->floating && !w->borderless && !w->wm_static_gravity) tiled.push_back(w->id);
 
         layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
             uint32_t width, uint32_t height,
             uint32_t border_width) {
+                // Fixed-size windows (min==max hints): honour their own size,
+                // only let the layout set the position.
+                auto w = wsman.find_window_in_all(win);
+                if (w && w->wm_fixed_size && w->width > 0 && w->height > 0) {
+                    width  = w->width;
+                    height = w->height;
+                }
                 (void)dispatch(command::SetWindowGeometry{ win, x, y, width, height });
                 (void)dispatch(command::SetWindowBorderWidth{ win, border_width });
                 emit_backend_effect(BackendEffectKind::UpdateWindow, win);
@@ -230,7 +237,7 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     // monitor — the game's D3D context is bound to the original monitor.
     // Only block if the window actually covers its monitor (true fullscreen),
     // not just any borderless window (dialogs, remote-viewer, etc.).
-    if (w->wm_no_decorations) {
+    if (w->wm_static_gravity) {
         int src_mon = monitor_of_workspace(workspace_of_window(cmd.window));
         int dst_mon = monitor_of_workspace(cmd.workspace_id);
         if (src_mon != dst_mon) {
@@ -253,12 +260,13 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     if (w->fullscreen && dst_mon_idx != src_mon_idx) {
         const auto& mons = monitor_states();
         if (dst_mon_idx >= 0 && dst_mon_idx < (int)mons.size()) {
-            const auto& dm        = mons[(size_t)dst_mon_idx];
-            int         top_inset = std::max(0, monitor_top_inset_applied);
+            const auto& dm           = mons[(size_t)dst_mon_idx];
+            int         top_inset    = std::max(0, monitor_top_inset_applied);
+            int         bottom_inset = std::max(0, monitor_bottom_inset_applied);
             w->x      = std::max(0, dm.x);
             w->y      = std::max(0, dm.y - top_inset);
             w->width  = (uint32_t)std::max(1, dm.width);
-            w->height = (uint32_t)std::max(1, dm.height + top_inset);
+            w->height = (uint32_t)std::max(1, dm.height + top_inset + bottom_inset);
             mark_window_x(cmd.window);
             mark_window_y(cmd.window);
             mark_window_width(cmd.window);
@@ -355,12 +363,13 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
         w->floating     = true;
         w->border_width = 0;
         mark_window_border_width(cmd.window);
-        if (mon) {
-            int top_inset = std::max(0, monitor_top_inset_applied);
+        if (!cmd.preserve_geometry && mon) {
+            int top_inset    = std::max(0, monitor_top_inset_applied);
+            int bottom_inset = std::max(0, monitor_bottom_inset_applied);
             w->x      = std::max(0, mon->x);
             w->y      = std::max(0, mon->y - top_inset);
             w->width  = (uint32_t)std::max(1, mon->width);
-            w->height = (uint32_t)std::max(1, mon->height + top_inset);
+            w->height = (uint32_t)std::max(1, mon->height + top_inset + bottom_inset);
             mark_window_x(cmd.window);
             mark_window_y(cmd.window);
             mark_window_width(cmd.window);
@@ -423,9 +432,11 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     w->wm_type_utility   = cmd.wm_type_utility;
     w->wm_type_splash    = cmd.wm_type_splash;
     w->wm_type_modal     = cmd.wm_type_modal;
-    w->wm_fixed_size     = cmd.wm_fixed_size;
-    w->wm_never_focus    = cmd.wm_never_focus;
-    w->wm_no_decorations = cmd.wm_no_decorations;
+    w->wm_fixed_size            = cmd.wm_fixed_size;
+    w->wm_never_focus           = cmd.wm_never_focus;
+    w->wm_static_gravity        = cmd.wm_static_gravity;
+    w->wm_no_decorations        = cmd.wm_no_decorations;
+    w->fullscreen_self_managed  = cmd.fullscreen_self_managed;
     return true;
 }
 

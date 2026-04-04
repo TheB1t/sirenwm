@@ -49,7 +49,7 @@ struct ExistingWindowSnapshot {
     bool        wm_type_utility = false;
     bool        wm_type_splash  = false;
     bool        wm_type_modal   = false;
-    bool        wm_fixed_size   = false;
+    bool        wm_fixed_size      = false;
 };
 
 class Backend {

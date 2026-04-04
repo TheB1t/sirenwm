@@ -40,6 +40,7 @@ class X11Backend final : public Backend {
         xcb_atom_t NET_WM_NAME                      = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_STATE                     = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_STATE_FULLSCREEN          = XCB_ATOM_NONE;
+        xcb_atom_t NET_FRAME_EXTENTS                = XCB_ATOM_NONE;
         xcb_atom_t NET_ACTIVE_WINDOW                = XCB_ATOM_NONE;
         xcb_atom_t NET_CLIENT_LIST                  = XCB_ATOM_NONE;
         xcb_atom_t NET_SUPPORTING_WM_CHECK          = XCB_ATOM_NONE;
@@ -84,6 +85,7 @@ class X11Backend final : public Backend {
         bool ewmh_has_fullscreen_state(WindowId win);
         void ewmh_set_fullscreen_state_property(WindowId win, bool enabled);
         void ewmh_apply_fullscreen(WindowId win, bool enabled);
+        void ewmh_set_frame_extents(WindowId win, uint32_t bw);
 
         // X event handlers
         void handle_map_request(xcb_map_request_event_t* ev);

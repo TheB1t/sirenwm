@@ -145,6 +145,14 @@ class X11TrayHost final : public backend::TrayHost {
             xcb_flush(conn_);
         }
 
+        void lower() override {
+            if (!conn_ || tray_win_ == XCB_WINDOW_NONE)
+                return;
+            uint32_t vals[] = { XCB_STACK_MODE_BELOW };
+            xcb_configure_window(conn_, tray_win_, XCB_CONFIG_WINDOW_STACK_MODE, vals);
+            xcb_flush(conn_);
+        }
+
         bool contains_icon(WindowId win) const override {
             return is_icon(win);
         }

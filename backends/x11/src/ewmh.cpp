@@ -80,7 +80,7 @@ void X11Backend::restore_visible_focus() {
 void X11Backend::ewmh_intern_atoms() {
     auto atoms = xconn.intern_atoms({
         "_NET_SUPPORTED", "_NET_WM_NAME", "_NET_WM_STATE",
-        "_NET_WM_STATE_FULLSCREEN", "_NET_ACTIVE_WINDOW", "_NET_CLIENT_LIST",
+        "_NET_WM_STATE_FULLSCREEN", "_NET_FRAME_EXTENTS", "_NET_ACTIVE_WINDOW", "_NET_CLIENT_LIST",
         "_NET_SUPPORTING_WM_CHECK", "_NET_WM_WINDOW_TYPE",
         "_NET_WM_WINDOW_TYPE_DOCK", "_NET_WM_WINDOW_TYPE_DIALOG",
         "_NET_WM_WINDOW_TYPE_DESKTOP", "_NET_WM_WINDOW_TYPE_NOTIFICATION",
@@ -98,6 +98,7 @@ void X11Backend::ewmh_intern_atoms() {
     NET_WM_NAME                      = atoms["_NET_WM_NAME"];
     NET_WM_STATE                     = atoms["_NET_WM_STATE"];
     NET_WM_STATE_FULLSCREEN          = atoms["_NET_WM_STATE_FULLSCREEN"];
+    NET_FRAME_EXTENTS                = atoms["_NET_FRAME_EXTENTS"];
     NET_ACTIVE_WINDOW                = atoms["_NET_ACTIVE_WINDOW"];
     NET_CLIENT_LIST                  = atoms["_NET_CLIENT_LIST"];
     NET_SUPPORTING_WM_CHECK          = atoms["_NET_SUPPORTING_WM_CHECK"];
@@ -192,6 +193,13 @@ void X11Backend::ewmh_set_fullscreen_state_property(WindowId win, bool enabled) 
     xconn.set_property(win, NET_WM_STATE, XCB_ATOM_ATOM, data, (int)states.size());
 }
 
+void X11Backend::ewmh_set_frame_extents(WindowId win, uint32_t bw) {
+    if (NET_FRAME_EXTENTS == XCB_ATOM_NONE || win == NO_WINDOW)
+        return;
+    uint32_t extents[4] = { bw, bw, bw, bw }; // left, right, top, bottom
+    xconn.set_property(win, NET_FRAME_EXTENTS, XCB_ATOM_CARDINAL, extents, 4);
+}
+
 void X11Backend::ewmh_apply_fullscreen(WindowId win, bool enabled) {
     (void)core.dispatch(command::SetWindowFullscreen{ win, enabled });
     ewmh_set_fullscreen_state_property(win, enabled);
@@ -252,6 +260,7 @@ void X11Backend::ewmh_init() {
         NET_SUPPORTED, NET_WM_NAME, NET_ACTIVE_WINDOW,
         NET_CLIENT_LIST, NET_SUPPORTING_WM_CHECK,
         NET_WM_STATE, NET_WM_STATE_FULLSCREEN,
+        NET_FRAME_EXTENTS,
         NET_WM_WINDOW_TYPE, NET_WM_WINDOW_TYPE_DOCK, NET_WM_WINDOW_TYPE_DIALOG,
         NET_CLOSE_WINDOW, NET_NUMBER_OF_DESKTOPS, NET_CURRENT_DESKTOP, NET_DESKTOP_NAMES,
         NET_DESKTOP_GEOMETRY, NET_DESKTOP_VIEWPORT, NET_WORKAREA,
@@ -340,8 +349,26 @@ void X11Backend::notify(event::WindowMapped ev) {
             xconn.set_property(ev.window, NET_WM_DESKTOP, XCB_ATOM_CARDINAL, (uint32_t)ws);
     }
     ewmh_update_client_list();
-    if (should_apply_fullscreen_now(core, ev.window) && ewmh_has_fullscreen_state(ev.window))
-        ewmh_apply_fullscreen(ev.window, true);
+    {
+        auto w = core.window_state_any(ev.window);
+        // Skip fullscreen-apply for windows that manage their own geometry
+        // (MOTIF no-decorations / Proton games). Applying SetWindowFullscreen
+        // would pin them to mon.x/mon.y and break Wine's render child placement.
+        bool self_managed = w && (w->wm_static_gravity || w->fullscreen_self_managed);
+        if (ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
+            if (self_managed)
+                (void)core.dispatch(command::SetWindowFullscreen{
+                    ev.window, true, /*preserve_geometry=*/ true });
+            else
+                ewmh_apply_fullscreen(ev.window, true);
+        }
+    }
+
+    // _NET_FRAME_EXTENTS: this is a non-reparenting WM — we add no decorative
+    // frame around windows. The X border_width is the window's own attribute,
+    // not WM-added decoration. Report [0,0,0,0] so clients (Wine/Proton) do
+    // not offset their render children to compensate for a non-existent frame.
+    ewmh_set_frame_extents(ev.window, 0u);
 }
 
 void X11Backend::notify(event::WindowUnmapped ev) {
@@ -385,6 +412,7 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
         if (!w) continue;
         auto win = w->id;
         if (core.is_window_hidden_by_workspace(win)) continue;
+        if (w->wm_static_gravity || w->fullscreen_self_managed) continue; // self-managed: never pin to mon coords
         if (!core.is_window_fullscreen(win) && ewmh_has_fullscreen_state(win))
             ewmh_apply_fullscreen(win, true);
     }
@@ -413,13 +441,19 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         else if (action == 2) enable = !core.is_window_fullscreen(ev.window);
         else return true;
 
+        // Skip geometry pinning for self-managed windows (StaticGravity / Proton games).
+        // They already know their position and pinning them to mon.x/mon.y breaks layout.
+        bool self_managed = window->wm_static_gravity || window->fullscreen_self_managed;
         if (enable) {
-            if (should_apply_fullscreen_now(core, ev.window))
+            if (!self_managed && should_apply_fullscreen_now(core, ev.window))
                 ewmh_apply_fullscreen(ev.window, true);
             else
                 ewmh_set_fullscreen_state_property(ev.window, true);
         } else {
-            ewmh_apply_fullscreen(ev.window, false);
+            if (!self_managed)
+                ewmh_apply_fullscreen(ev.window, false);
+            else
+                ewmh_set_fullscreen_state_property(ev.window, false);
         }
         return true;
     }
