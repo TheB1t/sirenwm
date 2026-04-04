@@ -125,6 +125,8 @@ struct WindowMetadata {
     bool         covers_monitor       = false;
     bool         pre_fullscreen_state = false;
     bool         is_xembed            = false;
+    // Relationship facts.
+    WindowId     transient_for        = NO_WINDOW;
 };
 
 static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
@@ -159,14 +161,10 @@ static void apply_window_metadata(Core& core, WindowId window, WindowMetadata me
             .covers_monitor       = meta.covers_monitor,
             .pre_fullscreen_state = meta.pre_fullscreen_state,
             .is_xembed            = meta.is_xembed,
+            .transient_for        = meta.transient_for,
         });
 }
 
-static bool is_dialog_like_window(const WindowStateRef& window, xcb_window_t transient_for) {
-    if (transient_for != XCB_WINDOW_NONE)
-        return true;
-    return window && window->is_dialog();
-}
 
 static int monitor_for_visible_workspace(const Core& core, int ws_id) {
     if (ws_id < 0)
@@ -269,11 +267,13 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             meta.is_xembed = xconn.has_property_32(ev->window, xembed_atom, 2);
         }
 
-        LOG_INFO("MapRequest(%d): class='%s' no_decos=%d static_grav=%d fixed=%d pre_fs=%d covers=%d",
+        meta.transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+
+        LOG_INFO("MapRequest(%d): class='%s' no_decos=%d static_grav=%d fixed=%d pre_fs=%d covers=%d transient=%d",
             ev->window, meta.wm_class.c_str(),
             (int)meta.wm_no_decorations, (int)meta.wm_static_gravity,
             (int)meta.wm_fixed_size, (int)meta.pre_fullscreen_state,
-            (int)meta.covers_monitor);
+            (int)meta.covers_monitor, (int)(meta.transient_for != NO_WINDOW));
         apply_window_metadata(core, ev->window, std::move(meta));
     }
 
@@ -283,31 +283,20 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_PROPERTY_CHANGE
     });
 
-    xcb_window_t transient_for       = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
-    int          transient_parent_ws = (transient_for == XCB_WINDOW_NONE)
-        ? -1
-        : core.workspace_of_window(transient_for);
-    bool managed_transient = (transient_parent_ws >= 0);
-
-    if (managed_transient) {
-        (void)core.dispatch(command::AssignWindowWorkspace{ ev->window, transient_parent_ws });
-        (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
-    } else {
+    // Rules apply only to non-transient windows; transients are routed in SetWindowMetadata.
+    xcb_window_t transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+    bool managed_transient = (transient_for != XCB_WINDOW_NONE) &&
+                             (core.workspace_of_window(transient_for) >= 0);
+    if (!managed_transient)
         runtime.emit(core, event::ApplyWindowRules{ ev->window });
-    }
 
     auto mapped_window = core.window_state_any(ev->window);
     int  ws_id         = core.workspace_of_window(ev->window);
     bool ws_visible    = (ws_id >= 0) && core.is_workspace_visible(ws_id);
 
-    bool dialog_like   = is_dialog_like_window(mapped_window, transient_for);
-
-    if (mapped_window && dialog_like && !mapped_window->floating)
-        (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
-
     // Apply intent classified by core from geometry facts supplied at metadata time.
     if (mapped_window && mapped_window->intent == WindowIntent::Borderless &&
-        !mapped_window->borderless) {
+        !mapped_window->borderless && !mapped_window->floating) {
         int         mon_idx   = core.monitor_of_workspace(ws_id);
         const auto& mons      = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
@@ -349,16 +338,12 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         }
     }
 
-    // Fixed-size non-borderless windows float.
-    if (mapped_window && !mapped_window->borderless && !mapped_window->floating &&
-        mapped_window->wm_fixed_size) {
-        (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
-        mapped_window = core.window_state_any(ev->window);
-    }
-
     if (mapped_window && ws_visible && mapped_window->floating) {
         int target_mon = -1;
 
+        // Use transient parent's monitor for placement if available.
+        xcb_window_t transient_for = xconn.get_transient_for_window(ev->window)
+            .value_or(XCB_WINDOW_NONE);
         if (transient_for != XCB_WINDOW_NONE) {
             int parent_ws = core.workspace_of_window(transient_for);
             target_mon = monitor_for_visible_workspace(core, parent_ws);
@@ -372,7 +357,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
 
         const auto& mons = core.monitor_states();
         if (target_mon >= 0 && target_mon < (int)mons.size()) {
-            bool center = dialog_like || (mapped_window && mapped_window->wm_fixed_size);
+            bool center = (mapped_window && mapped_window->is_dialog()) || (mapped_window && mapped_window->wm_fixed_size);
             place_window_on_monitor(core, xconn, ev->window, mons[target_mon], center);
         }
     }
@@ -393,7 +378,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     bool suppress_focus     = core.consume_window_suppress_focus_once(ev->window);
 
     bool focus_new_window   = core.current_settings().focus_new_window;
-    bool force_dialog_focus = dialog_like;
+    bool force_dialog_focus = mapped_window && mapped_window->is_dialog();
     if ((focus_new_window || force_dialog_focus) &&
         !suppress_focus &&
         ws_visible &&

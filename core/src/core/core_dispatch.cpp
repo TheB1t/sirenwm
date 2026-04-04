@@ -450,6 +450,27 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     // Keep fullscreen_self_managed in sync for code still reading it during migration.
     w->fullscreen_self_managed = self_managed;
 
+    // Transient routing: assign to parent's workspace and float.
+    if (cmd.transient_for != NO_WINDOW) {
+        int parent_ws = wsman.workspace_of_window(cmd.transient_for);
+        if (parent_ws >= 0) {
+            dispatch(command::SetWindowSuppressFocusOnce{ cmd.window, true });
+            dispatch(command::AssignWindowWorkspace{ cmd.window, parent_ws });
+        }
+        if (!w->floating)
+            dispatch(command::SetWindowFloating{ cmd.window, true });
+    }
+
+    // Dialog/utility/splash windows float by default.
+    if (!w->floating && (w->is_dialog() || cmd.transient_for != NO_WINDOW))
+        dispatch(command::SetWindowFloating{ cmd.window, true });
+
+    // Fixed-size non-borderless windows float.
+    // Skip if intent is Borderless — those will be promoted by the backend, not floated.
+    if (!w->floating && !w->borderless && w->wm_fixed_size &&
+        w->intent != WindowIntent::Borderless)
+        dispatch(command::SetWindowFloating{ cmd.window, true });
+
     return true;
 }
 

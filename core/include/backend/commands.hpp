@@ -67,9 +67,11 @@ struct SetWindowMetadata {
     bool         wm_static_gravity = false;
     bool         wm_no_decorations = false;
     // Geometry facts supplied by the backend at map time so core can classify intent.
-    bool         covers_monitor         = false; // window size >= monitor usable area
-    bool         pre_fullscreen_state   = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
-    bool         is_xembed              = false; // _XEMBED_INFO present (do not treat as self-managed)
+    bool         covers_monitor       = false; // window size >= monitor usable area
+    bool         pre_fullscreen_state = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
+    bool         is_xembed            = false; // _XEMBED_INFO present (do not treat as self-managed)
+    // Relationship facts for workspace/float policy.
+    WindowId     transient_for    = NO_WINDOW; // WM_TRANSIENT_FOR parent (NO_WINDOW if none)
 };
 
 struct SetWindowEventMask {
