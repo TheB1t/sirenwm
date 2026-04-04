@@ -426,15 +426,30 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->wm_instance             = cmd.wm_instance;
-    w->wm_class                = cmd.wm_class;
-    w->type                    = cmd.type;
-    w->intent                  = cmd.intent;
-    w->wm_fixed_size           = cmd.wm_fixed_size;
-    w->wm_never_focus          = cmd.wm_never_focus;
-    w->wm_static_gravity       = cmd.wm_static_gravity;
-    w->wm_no_decorations       = cmd.wm_no_decorations;
-    w->fullscreen_self_managed = cmd.fullscreen_self_managed;
+    w->wm_instance       = cmd.wm_instance;
+    w->wm_class          = cmd.wm_class;
+    w->type              = cmd.type;
+    w->wm_fixed_size     = cmd.wm_fixed_size;
+    w->wm_never_focus    = cmd.wm_never_focus;
+    w->wm_static_gravity = cmd.wm_static_gravity;
+    w->wm_no_decorations = cmd.wm_no_decorations;
+
+    // Classify window intent from geometry facts supplied by the backend.
+    // Self-managed: client had _NET_WM_STATE_FULLSCREEN before MapRequest and
+    //   covers the monitor (not XEMBED) — client owns its geometry.
+    // Borderless: WM pins geometry to monitor (MOTIF no-decos or fixed-size).
+    bool self_managed = cmd.pre_fullscreen_state && !cmd.is_xembed && cmd.covers_monitor;
+    bool wm_borderless = !self_managed && cmd.covers_monitor &&
+        (cmd.wm_no_decorations || cmd.wm_fixed_size);
+
+    if (self_managed || wm_borderless)
+        w->intent = WindowIntent::Borderless;
+    else
+        w->intent = WindowIntent::Normal;
+
+    // Keep fullscreen_self_managed in sync for code still reading it during migration.
+    w->fullscreen_self_managed = self_managed;
+
     return true;
 }
 
