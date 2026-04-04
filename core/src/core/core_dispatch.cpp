@@ -428,10 +428,8 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
         return false;
     w->wm_instance             = cmd.wm_instance;
     w->wm_class                = cmd.wm_class;
-    w->wm_type_dialog          = cmd.wm_type_dialog;
-    w->wm_type_utility         = cmd.wm_type_utility;
-    w->wm_type_splash          = cmd.wm_type_splash;
-    w->wm_type_modal           = cmd.wm_type_modal;
+    w->type                    = cmd.type;
+    w->intent                  = cmd.intent;
     w->wm_fixed_size           = cmd.wm_fixed_size;
     w->wm_never_focus          = cmd.wm_never_focus;
     w->wm_static_gravity       = cmd.wm_static_gravity;

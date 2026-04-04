@@ -9,6 +9,7 @@
 #include <backend/events.hpp>
 #include <backend/render_port.hpp>
 #include <backend/tray_host.hpp>
+#include <window_state.hpp>
 
 class Core;
 class Runtime;
@@ -43,13 +44,10 @@ struct ExistingWindowSnapshot {
     uint32_t event_mask = 0;
 
     // Metadata snapshot used by rules/policy.
-    std::string wm_instance;
-    std::string wm_class;
-    bool        wm_type_dialog  = false;
-    bool        wm_type_utility = false;
-    bool        wm_type_splash  = false;
-    bool        wm_type_modal   = false;
-    bool        wm_fixed_size   = false;
+    std::string  wm_instance;
+    std::string  wm_class;
+    WindowType   type          = WindowType::Normal;
+    bool         wm_fixed_size = false;
 };
 
 class Backend {

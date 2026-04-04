@@ -229,7 +229,8 @@ class Core {
         int active_workspace_on_monitor(int mon_idx) const {
             return wsman.active_workspace(mon_idx);
         }
-        int focused_monitor_index()   const { return wsman.get_focused_monitor(); }
+        const FocusState& focus_state()       const { return wsman.get_focus_state(); }
+        int focused_monitor_index()           const { return wsman.get_focused_monitor(); }
         bool focus_monitor_at_point(int x, int y) {
             return wsman.focus_monitor_at_point(x, y);
         }
@@ -238,7 +239,10 @@ class Core {
         std::vector<WindowId> all_window_ids() const;
 
         WindowStateRef focused_window_state() const {
-            return wsman.current().focused();
+            WindowId w = wsman.get_focus_state().window;
+            if (w == NO_WINDOW)
+                return nullptr;
+            return wsman.find_window_in_all(w);
         }
 
         WindowStateRef window_state(WindowId win) const {

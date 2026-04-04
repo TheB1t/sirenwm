@@ -35,11 +35,8 @@ struct RestartState {
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
-    bool        wm_type_dialog  = false;
-    bool        wm_type_utility = false;
-    bool        wm_type_splash  = false;
-    bool        wm_type_modal   = false;
-    bool        wm_fixed_size   = false;
+    WindowType  type          = WindowType::Normal;
+    bool        wm_fixed_size = false;
 };
 
 bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
@@ -115,11 +112,11 @@ WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
 
     const auto& atoms = window_type_atoms(xconn);
     auto        types = xconn.get_atom_list_property(window, atoms.net_wm_window_type);
-    out.wm_type_dialog  = has_atom(types, atoms.dialog);
-    out.wm_type_utility = has_atom(types, atoms.utility);
-    out.wm_type_splash  = has_atom(types, atoms.splash);
-    out.wm_type_modal   = has_atom(types, atoms.modal);
-    out.wm_fixed_size   = xconn.has_fixed_size_hints(window);
+    if (has_atom(types, atoms.modal))        out.type = WindowType::Modal;
+    else if (has_atom(types, atoms.dialog))  out.type = WindowType::Dialog;
+    else if (has_atom(types, atoms.utility)) out.type = WindowType::Utility;
+    else if (has_atom(types, atoms.splash))  out.type = WindowType::Splash;
+    out.wm_fixed_size = xconn.has_fixed_size_hints(window);
     return out;
 }
 
@@ -220,10 +217,7 @@ std::vector<ExistingWindowSnapshot> X11Backend::scan_existing_windows() {
         snap.event_mask         = kManagedEventMask;
         snap.wm_instance        = std::move(meta.wm_instance);
         snap.wm_class           = std::move(meta.wm_class);
-        snap.wm_type_dialog     = meta.wm_type_dialog;
-        snap.wm_type_utility    = meta.wm_type_utility;
-        snap.wm_type_splash     = meta.wm_type_splash;
-        snap.wm_type_modal      = meta.wm_type_modal;
+        snap.type               = meta.type;
         snap.wm_fixed_size      = meta.wm_fixed_size;
         if (from_restart) {
             snap.restart_workspace_id = it_state->second.ws_id;

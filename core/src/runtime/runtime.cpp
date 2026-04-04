@@ -44,14 +44,11 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             });
 
         (void)core.dispatch(command::SetWindowMetadata{
-                .window          = snap.window,
-                .wm_instance     = snap.wm_instance,
-                .wm_class        = snap.wm_class,
-                .wm_type_dialog  = snap.wm_type_dialog,
-                .wm_type_utility = snap.wm_type_utility,
-                .wm_type_splash  = snap.wm_type_splash,
-                .wm_type_modal   = snap.wm_type_modal,
-                .wm_fixed_size   = snap.wm_fixed_size,
+                .window      = snap.window,
+                .wm_instance = snap.wm_instance,
+                .wm_class    = snap.wm_class,
+                .type        = snap.type,
+                .wm_fixed_size = snap.wm_fixed_size,
             });
 
         (void)core.dispatch(command::SetWindowEventMask{

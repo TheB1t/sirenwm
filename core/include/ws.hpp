@@ -35,6 +35,12 @@ struct Workspace {
 
 using WorkspaceState = Workspace;
 
+struct FocusState {
+    int      monitor = 0;
+    int      ws_id   = -1;
+    WindowId window  = NO_WINDOW;
+};
+
 class WorkspaceManager {
     private:
         std::vector<Workspace> workspaces;
@@ -53,7 +59,7 @@ class WorkspaceManager {
         std::unordered_map<WindowId, std::shared_ptr<WindowState> > window_index;
         std::unordered_map<WindowId, int> window_workspace;
 
-        int focused_monitor = 0;
+        FocusState focus_;
 
         inline bool is_ws_valid(int id) const {
             return id >= 0 && id < (int)workspaces.size();
@@ -63,6 +69,7 @@ class WorkspaceManager {
             return id >= 0 && id < (int)monitors.size();
         }
 
+        void             sync_focus_state();
         int              monitor_index_by_name(const std::string& name) const;
         int              index_of_ws_in_pool(const std::vector<int>& pool, int ws_id) const;
         int              monitor_of(int ws_id) const;
@@ -155,7 +162,8 @@ class WorkspaceManager {
         Workspace&       workspace(int id);
         const Workspace& workspace(int id) const;
 
-        int get_focused_monitor() const { return focused_monitor; }
+        int get_focused_monitor() const { return focus_.monitor; }
+        const FocusState& get_focus_state() const { return focus_; }
 
         const MonitorState* monitor_state(int idx) const {
             if (!is_mon_valid(idx))

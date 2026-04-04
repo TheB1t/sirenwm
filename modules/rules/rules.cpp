@@ -152,11 +152,7 @@ void RulesModule::on(Core& core, event::ApplyWindowRules ev) {
     // - utility/dialog/splash/modal windows float
     // - fixed-size windows are handled in handle_map_request: fullscreen-sized
     //   ones become borderless, smaller ones get floating set there explicitly.
-    bool default_float = window->wm_type_dialog ||
-        window->wm_type_utility ||
-        window->wm_type_splash ||
-        window->wm_type_modal;
-    if (default_float)
+    if (window->is_dialog())
         (void)core.dispatch(command::SetWindowFloating{ win, true });
 
     if (instance.empty() && cls.empty())

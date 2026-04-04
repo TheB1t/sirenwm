@@ -114,17 +114,15 @@ static const WindowTypeAtoms& window_type_atoms(XConnection& xconn) {
 }
 
 struct WindowMetadata {
-    std::string wm_instance;
-    std::string wm_class;
-    bool        wm_type_dialog          = false;
-    bool        wm_type_utility         = false;
-    bool        wm_type_splash          = false;
-    bool        wm_type_modal           = false;
-    bool        wm_fixed_size           = false;
-    bool        wm_never_focus          = false;
-    bool        wm_static_gravity       = false;
-    bool        wm_no_decorations       = false;  // _MOTIF_WM_HINTS decorations=0
-    bool        fullscreen_self_managed = false;
+    std::string  wm_instance;
+    std::string  wm_class;
+    WindowType   type                   = WindowType::Normal;
+    WindowIntent intent                 = WindowIntent::Normal;
+    bool         wm_fixed_size          = false;
+    bool         wm_never_focus         = false;
+    bool         wm_static_gravity      = false;
+    bool         wm_no_decorations      = false;  // _MOTIF_WM_HINTS decorations=0
+    bool         fullscreen_self_managed = false;
 };
 
 static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
@@ -135,10 +133,10 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
 
     const auto& atoms = window_type_atoms(xconn);
     auto        types = xconn.get_atom_list_property(window, atoms.net_wm_window_type);
-    out.wm_type_dialog    = has_atom(types, atoms.dialog);
-    out.wm_type_utility   = has_atom(types, atoms.utility);
-    out.wm_type_splash    = has_atom(types, atoms.splash);
-    out.wm_type_modal     = has_atom(types, atoms.modal);
+    if (has_atom(types, atoms.modal))        out.type = WindowType::Modal;
+    else if (has_atom(types, atoms.dialog))  out.type = WindowType::Dialog;
+    else if (has_atom(types, atoms.utility)) out.type = WindowType::Utility;
+    else if (has_atom(types, atoms.splash))  out.type = WindowType::Splash;
     out.wm_fixed_size     = xconn.has_fixed_size_hints(window);
     out.wm_never_focus    = xconn.get_wm_hints_no_input(window);
     out.wm_static_gravity = xconn.has_static_gravity(window);
@@ -151,10 +149,8 @@ static void apply_window_metadata(Core& core, WindowId window, WindowMetadata me
             .window                  = window,
             .wm_instance             = std::move(meta.wm_instance),
             .wm_class                = std::move(meta.wm_class),
-            .wm_type_dialog          = meta.wm_type_dialog,
-            .wm_type_utility         = meta.wm_type_utility,
-            .wm_type_splash          = meta.wm_type_splash,
-            .wm_type_modal           = meta.wm_type_modal,
+            .type                    = meta.type,
+            .intent                  = meta.intent,
             .wm_fixed_size           = meta.wm_fixed_size,
             .wm_never_focus          = meta.wm_never_focus,
             .wm_static_gravity       = meta.wm_static_gravity,
@@ -166,11 +162,7 @@ static void apply_window_metadata(Core& core, WindowId window, WindowMetadata me
 static bool is_dialog_like_window(const WindowStateRef& window, xcb_window_t transient_for) {
     if (transient_for != XCB_WINDOW_NONE)
         return true;
-    return window &&
-           (window->wm_type_dialog ||
-               window->wm_type_utility ||
-               window->wm_type_splash ||
-               window->wm_type_modal);
+    return window && window->is_dialog();
 }
 
 static int monitor_for_visible_workspace(const Core& core, int ws_id) {

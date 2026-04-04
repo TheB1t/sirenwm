@@ -7,6 +7,7 @@
 
 #include <backend/events.hpp>
 #include <monitor.hpp>
+#include <window_state.hpp>
 
 namespace command {
 
@@ -57,18 +58,16 @@ struct AssignWindowWorkspace {
 };
 
 struct SetWindowMetadata {
-    WindowId    window = NO_WINDOW;
-    std::string wm_instance;
-    std::string wm_class;
-    bool        wm_type_dialog          = false;
-    bool        wm_type_utility         = false;
-    bool        wm_type_splash          = false;
-    bool        wm_type_modal           = false;
-    bool        wm_fixed_size           = false;
-    bool        wm_never_focus          = false;
-    bool        wm_static_gravity       = false;
-    bool        wm_no_decorations       = false;
-    bool        fullscreen_self_managed = false;
+    WindowId     window = NO_WINDOW;
+    std::string  wm_instance;
+    std::string  wm_class;
+    WindowType   type                   = WindowType::Normal;
+    WindowIntent intent                 = WindowIntent::Normal;
+    bool         wm_fixed_size          = false;
+    bool         wm_never_focus         = false;
+    bool         wm_static_gravity      = false;
+    bool         wm_no_decorations      = false;
+    bool         fullscreen_self_managed = false;
 };
 
 struct SetWindowEventMask {
