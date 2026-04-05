@@ -385,8 +385,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         mapped_window &&
         mapped_window->is_visible()) {
         (void)core.dispatch(command::FocusWindow{ ev->window });
-        focus_window(ev->window);
-        core.emit_focus_changed(ev->window);
+        request_focus(ev->window, kFocusEWMH);
     } else {
         restore_visible_focus();
     }
@@ -473,7 +472,25 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     }
 
     bool ws_hidden_unmap = core.is_window_hidden_by_workspace(ev->window);
+    auto win_state       = core.window_state_any(ev->window);
+    bool was_borderless  = win_state && win_state->borderless;
     (void)core.dispatch(command::SetWindowMapped{ ev->window, false });
+
+    // Borderless windows (fullscreen games, media viewers) that unmap themselves
+    // are fully withdrawn from WM management. On the next MapRequest the WM will
+    // re-adopt them cleanly, preventing stale workspace state from remapping a
+    // client-closed overlay on the next workspace switch.
+    if (was_borderless) {
+        (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
+        runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        if (ws_visible) {
+            (void)core.dispatch(command::ReconcileNow{});
+            restore_visible_focus();
+        }
+        LOG_DEBUG("UnmapNotify(%d): borderless client withdrawal, unmanaging", ev->window);
+        return;
+    }
 
     if (ws_hidden_unmap) {
         runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
@@ -929,9 +946,9 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     core.focus_monitor_at_point(ev->root_x, ev->root_y);
 
     (void)core.dispatch(command::FocusWindow{ ev->event });
-    // Defer X focus + FocusChanged until after apply_core_backend_effects() so
-    // stale backend effects cannot overwrite pointer-driven focus or _NET_WM_STATE_FOCUSED.
-    pending_enter_focus_ = ev->event;
+    // Request focus at kPointer priority — applied after apply_core_backend_effects()
+    // so pointer always wins over stale workspace-switch FocusWindow effects.
+    request_focus(ev->event, kFocusPointer);
 }
 
 void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {

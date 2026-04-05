@@ -152,12 +152,14 @@ bool X11Backend::consume_wm_unmap(WindowId win) {
     return true;
 }
 
-void X11Backend::on(event::BorderlessActivated ev) {
-    set_pointer_barriers(ev.window, ev.monitor_index);
+void X11Backend::on(event::BorderlessActivated) {
+    // Barriers are managed exclusively from update_focus() via on(FocusChanged).
+    // BorderlessActivated/Deactivated no longer touch barriers to avoid
+    // double-set races with the FocusChanged path.
 }
 
 void X11Backend::on(event::BorderlessDeactivated) {
-    clear_pointer_barriers();
+    // See on(BorderlessActivated) above.
 }
 
 void X11Backend::clear_pointer_barriers() {

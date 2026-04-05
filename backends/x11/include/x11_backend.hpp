@@ -79,9 +79,16 @@ class X11Backend final : public Backend {
         void set_border_color(WindowId win, uint32_t pixel);
         void reload_border_colors();
 
-        // Focus requested by a real pointer crossing (EnterNotify) this tick.
-        // Applied after apply_core_backend_effects() so it wins over stale backend effects.
-        WindowId pending_enter_focus_ = NO_WINDOW;
+        // Focus arbiter: one pending focus request per tick, highest priority wins.
+        // Consumed at end of pump_events() after all X events and backend effects.
+        // kPointer  — EnterNotify / button click (always wins)
+        // kEWMH     — _NET_ACTIVE_WINDOW client message, new window at MapRequest
+        // kWorkspace — workspace switch, restore_visible_focus, reload
+        // kNone     — no request this tick
+        enum FocusPriority { kFocusNone = 0, kFocusWorkspace = 1, kFocusEWMH = 2, kFocusPointer = 3 };
+        WindowId      pending_focus_win_      = NO_WINDOW;
+        FocusPriority pending_focus_priority_ = kFocusNone;
+        void          request_focus(WindowId win, FocusPriority priority);
 
         // Timestamp from the most recent user-input X event (button/key/motion/enter).
         // Used for xcb_set_input_focus to satisfy clients that reject timestamp=0.

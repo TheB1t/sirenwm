@@ -67,14 +67,13 @@ void X11Backend::set_border_color(WindowId win, uint32_t pixel) {
 }
 
 void X11Backend::restore_visible_focus() {
-    WindowId win = NO_WINDOW;
     if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
-        win = focused->id;
-        focus_window(win);
+        request_focus(focused->id, kFocusWorkspace);
     } else {
+        // No visible focused window — fall back to root immediately (no arbiter needed).
         xconn.focus_window(root_window);
+        core.emit_focus_changed(NO_WINDOW);
     }
-    core.emit_focus_changed(win);
 }
 
 void X11Backend::ewmh_intern_atoms() {
@@ -421,16 +420,17 @@ void X11Backend::update_focus(event::FocusChanged ev) {
         set_border_color(ev.window, border_focused_pixel);
     border_painted_focused_ = ev.window;
 
-    // Sync pointer barriers to focused window: activate when a borderless window
-    // gains focus, deactivate when focus moves away. This covers all focus paths —
-    // workspace switch, window close, EnterNotify, and EWMH-driven changes.
+    // Sync pointer barriers: barriers follow focus, not borderless-activation events.
+    // This is the single source of truth for barrier state — on(BorderlessActivated/Deactivated)
+    // no longer touch barriers to avoid races with FocusChanged.
     auto w = (ev.window != NO_WINDOW) ? core.window_state_any(ev.window) : nullptr;
     if (w && w->borderless) {
-        int ws_id  = core.workspace_of_window(ev.window);
+        int ws_id   = core.workspace_of_window(ev.window);
         int mon_idx = core.monitor_of_workspace(ws_id);
         if (mon_idx >= 0)
             set_pointer_barriers(ev.window, mon_idx);
     } else {
+        xconn.ungrab_pointer();
         clear_pointer_barriers();
     }
 }
@@ -510,12 +510,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
             return true;
 
         (void)core.dispatch(command::FocusWindow{ ev.window });
-        xconn.focus_window(ev.window);
-        // Queue via pending_core_events so drain_core_events applies this
-        // *after* any older queued FocusChanged events, preventing stale
-        // workspace-switch focus from overwriting _NET_ACTIVE_WINDOW.
-        core.emit_focus_changed(ev.window);
-        xconn.flush();
+        request_focus(ev.window, kFocusEWMH);
         return true;
     }
 

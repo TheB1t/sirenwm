@@ -409,8 +409,8 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
         (cmd.wm_no_decorations || cmd.wm_fixed_size);
     bool will_be_borderless = self_managed || wm_borderless;
 
-    w->self_managed = self_managed;
-    w->promote_to_borderless   = will_be_borderless;
+    w->self_managed          = self_managed;
+    w->promote_to_borderless = will_be_borderless;
 
     // Transient routing: assign to parent's workspace and float.
     if (cmd.transient_for != NO_WINDOW) {

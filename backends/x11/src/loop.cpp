@@ -52,6 +52,13 @@ void apply_window_flush(XConnection& xconn, const WindowFlush& flush, const Wind
 
 } // namespace
 
+void X11Backend::request_focus(WindowId win, FocusPriority priority) {
+    if (priority >= pending_focus_priority_) {
+        pending_focus_win_      = win;
+        pending_focus_priority_ = priority;
+    }
+}
+
 int X11Backend::event_fd() const {
     return xconn.fd();
 }
@@ -69,16 +76,24 @@ void X11Backend::apply_core_backend_effects() {
                 break;
             case BackendEffectKind::UnmapWindow:
                 if (e.window != NO_WINDOW) {
+                    // Release grab and barriers when a borderless window is hidden by
+                    // workspace switch — WM-initiated unmaps skip handle_unmap_notify,
+                    // so ungrab/clear must happen here.
+                    if (e.window == barrier_window_) {
+                        xconn.ungrab_pointer();
+                        clear_pointer_barriers();
+                    }
                     note_wm_unmap(e.window);
                     xconn.unmap_window(e.window);
                 }
                 break;
             case BackendEffectKind::FocusWindow:
                 if (e.window != NO_WINDOW)
-                    focus_window(e.window);
+                    request_focus(e.window, kFocusWorkspace);
                 break;
             case BackendEffectKind::FocusRoot:
-                if (root_window != NO_WINDOW)
+                // Focus root only if no higher-priority request is pending.
+                if (root_window != NO_WINDOW && pending_focus_priority_ == kFocusNone)
                     xconn.focus_window(root_window);
                 break;
             case BackendEffectKind::UpdateWindow:
@@ -100,6 +115,9 @@ void X11Backend::apply_core_backend_effects() {
 }
 
 void X11Backend::pump_events(std::size_t max_events_per_tick) {
+    pending_focus_win_      = NO_WINDOW;
+    pending_focus_priority_ = kFocusNone;
+
     xcb_motion_notify_event_t*       latest_motion = nullptr;
     std::vector<xcb_expose_event_t*> pending_exposes;
     pending_exposes.reserve(32);
@@ -160,12 +178,14 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
 
     apply_core_backend_effects();
 
-    // Apply pointer-driven focus last: wins over any stale FocusWindow backend effects
-    // emitted by a prior reload or workspace switch that arrived in the same tick.
-    if (pending_enter_focus_ != NO_WINDOW) {
-        focus_window(pending_enter_focus_);
-        core.emit_focus_changed(pending_enter_focus_);
-        pending_enter_focus_ = NO_WINDOW;
+    // Apply the highest-priority focus request accumulated this tick.
+    // Runs after all X events and backend effects so pointer always wins over
+    // stale workspace-switch FocusWindow effects from the same tick.
+    if (pending_focus_win_ != NO_WINDOW) {
+        focus_window(pending_focus_win_);
+        core.emit_focus_changed(pending_focus_win_);
+        pending_focus_win_      = NO_WINDOW;
+        pending_focus_priority_ = kFocusNone;
     }
 
     if (randr_dirty)
@@ -193,6 +213,14 @@ void X11Backend::render_frame() {
 void X11Backend::on_reload_applied() {
     key_down.fill(false);
     reload_border_colors();
-    restore_visible_focus();
+    // Apply focus immediately (not via arbiter) — reload happens between pump_events
+    // and drain_core_events, so the arbiter won't fire until the next tick.
+    if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
+        focus_window(focused->id);
+        core.emit_focus_changed(focused->id);
+    } else {
+        xconn.focus_window(root_window);
+        core.emit_focus_changed(NO_WINDOW);
+    }
     xconn.flush();
 }
