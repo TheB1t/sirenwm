@@ -867,6 +867,8 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
 }
 
 void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
+    last_event_time_ = ev->time;
+
     if ((ev->response_type & ~0x80) == XCB_BUTTON_RELEASE) {
         runtime.emit(core, make_button_ev(ev, true));
         return;

@@ -84,11 +84,15 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                         .enabled           = true,
                         .preserve_geometry = false,
                     });
-            if (snap.restart_borderless)
+            if (snap.restart_borderless) {
                 (void)core.dispatch(command::SetWindowBorderless{
                         .window     = snap.window,
                         .borderless = true,
                     });
+                // Seed last_window_per_ws so focus is restored correctly after restart.
+                // Without this, sync_current_focus picks a random window on the workspace.
+                (void)core.dispatch(command::FocusWindow{ snap.window });
+            }
             if (snap.restart_hidden_explicitly)
                 (void)core.dispatch(command::HideWindow{ snap.window });
         }

@@ -63,6 +63,17 @@ void X11Backend::on_start(Core& core) {
     ewmh_update_desktop_props();
     apply_xresources(core);
     reload_border_colors();
+
+    // Seed focused_monitor from the actual pointer position so that after an
+    // exec-restart the WM doesn't assume monitor 0 when the cursor is elsewhere.
+    // Without this, adopt_existing_windows → SwitchWorkspace → sync_current_focus
+    // gives X focus to the game on monitor 0 even if the pointer is on monitor 1.
+    auto cookie = xcb_query_pointer(xconn.raw_conn(), root_window);
+    auto* reply = xcb_query_pointer_reply(xconn.raw_conn(), cookie, nullptr);
+    if (reply) {
+        core.focus_monitor_at_point(reply->root_x, reply->root_y);
+        free(reply);
+    }
 }
 
 void X11Backend::apply_xresources(Core& core) {
