@@ -182,6 +182,7 @@ int XConnection::get_wm_state_value(xcb_window_t win, xcb_atom_t wm_state_atom) 
     return state;
 }
 
+
 bool XConnection::has_static_gravity(xcb_window_t win) const {
     auto  cookie = xcb_get_property(conn, 0, win, XCB_ATOM_WM_NORMAL_HINTS,
             XCB_ATOM_ANY, 0, 18);

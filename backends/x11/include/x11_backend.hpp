@@ -94,10 +94,20 @@ class X11Backend final : public Backend {
         // Used for xcb_set_input_focus to satisfy clients that reject timestamp=0.
         xcb_timestamp_t last_event_time_ = XCB_CURRENT_TIME;
 
+        // Last known pointer position (root coordinates), updated on motion/enter/button.
+        // Used to determine which monitor the user intends a new fullscreen window to appear on.
+        int16_t last_pointer_x_ = 0;
+        int16_t last_pointer_y_ = 0;
+
         // Pending WM-initiated unmaps: X11 sends two UnmapNotify per xcb_unmap_window
         // (SubstructureNotify on root + StructureNotify on the window itself).
         // Backend tracks this to distinguish WM-initiated unmaps from client withdrawals.
-        std::unordered_map<WindowId, int> pending_wm_unmaps_;
+        std::unordered_map<WindowId, int>                  pending_wm_unmaps_;
+        // First ConfigureRequest position seen for unmanaged windows (before MapRequest).
+        // Wine/Proton sends the real monitor coordinates in the first ConfigureRequest;
+        // subsequent ones may carry wrong values. Used to assign self_managed windows
+        // to the correct workspace at MapRequest time.
+        std::unordered_map<WindowId, std::pair<int16_t,int16_t>> first_configure_pos_;
         void   note_wm_unmap(WindowId win) { pending_wm_unmaps_[win] += 2; }
         bool   consume_wm_unmap(WindowId win);
 

@@ -210,6 +210,7 @@ void X11Backend::ewmh_set_frame_extents(WindowId win, uint32_t bw) {
     xconn.set_property(win, NET_FRAME_EXTENTS, XCB_ATOM_CARDINAL, extents, 4);
 }
 
+
 void X11Backend::ewmh_apply_fullscreen(WindowId win, bool enabled) {
     (void)core.dispatch(command::SetWindowFullscreen{ win, enabled });
     ewmh_set_fullscreen_state_property(win, enabled);

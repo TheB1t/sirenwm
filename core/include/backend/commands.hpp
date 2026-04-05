@@ -52,6 +52,7 @@ struct EnsureWindow {
     int      workspace_id = -1;
 };
 
+
 struct AssignWindowWorkspace {
     WindowId window       = NO_WINDOW;
     int      workspace_id = -1;

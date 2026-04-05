@@ -384,9 +384,81 @@ void WorkspaceManager::rebuild_window_indexes() {
 // ────────────────────────────────────────────────────────────────────────────
 
 void WorkspaceManager::update_workspace_defs(const std::vector<WorkspaceDef>& defs) {
-    for (int i = 0; i < (int)defs.size() && i < (int)workspaces.size(); ++i) {
+    const int old_count = (int)workspaces.size();
+    const int new_count = defs.empty() ? old_count : (int)defs.size();
+
+    // Update names and aliases for existing workspaces.
+    for (int i = 0; i < std::min(new_count, old_count); ++i) {
         workspaces[i].name          = defs[i].name;
         workspaces[i].monitor_alias = defs[i].monitor;
+    }
+
+    // Add new workspaces if defs grew.
+    for (int i = old_count; i < new_count; ++i) {
+        workspaces.emplace_back(i, defs[i].name, defs[i].monitor);
+        ws_owner.push_back(-1);
+    }
+
+    // Remove workspaces if defs shrank.
+    if (new_count < old_count) {
+        // Find a safe fallback workspace to receive displaced windows.
+        // Prefer the first workspace on the same monitor; fall back to ws 0.
+        auto fallback_for = [&](int ws_id) -> int {
+            int mon = (ws_id < (int)ws_owner.size()) ? ws_owner[ws_id] : -1;
+            if (mon >= 0 && mon < (int)monitor_pools.size()) {
+                for (int id : monitor_pools[mon]) {
+                    if (id < new_count)
+                        return id;
+                }
+            }
+            return 0;
+        };
+
+        for (int ws_id = new_count; ws_id < old_count; ++ws_id) {
+            int dst = fallback_for(ws_id);
+            // Move all windows to the fallback workspace.
+            for (auto& w : workspaces[ws_id].windows) {
+                if (!w) continue;
+                workspaces[dst].add_window(w);
+                index_window(w->id, w, dst);
+            }
+            workspaces[ws_id].windows.clear();
+            workspaces[ws_id].current = -1;
+        }
+
+        // If any monitor's active workspace is being removed, switch it to fallback.
+        for (int mon = 0; mon < (int)monitors.size(); ++mon) {
+            int active = active_ws_of_monitor(mon);
+            if (active >= new_count) {
+                int dst = fallback_for(active);
+                // Find dst in this monitor's pool and activate it.
+                auto& pool = monitor_pools[mon];
+                auto  it   = std::find(pool.begin(), pool.end(), dst);
+                if (it != pool.end())
+                    monitor_active_local[mon] = (int)std::distance(pool.begin(), it);
+                else if (!pool.empty())
+                    monitor_active_local[mon] = 0;
+            }
+        }
+
+        // Prune removed workspaces from all pools and parked state.
+        for (auto& pool : monitor_pools) {
+            pool.erase(std::remove_if(pool.begin(), pool.end(),
+                [&](int id) { return id >= new_count; }), pool.end());
+        }
+        for (auto& [name, pool] : parked_pools) {
+            pool.erase(std::remove_if(pool.begin(), pool.end(),
+                [&](int id) { return id >= new_count; }), pool.end());
+        }
+        for (auto& [name, active] : parked_active_ws) {
+            if (active >= new_count)
+                active = 0;
+        }
+
+        workspaces.erase(workspaces.begin() + new_count, workspaces.end());
+        ws_owner.resize(new_count);
+
+        sync_focus_state();
     }
 }
 

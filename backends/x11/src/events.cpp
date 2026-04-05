@@ -241,9 +241,6 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         return;
     }
 
-    (void)core.dispatch(command::EnsureWindow{
-        .window = ev->window,
-    });
     {
         auto meta = read_window_metadata(xconn, ev->window);
 
@@ -270,6 +267,29 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         }
 
         meta.transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+
+        // For fullscreen/borderless windows, use the first ConfigureRequest position
+        // to determine the target workspace. Wine/Proton (and some native games) send
+        // real monitor coordinates in the first ConfigureRequest before MapRequest;
+        // later ConfigureRequests may carry wrong values.
+        // Applies to any window that covers a monitor (pre_fullscreen or covers_monitor),
+        // not only Wine self-managed ones.
+        int ws_id_hint = -1;
+        if (meta.pre_fullscreen_state || meta.covers_monitor) {
+            auto it = first_configure_pos_.find(ev->window);
+            if (it != first_configure_pos_.end()) {
+                int x = it->second.first, y = it->second.second;
+                if (!(x == -32000 && y == -32000))
+                    ws_id_hint = core.active_workspace_at_point(x, y);
+                LOG_DEBUG("MapRequest(%d): first_cfg_pos=%d,%d ws_hint=%d", ev->window, x, y, ws_id_hint);
+            }
+        }
+        first_configure_pos_.erase(ev->window);
+
+        (void)core.dispatch(command::EnsureWindow{
+            .window       = ev->window,
+            .workspace_id = ws_id_hint,
+        });
 
         LOG_INFO("MapRequest(%d): class='%s' no_decos=%d preserve_pos=%d fixed=%d pre_fs=%d covers=%d transient=%d",
             ev->window, meta.wm_class.c_str(),
@@ -405,7 +425,7 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
     bool pending_wm_unmap = pending_wm_unmaps_.count(ev->window) > 0 &&
                             pending_wm_unmaps_.at(ev->window) > 0;
 
-    (void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
+(void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
     if (!pending_wm_unmap) {
         // Only clear hidden_by_workspace if the window's workspace is currently active.
         // If the window mapped on an inactive workspace (e.g. rule-routed), the WM will
@@ -511,6 +531,7 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
 }
 
 void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
+    first_configure_pos_.erase(ev->window);
     if (!core.window_state_any(ev->window)) {
         runtime.emit(core, event::DestroyNotify{ ev->window });
         LOG_DEBUG("DestroyNotify(%d): unmanaged", ev->window);
@@ -624,8 +645,60 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     auto window = core.window_state_any(ev->window);
 
     if (!window) {
-        auto msg = pack_configure_request(ev);
-        LOG_DEBUG("ConfigureRequest from unknown window %d, redirecting", ev->window);
+        int16_t cfg_x = ev->x;
+        int16_t cfg_y = ev->y;
+
+        // If the window requests a position, steer it toward the monitor where the
+        // cursor currently is. Wine/Proton games always request primary-monitor coords
+        // regardless of where the user expects the game to appear. By responding with
+        // the cursor's monitor geometry the client initializes its renderer there.
+        if (ev->value_mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y)) {
+            const auto& mons = core.monitor_states();
+            int ptr_mon_idx  = -1;
+            for (int i = 0; i < (int)mons.size(); i++) {
+                if (last_pointer_x_ >= mons[i].x && last_pointer_x_ < mons[i].x + mons[i].width &&
+                    last_pointer_y_ >= mons[i].y && last_pointer_y_ < mons[i].y + mons[i].height) {
+                    ptr_mon_idx = i;
+                    break;
+                }
+            }
+            if (ptr_mon_idx >= 0) {
+                const auto& m    = mons[ptr_mon_idx];
+                int top_inset    = std::max(0, core.monitor_top_inset());
+                int bottom_inset = std::max(0, core.monitor_bottom_inset());
+                cfg_x = (int16_t)m.x;
+                cfg_y = (int16_t)(m.y - top_inset);
+                int full_h = m.height + top_inset + bottom_inset;
+                LOG_DEBUG("ConfigureRequest(%d): steering pos %d,%d -> %d,%d size %dx%d (cursor monitor %d)",
+                    ev->window, ev->x, ev->y, cfg_x, cfg_y, m.width, full_h, ptr_mon_idx);
+                // Override width/height too so the client uses this monitor's full resolution.
+                ev->value_mask |= XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+                ev->width  = (uint16_t)m.width;
+                ev->height = (uint16_t)full_h;
+            }
+
+            if (first_configure_pos_.find(ev->window) == first_configure_pos_.end())
+                first_configure_pos_[ev->window] = { cfg_x, cfg_y };
+        }
+
+        // Build the patch with potentially overridden x/y.
+        ConfigureRequestPatch msg;
+        uint16_t m = ev->value_mask;
+        auto put = [&](uint16_t flag, uint32_t value) {
+            if (!(m & flag)) return;
+            msg.mask |= flag;
+            msg.values.push_back(value);
+        };
+        put(XCB_CONFIG_WINDOW_X,            static_cast<uint32_t>(cfg_x));
+        put(XCB_CONFIG_WINDOW_Y,            static_cast<uint32_t>(cfg_y));
+        put(XCB_CONFIG_WINDOW_WIDTH,        static_cast<uint32_t>(ev->width));
+        put(XCB_CONFIG_WINDOW_HEIGHT,       static_cast<uint32_t>(ev->height));
+        put(XCB_CONFIG_WINDOW_BORDER_WIDTH, static_cast<uint32_t>(ev->border_width));
+        put(XCB_CONFIG_WINDOW_SIBLING,      static_cast<uint32_t>(ev->sibling));
+        put(XCB_CONFIG_WINDOW_STACK_MODE,   static_cast<uint32_t>(ev->stack_mode));
+
+        LOG_DEBUG("ConfigureRequest from unknown window %d, redirecting, pos=%d,%d mask=0x%x",
+            ev->window, cfg_x, cfg_y, ev->value_mask);
         xconn.call(xcb_configure_window, ev->window, msg.mask, msg.values.data());
         return;
     }
@@ -868,6 +941,8 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
 
 void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
     last_event_time_ = ev->time;
+    last_pointer_x_  = ev->root_x;
+    last_pointer_y_  = ev->root_y;
 
     if ((ev->response_type & ~0x80) == XCB_BUTTON_RELEASE) {
         runtime.emit(core, make_button_ev(ev, true));
@@ -879,6 +954,8 @@ void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
 }
 
 void X11Backend::handle_motion_notify(xcb_motion_notify_event_t* ev) {
+    last_pointer_x_ = ev->root_x;
+    last_pointer_y_ = ev->root_y;
     runtime.emit(core, event::MotionEv{ ev->event, ev->root_x, ev->root_y, ev->state });
 }
 
@@ -938,6 +1015,8 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
         return;
 
     last_event_time_ = ev->time;
+    last_pointer_x_  = ev->root_x;
+    last_pointer_y_  = ev->root_y;
 
     // Use window_state_any so that windows on the second monitor's active
     // workspace are found even when focused_monitor hasn't been updated yet

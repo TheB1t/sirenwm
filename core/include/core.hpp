@@ -64,7 +64,6 @@ enum class BackendEffectKind {
     FocusRoot,
     UpdateWindow,
     WarpPointer,
-
 };
 
 struct BackendEffect {
@@ -151,6 +150,10 @@ class Core {
         void apply_settings(CoreSettings next) {
             settings = std::move(next);
             wsman.update_workspace_defs(settings.workspace_defs);
+            // Re-assign workspaces to monitors so newly added workspaces get a monitor
+            // and deleted ones are cleaned up without waiting for a display change event.
+            if (runtime_started)
+                wsman.assign_workspaces(settings.monitor_aliases, settings.monitor_compose);
         }
         const CoreSettings& current_settings() const { return settings; }
         void mark_runtime_started(bool started) { runtime_started = started; }
@@ -232,6 +235,14 @@ class Core {
         const FocusState& focus_state()       const { return wsman.get_focus_state(); }
         int focused_monitor_index()           const { return wsman.get_focused_monitor(); }
         bool focus_monitor_at_point(int x, int y);
+        int active_workspace_at_point(int x, int y) const {
+            // Monitor coordinates are adjusted by bar inset (mon.y += top_inset).
+            // Callers may pass raw physical coordinates (e.g. WM_NORMAL_HINTS.PPosition
+            // from Wine/Proton), so compensate before the lookup.
+            int top = std::max(0, monitor_top_inset_applied);
+            int mon = wsman.monitor_at_point(x, y + top);
+            return (mon >= 0) ? wsman.active_workspace(mon) : -1;
+        }
         int workspace_count()         const { return (int)workspace_states().size(); }
 
         std::vector<WindowId> all_window_ids() const;

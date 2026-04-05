@@ -241,43 +241,19 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     if (!w)
         return false;
 
-    // Borderless fullscreen windows must not be moved to a workspace on a different
-    // monitor — the game's D3D context is bound to the original monitor.
-    // Only block if the window actually covers its monitor (true fullscreen),
-    // not just any borderless window (dialogs, remote-viewer, etc.).
-    if (w->preserve_position) {
-        int src_mon = monitor_of_workspace(workspace_of_window(cmd.window));
-        int dst_mon = monitor_of_workspace(cmd.workspace_id);
-        if (src_mon != dst_mon) {
-            const auto& mons = monitor_states();
-            if (src_mon >= 0 && src_mon < (int)mons.size()) {
-                const auto& mon = mons[(size_t)src_mon];
-                if ((int)w->width >= mon.width && (int)w->height >= mon.height)
-                    return false;
-            }
-        }
-    }
-
     int src_mon_idx = monitor_of_workspace(workspace_of_window(cmd.window));
     int dst_mon_idx = monitor_of_workspace(cmd.workspace_id);
+
+    // Borderless and fullscreen windows cannot be moved across monitors:
+    // their renderer is bound to the physical monitor at creation time and
+    // will not reinitialize on a simple geometry change.
+    if (dst_mon_idx != src_mon_idx && (w->borderless || w->fullscreen)) {
+        LOG_DEBUG("MoveWindowToWorkspace(%d): blocked cross-monitor move for borderless/fullscreen window", cmd.window);
+        return false;
+    }
+
     wsman.move_window_to(cmd.workspace_id, w);
     emit_window_assigned_to_workspace(cmd.window, cmd.workspace_id);
-
-    // Fullscreen window moved to a different monitor: pin geometry to the
-    // destination monitor (same logic as SetWindowFullscreen).
-    if (w->fullscreen && dst_mon_idx != src_mon_idx) {
-        const auto& mons = monitor_states();
-        if (dst_mon_idx >= 0 && dst_mon_idx < (int)mons.size()) {
-            const auto& dm           = mons[(size_t)dst_mon_idx];
-            int         top_inset    = std::max(0, monitor_top_inset_applied);
-            int         bottom_inset = std::max(0, monitor_bottom_inset_applied);
-            w->x      = std::max(0, dm.x);
-            w->y      = std::max(0, dm.y - top_inset);
-            w->width  = (uint32_t)std::max(1, dm.width);
-            w->height = (uint32_t)std::max(1, dm.height + top_inset + bottom_inset);
-            mark_window_dirty(cmd.window, WindowFlush::Geometry);
-        }
-    }
 
     sync_workspace_visibility();
     arrange();
@@ -776,8 +752,10 @@ bool Core::dispatch(const command::SyncWindowFromConfigureNotify& cmd) {
     if (!pending || !(pending->dirty & WindowFlush::Width))       w->width = cmd.width;
     if (!pending || !(pending->dirty & WindowFlush::Height))      w->height = cmd.height;
     if (!pending || !(pending->dirty & WindowFlush::BorderWidth)) w->border_width = cmd.border_width;
+
     return true;
 }
+
 
 CoreReloadState Core::snapshot_reload_state() const {
     return CoreReloadState{
