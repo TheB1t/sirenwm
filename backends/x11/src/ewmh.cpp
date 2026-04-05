@@ -80,7 +80,8 @@ void X11Backend::restore_visible_focus() {
 void X11Backend::ewmh_intern_atoms() {
     auto atoms = xconn.intern_atoms({
         "_NET_SUPPORTED", "_NET_WM_NAME", "_NET_WM_STATE",
-        "_NET_WM_STATE_FULLSCREEN", "_NET_FRAME_EXTENTS", "_NET_ACTIVE_WINDOW", "_NET_CLIENT_LIST",
+        "_NET_WM_STATE_FULLSCREEN", "_NET_WM_STATE_HIDDEN", "_NET_WM_STATE_FOCUSED",
+        "_NET_FRAME_EXTENTS", "_NET_ACTIVE_WINDOW", "_NET_CLIENT_LIST", "_NET_CLIENT_LIST_STACKING",
         "_NET_SUPPORTING_WM_CHECK", "_NET_WM_WINDOW_TYPE",
         "_NET_WM_WINDOW_TYPE_DOCK", "_NET_WM_WINDOW_TYPE_DIALOG",
         "_NET_WM_WINDOW_TYPE_DESKTOP", "_NET_WM_WINDOW_TYPE_NOTIFICATION",
@@ -98,9 +99,12 @@ void X11Backend::ewmh_intern_atoms() {
     NET_WM_NAME                      = atoms["_NET_WM_NAME"];
     NET_WM_STATE                     = atoms["_NET_WM_STATE"];
     NET_WM_STATE_FULLSCREEN          = atoms["_NET_WM_STATE_FULLSCREEN"];
+    NET_WM_STATE_HIDDEN              = atoms["_NET_WM_STATE_HIDDEN"];
+    NET_WM_STATE_FOCUSED             = atoms["_NET_WM_STATE_FOCUSED"];
     NET_FRAME_EXTENTS                = atoms["_NET_FRAME_EXTENTS"];
     NET_ACTIVE_WINDOW                = atoms["_NET_ACTIVE_WINDOW"];
     NET_CLIENT_LIST                  = atoms["_NET_CLIENT_LIST"];
+    NET_CLIENT_LIST_STACKING         = atoms["_NET_CLIENT_LIST_STACKING"];
     NET_SUPPORTING_WM_CHECK          = atoms["_NET_SUPPORTING_WM_CHECK"];
     NET_WM_WINDOW_TYPE               = atoms["_NET_WM_WINDOW_TYPE"];
     NET_WM_WINDOW_TYPE_DOCK          = atoms["_NET_WM_WINDOW_TYPE_DOCK"];
@@ -176,6 +180,10 @@ void X11Backend::focus_window(WindowId win) {
 void X11Backend::ewmh_update_client_list() {
     auto wins = core.all_window_ids();
     xconn.set_property(root_window, NET_CLIENT_LIST, wins.data(), (int)wins.size());
+    // _NET_CLIENT_LIST_STACKING: EWMH requires bottom-to-top z-order.
+    // We don't track stacking order, so mirror _NET_CLIENT_LIST (oldest first).
+    // Compliant compositors handle this gracefully.
+    xconn.set_property(root_window, NET_CLIENT_LIST_STACKING, wins.data(), (int)wins.size());
 }
 
 bool X11Backend::ewmh_has_fullscreen_state(WindowId win) {
@@ -183,14 +191,17 @@ bool X11Backend::ewmh_has_fullscreen_state(WindowId win) {
     return std::find(states.begin(), states.end(), NET_WM_STATE_FULLSCREEN) != states.end();
 }
 
-void X11Backend::ewmh_set_fullscreen_state_property(WindowId win, bool enabled) {
+void X11Backend::ewmh_set_wm_state_atom(WindowId win, xcb_atom_t atom, bool enabled) {
     auto states = xconn.get_atom_list_property(win, NET_WM_STATE);
-    states.erase(std::remove(states.begin(), states.end(), NET_WM_STATE_FULLSCREEN), states.end());
+    states.erase(std::remove(states.begin(), states.end(), atom), states.end());
     if (enabled)
-        states.push_back(NET_WM_STATE_FULLSCREEN);
-
+        states.push_back(atom);
     const xcb_atom_t* data = states.empty() ? nullptr : states.data();
     xconn.set_property(win, NET_WM_STATE, XCB_ATOM_ATOM, data, (int)states.size());
+}
+
+void X11Backend::ewmh_set_fullscreen_state_property(WindowId win, bool enabled) {
+    ewmh_set_wm_state_atom(win, NET_WM_STATE_FULLSCREEN, enabled);
 }
 
 void X11Backend::ewmh_set_frame_extents(WindowId win, uint32_t bw) {
@@ -258,8 +269,8 @@ void X11Backend::ewmh_init() {
 
     const xcb_atom_t supported[] = {
         NET_SUPPORTED, NET_WM_NAME, NET_ACTIVE_WINDOW,
-        NET_CLIENT_LIST, NET_SUPPORTING_WM_CHECK,
-        NET_WM_STATE, NET_WM_STATE_FULLSCREEN,
+        NET_CLIENT_LIST, NET_CLIENT_LIST_STACKING, NET_SUPPORTING_WM_CHECK,
+        NET_WM_STATE, NET_WM_STATE_FULLSCREEN, NET_WM_STATE_HIDDEN, NET_WM_STATE_FOCUSED,
         NET_FRAME_EXTENTS,
         NET_WM_WINDOW_TYPE, NET_WM_WINDOW_TYPE_DOCK, NET_WM_WINDOW_TYPE_DIALOG,
         NET_CLOSE_WINDOW, NET_NUMBER_OF_DESKTOPS, NET_CURRENT_DESKTOP, NET_DESKTOP_NAMES,
@@ -348,6 +359,9 @@ void X11Backend::notify(event::WindowMapped ev) {
             xconn.set_property(ev.window, NET_WM_DESKTOP, XCB_ATOM_CARDINAL, (uint32_t)ws);
     }
     ewmh_update_client_list();
+    // _NET_WM_STATE_HIDDEN: clear on map (window is now visible on its workspace).
+    if (NET_WM_STATE_HIDDEN != XCB_ATOM_NONE)
+        ewmh_set_wm_state_atom(ev.window, NET_WM_STATE_HIDDEN, false);
     {
         auto w = core.window_state_any(ev.window);
         // Self-managed windows already know their position; pinning to mon.x/mon.y
@@ -387,11 +401,20 @@ void X11Backend::notify(event::WindowUnmapped ev) {
         xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, ev.window,
             WM_STATE, WM_STATE, 32, 2, data);
     }
+    // _NET_WM_STATE_HIDDEN: set when hidden by workspace switch, clear on withdraw.
+    if (NET_WM_STATE_HIDDEN != XCB_ATOM_NONE && ev.window != NO_WINDOW)
+        ewmh_set_wm_state_atom(ev.window, NET_WM_STATE_HIDDEN, !ev.withdrawn);
     ewmh_update_client_list();
 }
 
 void X11Backend::update_focus(event::FocusChanged ev) {
     xconn.set_property(root_window, NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, ev.window);
+    if (NET_WM_STATE_FOCUSED != XCB_ATOM_NONE) {
+        if (border_painted_focused_ != NO_WINDOW && border_painted_focused_ != ev.window)
+            ewmh_set_wm_state_atom(border_painted_focused_, NET_WM_STATE_FOCUSED, false);
+        if (ev.window != NO_WINDOW)
+            ewmh_set_wm_state_atom(ev.window, NET_WM_STATE_FOCUSED, true);
+    }
     if (border_painted_focused_ != NO_WINDOW && border_painted_focused_ != ev.window)
         set_border_color(border_painted_focused_, border_unfocused_pixel);
     if (ev.window != NO_WINDOW)

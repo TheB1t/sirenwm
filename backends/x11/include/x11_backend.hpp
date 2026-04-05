@@ -39,9 +39,12 @@ class X11Backend final : public Backend {
         xcb_atom_t NET_WM_NAME                      = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_STATE                     = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_STATE_FULLSCREEN          = XCB_ATOM_NONE;
+        xcb_atom_t NET_WM_STATE_HIDDEN              = XCB_ATOM_NONE;
+        xcb_atom_t NET_WM_STATE_FOCUSED             = XCB_ATOM_NONE;
         xcb_atom_t NET_FRAME_EXTENTS                = XCB_ATOM_NONE;
         xcb_atom_t NET_ACTIVE_WINDOW                = XCB_ATOM_NONE;
         xcb_atom_t NET_CLIENT_LIST                  = XCB_ATOM_NONE;
+        xcb_atom_t NET_CLIENT_LIST_STACKING         = XCB_ATOM_NONE;
         xcb_atom_t NET_SUPPORTING_WM_CHECK          = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_WINDOW_TYPE               = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_WINDOW_TYPE_DOCK          = XCB_ATOM_NONE;
@@ -96,6 +99,7 @@ class X11Backend final : public Backend {
         bool ewmh_supports_delete(WindowId win);
         void ewmh_close_with_message(WindowId win);
         bool ewmh_has_fullscreen_state(WindowId win);
+        void ewmh_set_wm_state_atom(WindowId win, xcb_atom_t atom, bool enabled);
         void ewmh_set_fullscreen_state_property(WindowId win, bool enabled);
         void ewmh_apply_fullscreen(WindowId win, bool enabled);
         void ewmh_set_frame_extents(WindowId win, uint32_t bw);
