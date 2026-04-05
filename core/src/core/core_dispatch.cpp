@@ -141,8 +141,8 @@ void Core::arrange() {
         auto& ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->is_visible() && !w->floating && !w->borderless && !w->preserve_position &&
-                !w->self_managed) tiled.push_back(w->id);
+            if (w && w->is_visible() && !w->floating && !w->borderless && !w->is_self_managed())
+                tiled.push_back(w->id);
 
         layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
             uint32_t width, uint32_t height,
@@ -487,7 +487,7 @@ bool Core::dispatch(const command::SetWindowBorderless& cmd) {
         const auto& mons = wsman.all_monitor_states();
         bool any = false;
         for (int i = 0; i < (int)mons.size() && !any; ++i)
-            any = (monitor_has_visible_borderless(i) != NO_WINDOW);
+            any = monitor_has_visible_borderless(i);
         if (!any)
             emit_borderless_deactivated();
     }
