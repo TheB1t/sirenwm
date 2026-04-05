@@ -1,0 +1,110 @@
+-- SirenWM default config — auto-installed to ~/.config/sirenwm/init.lua
+-- when no config file exists. Edit to suit your setup.
+-- See ~/.local/share/sirenwm/init.lua.example for a full annotated example.
+
+siren.modules = { "bar", "monitors", "layout", "keybindings" }
+
+-- Primary modifier key (mod4 = super/win)
+siren.modifier = "mod4"
+
+-- Monitor layout is auto-detected via RandR. To pin specific outputs,
+-- resolutions or rotations uncomment and adjust:
+-- siren.monitors = {
+--     { name = "primary", output = "HDMI-1", width = 1920, height = 1080,
+--       refresh = 60, rotation = "normal", enabled = true },
+-- }
+
+-- Workspaces (no monitor pin — distributed across detected monitors)
+siren.workspaces = {
+    { name = "[1]" },
+    { name = "[2]" },
+    { name = "[3]" },
+    { name = "[4]" },
+    { name = "[5]" },
+    { name = "[6]" },
+    { name = "[7]" },
+    { name = "[8]" },
+    { name = "[9]" },
+}
+
+-- Theme
+siren.theme = {
+    font   = "monospace:size=9",
+    bg     = "#111111",
+    fg     = "#bbbbbb",
+    alt_bg = "#222222",
+    alt_fg = "#eeeeee",
+    accent = "#005577",
+    gap    = 4,
+    border = {
+        thickness = 1,
+        focused   = "#005577",
+        unfocused = "#222222",
+    },
+}
+
+-- Behavior
+siren.behavior = {
+    follow_moved_window = false,
+    focus_new_window    = true,
+}
+
+-- Mouse drag bindings
+siren.mouse = {
+    { "mod+Button1", "move"   },
+    { "mod+Button3", "resize" },
+    { "mod+Button2", "float"  },
+}
+
+-- Tiling layout
+siren.layout = {
+    name          = "tile",
+    master_factor = 0.55,
+}
+
+-- Status bar
+siren.bar = {
+    top = {
+        height = 18,
+        left   = { "tags" },
+        center = { "title" },
+        right  = { "clock" },
+    },
+    widgets = {
+        clock = function() return os.date(" %H:%M ") end,
+    },
+}
+
+-- Keybindings
+siren.binds = {
+    { "mod+Return",       function() siren.spawn("xterm") end },
+    { "mod+shift+q",      function() siren.windows.close() end },
+
+    { "mod+j",            function() siren.windows.focus_next() end },
+    { "mod+k",            function() siren.windows.focus_prev() end },
+    { "mod+shift+Return", function() siren.windows.zoom() end },
+    { "mod+shift+space",  function() siren.windows.toggle_floating() end },
+
+    { "mod+h",            function() siren.windows.adj_master_factor(-0.05) end },
+    { "mod+l",            function() siren.windows.adj_master_factor( 0.05) end },
+    { "mod+i",            function() siren.windows.inc_master( 1) end },
+    { "mod+d",            function() siren.windows.inc_master(-1) end },
+
+    { "mod+m",            function() siren.windows.set_layout("monocle") end },
+    { "mod+t",            function() siren.windows.set_layout("tile") end },
+
+    { "mod+r",            function() siren.reload() end },
+    { "mod+shift+r",      function() siren.restart() end },
+}
+
+-- Workspace switch and move bindings (1–9)
+for i = 1, 9 do
+    table.insert(siren.binds, { "mod+"       .. i, function() siren.workspace.switch(i) end })
+    table.insert(siren.binds, { "mod+shift+" .. i, function() siren.windows.move_to(i)  end })
+end
+
+-- Monitor focus and window move bindings
+for i = 1, 8 do
+    table.insert(siren.binds, { "mod+ctrl+"       .. i, function() siren.monitor.focus(i) end })
+    table.insert(siren.binds, { "mod+ctrl+shift+" .. i, function() siren.windows.move_to_monitor(i) end })
+end

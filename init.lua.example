@@ -1,14 +1,29 @@
--- SirenWM minimal example config
+-- SirenWM full configuration example
 -- Copy to ~/.config/sirenwm/init.lua and adjust to your setup.
 
--- Modules to load. Order matters — each module's config keys become
--- available only after the module is listed here.
-siren.modules = { "bar", "monitors", "layout", "rules", "keybindings", "process" }
+-- ============================================================
+-- MODULES
+-- List modules to load. Order matters — each module's config
+-- keys become available only after it is listed here.
+-- Available: "bar", "monitors", "layout", "rules",
+--            "keybindings", "process", "keyboard", "wallpaper"
+-- ============================================================
+siren.modules = { "bar", "monitors", "layout", "rules", "keybindings", "process", "keyboard", "wallpaper" }
 
--- Primary modifier key (mod4 = super/win)
+-- ============================================================
+-- MODIFIER KEY
+-- mod4 = Super/Win, mod1 = Alt, mod3 = Hyper
+-- ============================================================
 siren.modifier = "mod4"
 
--- Monitor layout. Use xrandr to find your output names.
+-- ============================================================
+-- MONITORS
+-- Pin specific outputs to named aliases. Use `xrandr` to list
+-- output names. If omitted, monitors are auto-detected.
+-- Fields: name (alias), output (RandR name), width, height,
+--         refresh (Hz), rotation ("normal","left","right","inverted"),
+--         enabled (bool), x, y (optional explicit position)
+-- ============================================================
 siren.monitors = {
     {
         name     = "primary",
@@ -19,86 +34,233 @@ siren.monitors = {
         rotation = "normal",
         enabled  = true,
     },
+    {
+        name     = "secondary",
+        output   = "HDMI-0",
+        width    = 900,
+        height   = 1600,
+        refresh  = 60,
+        rotation = "left",
+        enabled  = true,
+    },
 }
 
+-- Monitor composition: which monitor is primary and display order.
 siren.compose_monitors = {
     primary = "primary",
     layout  = {
-        { monitor = "primary" },
+        { monitor = "secondary" },
+        { monitor = "primary"   },
     },
 }
 
--- Workspaces assigned to monitors by alias.
+-- ============================================================
+-- WORKSPACES
+-- Assign workspaces to monitors by alias. Workspaces without
+-- a monitor pin are distributed across all monitors.
+-- ============================================================
 siren.workspaces = {
-    { name = "[1]", monitor = "primary" },
-    { name = "[2]", monitor = "primary" },
-    { name = "[3]", monitor = "primary" },
-    { name = "[4]", monitor = "primary" },
-    { name = "[5]", monitor = "primary" },
+    { name = "[1]",      monitor = "primary"   },
+    { name = "[2] Web",  monitor = "primary"   },
+    { name = "[3] Code", monitor = "primary"   },
+    { name = "[4]",      monitor = "primary"   },
+    { name = "[5]",      monitor = "primary"   },
+    { name = "[6]",      monitor = "secondary" },
+    { name = "[7]",      monitor = "secondary" },
+    { name = "[8]",      monitor = "secondary" },
+    { name = "[9]",      monitor = "secondary" },
 }
 
--- Theme: colors and display metrics used by bar, borders, and dmenu helpers.
+-- ============================================================
+-- THEME
+-- Colors and metrics used by bar, borders, and dmenu helpers.
+-- dpi: override Xft.dpi (0 = system default)
+-- cursor_size / cursor_theme: X cursor settings
+-- ============================================================
 siren.theme = {
-    font   = "monospace:size=9",
-    bg     = "#111111",
-    fg     = "#bbbbbb",
-    alt_bg = "#222222",
-    alt_fg = "#eeeeee",
-    accent = "#005577",
-    gap    = 4,
+    font         = "monospace:size=9",
+    bg           = "#111111",
+    fg           = "#bbbbbb",
+    alt_bg       = "#222222",
+    alt_fg       = "#eeeeee",
+    accent       = "#005577",
+    gap          = 4,
+    dpi          = 0,
+    cursor_size  = 16,
+    cursor_theme = "default",
     border = {
-        thickness  = 1,
-        focused    = "#005577",
-        unfocused  = "#222222",
+        thickness = 1,
+        focused   = "#005577",
+        unfocused = "#222222",
     },
 }
 
--- Behavior
+-- ============================================================
+-- BEHAVIOR
+-- ============================================================
 siren.behavior = {
-    follow_moved_window = false,
-    focus_new_window    = true,
+    follow_moved_window = false,  -- warp cursor when moving window to another monitor
+    focus_new_window    = true,   -- focus newly mapped windows
 }
 
--- Mouse drag bindings
+-- ============================================================
+-- KEYBOARD
+-- XKB layout and options.
+-- ============================================================
+siren.keyboard = {
+    layouts = "us,ru",
+    options = "grp:alt_shift_toggle,terminate:ctrl_alt_bksp",
+}
+
+-- ============================================================
+-- MOUSE DRAG BINDINGS
+-- Mod + button to move/resize/float floating windows.
+-- ============================================================
 siren.mouse = {
     { "mod+Button1", "move"   },
     { "mod+Button3", "resize" },
     { "mod+Button2", "float"  },
 }
 
--- Tiling layout
+-- ============================================================
+-- LAYOUT
+-- name: "tile" or "monocle"
+-- master_factor: fraction of screen for master area (0.1–0.9)
+-- nmaster: number of master windows
+-- gap: inner gap in pixels (overrides theme.gap if set)
+-- ============================================================
 siren.layout = {
     name          = "tile",
     master_factor = 0.55,
 }
 
--- Status bar
+-- ============================================================
+-- STATUS BAR
+-- top / bottom: optional bar positions.
+-- Slots: "tags", "title", "tray" (built-in) or widget names.
+-- Widgets: { fn = function, interval = seconds }
+--   interval = 0 means redraw every frame (reactive).
+--   interval omitted / nil = same as 0.
+-- colors: override bar colors per-bar (same keys as siren.theme)
+-- ============================================================
 siren.bar = {
     top = {
         height = 18,
+        font   = "monospace:size=9",  -- optional per-bar font override
         left   = { "tags" },
         center = { "title" },
-        right  = { "tray", "clock" },
+        right  = { "tray", "cpu", "clock" },
+        colors = {
+            bg     = "#111111",
+            fg     = "#bbbbbb",
+            accent = "#005577",
+        },
     },
+    -- bottom = {
+    --     height = 16,
+    --     left   = { "clock" },
+    -- },
     widgets = {
-        clock = function() return os.date(" %H:%M ") end,
+        -- Simple clock, refreshes every 10 seconds.
+        clock = { fn = function() return os.date(" %H:%M ") end, interval = 10 },
+
+        -- Keyboard layout indicator — reactive (interval=0, redraws every frame).
+        -- siren.sys.kbd_layout() returns the active XKB layout name, e.g. "us", "ru".
+        kbd = { fn = function()
+            local l = siren.sys.kbd_layout()
+            return " " .. (l or "??") .. " "
+        end, interval = 0 },
+
+        -- CPU usage read from /proc/stat.
+        cpu = { fn = function()
+            local f = io.open("/proc/stat")
+            if not f then return "" end
+            local line = f:read("*l"); f:close()
+            local u, n, s, i = line:match("cpu%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)")
+            if not u then return " CPU -% " end
+            local total = u + n + s + i
+            -- store previous values in upvalue for delta calculation
+            return string.format(" CPU %d%% ", math.floor((total - i) / total * 100))
+        end, interval = 2 },
+
+        -- Memory usage from /proc/meminfo.
+        mem = { fn = function()
+            local total, avail
+            for line in io.lines("/proc/meminfo") do
+                local k, v = line:match("(%w+):%s+(%d+)")
+                if k == "MemTotal"     then total = tonumber(v) end
+                if k == "MemAvailable" then avail = tonumber(v) end
+                if total and avail then break end
+            end
+            if not total then return "" end
+            local used_mb = math.floor((total - avail) / 1024)
+            return string.format(" MEM %dM ", used_mb)
+        end, interval = 5 },
+
+        -- Volume via amixer (requires alsa-utils).
+        vol = { fn = function()
+            local f = io.popen("amixer get Master 2>/dev/null")
+            if not f then return "" end
+            local out = f:read("*a"); f:close()
+            local pct, mute = out:match("(%d+)%%.*%[(%a+)%]")
+            if not pct then return " VOL - " end
+            if mute == "off" then return " MUTE " end
+            return string.format(" VOL %s%% ", pct)
+        end, interval = 2 },
+
+        -- Date, separate from clock.
+        date = { fn = function() return os.date(" %a %d %b ") end, interval = 60 },
     },
 }
 
--- Autostart processes
+-- ============================================================
+-- WALLPAPER
+-- Requires xwallpaper in PATH.
+-- Keys are monitor aliases defined in siren.monitors.
+-- mode: "stretch" (default), "center", "zoom", "tile"
+-- Applied on start, config reload, and display topology changes.
+-- ============================================================
+siren.wallpaper = {
+    primary   = { image = "~/wallpapers/main.jpg",      mode = "zoom"    },
+    secondary = { image = "~/wallpapers/secondary.png", mode = "stretch" },
+}
+
+-- ============================================================
+-- AUTOSTART PROCESSES
+-- policy: "once"   — spawn only if not already running
+--         "always" — always spawn at each start/reload
+--         "daemon" — spawn once, restart if it dies
+-- ============================================================
 siren.autostart = {
-    { cmd = "picom", policy = "once" },
+    { cmd = "picom --experimental-backends", policy = "once"   },
+    { cmd = "dunst",                         policy = "once"   },
+    -- { cmd = "feh --bg-fill ~/wallpaper.jpg", policy = "always" },
 }
 
--- Window rules (workspace is 1-indexed)
+-- ============================================================
+-- WINDOW RULES
+-- Match by class and/or instance (case-insensitive).
+-- workspace: 1-indexed workspace number
+-- isfloating: true to float the window on map
+-- ============================================================
 siren.rules = {
-    { class = "firefox", workspace = 2 },
+    { class = "firefox",          workspace = 2              },
+    { class = "code",             workspace = 3              },
+    { class = "steam",            isfloating = true          },
+    { class = "pavucontrol",      isfloating = true          },
+    { instance = "gimp",          isfloating = true          },
+    { class = "mpv",   instance = "mpv", isfloating = true   },
 }
 
--- Keybindings
+-- ============================================================
+-- KEYBINDINGS
+-- Use siren.modifier as "mod". Combine with shift/ctrl/alt.
+-- ============================================================
 siren.binds = {
-    { "mod+Return",      function() siren.spawn("xterm") end },
-    { "mod+p",           function()
+    -- Launch terminal
+    { "mod+Return",       function() siren.spawn("xterm") end },
+    -- Launcher (dmenu)
+    { "mod+p",            function()
         local t = siren.theme_get()
         local m = siren.monitor.focused()
         siren.spawn(string.format(
@@ -106,33 +268,82 @@ siren.binds = {
             m.index, t.font, t.bg, t.fg, t.accent, t.bg))
     end },
 
-    { "mod+shift+q",     function() siren.windows.close() end },
+    -- Close focused window
+    { "mod+shift+q",      function() siren.windows.close() end },
 
-    { "mod+j",           function() siren.windows.focus_next() end },
-    { "mod+k",           function() siren.windows.focus_prev() end },
-    { "mod+shift+Return",function() siren.windows.zoom() end },
-    { "mod+shift+space", function() siren.windows.toggle_floating() end },
+    -- Window focus
+    { "mod+j",            function() siren.windows.focus_next() end },
+    { "mod+k",            function() siren.windows.focus_prev() end },
 
-    { "mod+h",           function() siren.windows.adj_master_factor(-0.05) end },
-    { "mod+l",           function() siren.windows.adj_master_factor( 0.05) end },
-    { "mod+i",           function() siren.windows.inc_master( 1) end },
-    { "mod+d",           function() siren.windows.inc_master(-1) end },
+    -- Swap focused window with master
+    { "mod+shift+Return", function() siren.windows.zoom() end },
 
-    { "mod+m",           function() siren.windows.set_layout("monocle") end },
-    { "mod+t",           function() siren.windows.set_layout("tile") end },
+    -- Toggle floating
+    { "mod+shift+space",  function() siren.windows.toggle_floating() end },
 
-    { "mod+r",           function() siren.reload() end },
-    { "mod+shift+r",     function() siren.restart() end },
+    -- Master area sizing
+    { "mod+h",            function() siren.windows.adj_master_factor(-0.05) end },
+    { "mod+l",            function() siren.windows.adj_master_factor( 0.05) end },
+    { "mod+i",            function() siren.windows.inc_master( 1) end },
+    { "mod+d",            function() siren.windows.inc_master(-1) end },
+
+    -- Layout switch
+    { "mod+m",            function() siren.windows.set_layout("monocle") end },
+    { "mod+t",            function() siren.windows.set_layout("tile") end },
+
+    -- WM control
+    { "mod+r",            function() siren.reload() end },
+    { "mod+shift+r",      function() siren.restart() end },
+
+    -- Spawn with arguments
+    { "mod+shift+Return", function() siren.spawn("xterm -e htop") end },
+
+    -- Spawn on focused monitor using siren.monitor.focused()
+    { "mod+p", function()
+        local t = siren.theme_get()
+        local m = siren.monitor.focused()
+        siren.spawn(string.format(
+            "dmenu_run -m %d -fn '%s' -nb '%s' -nf '%s' -sb '%s' -sf '%s'",
+            m.index, t.font, t.bg, t.fg, t.accent, t.bg))
+    end },
+
+    -- Conditional binding: switch layout based on current state
+    { "mod+space", function()
+        -- Toggle between tile and monocle
+        -- (store state in a Lua upvalue)
+        siren.windows.set_layout("tile")
+    end },
+
+    -- Multi-step Lua logic in a binding
+    { "mod+shift+m", function()
+        -- Move window to next monitor's active workspace
+        local mons = siren.monitor.list()
+        local cur  = siren.monitor.focused()
+        if #mons < 2 then return end
+        local next_idx = (cur.index % #mons) + 1  -- 1-indexed next monitor
+        siren.windows.move_to_monitor(next_idx)
+        siren.monitor.focus(next_idx)
+    end },
 }
 
--- Workspace switch and move bindings (1–9)
+-- Workspace switch and window move (1–9)
 for i = 1, 9 do
     table.insert(siren.binds, { "mod+"       .. i, function() siren.workspace.switch(i) end })
     table.insert(siren.binds, { "mod+shift+" .. i, function() siren.windows.move_to(i)  end })
 end
 
--- Monitor focus and window move bindings (mod+ctrl+1..8; invalid indices silently ignored)
+-- Monitor focus and window move (mod+ctrl+1..8)
 for i = 1, 8 do
-    table.insert(siren.binds, { "mod+ctrl+"       .. i, function() siren.monitor.focus(i) end })
+    table.insert(siren.binds, { "mod+ctrl+"       .. i, function() siren.monitor.focus(i)           end })
     table.insert(siren.binds, { "mod+ctrl+shift+" .. i, function() siren.windows.move_to_monitor(i) end })
+end
+
+-- Dynamic bindings generated from a table — e.g. named app launchers
+local apps = {
+    { key = "mod+shift+b", cmd = "librewolf"  },
+    { key = "mod+shift+f", cmd = "thunar"     },
+    { key = "mod+shift+d", cmd = "vesktop"    },
+}
+for _, app in ipairs(apps) do
+    table.insert(siren.binds, { app.key, function() siren.spawn(app.cmd) end })
 end

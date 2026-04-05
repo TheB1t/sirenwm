@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <climits>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <string>
 #include <log.hpp>
 #include <backend/backend.hpp>
@@ -81,6 +82,35 @@ int main(int argc, char** argv) {
     std::string cfg_path = "init.lua";
     if (home)
         cfg_path = std::string(home) + "/.config/sirenwm/init.lua";
+
+    // If user config doesn't exist, fall back to the installed default.
+    {
+        struct stat st {};
+        if (stat(cfg_path.c_str(), &st) != 0) {
+            auto try_default = [](const std::string& dir) -> std::string {
+                std::string p = dir + "/sirenwm/init.lua.default";
+                struct stat s {};
+                return (stat(p.c_str(), &s) == 0) ? p : "";
+            };
+            std::string fallback;
+            if (const char* xdg = std::getenv("XDG_DATA_DIRS")) {
+                std::string dirs(xdg);
+                for (std::string::size_type pos = 0, end; fallback.empty();) {
+                    end      = dirs.find(':', pos);
+                    fallback = try_default(dirs.substr(pos, end == std::string::npos ? end : end - pos));
+                    if (end == std::string::npos) break;
+                    pos = end + 1;
+                }
+            }
+            if (fallback.empty()) fallback = try_default("/usr/local/share");
+            if (fallback.empty()) fallback = try_default("/usr/share");
+
+            if (!fallback.empty()) {
+                LOG_INFO("No user config found — using default from %s", fallback.c_str());
+                cfg_path = fallback;
+            }
+        }
+    }
 
     // 1. Load config — runs Lua config declarations and module registrations.
     if (!config.load(cfg_path, core, runtime)) {

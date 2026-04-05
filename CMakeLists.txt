@@ -99,3 +99,25 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     -Wl,--no-whole-archive
     dl
 )
+
+# ---------------------------------------------------------------------------
+# Install
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+
+install(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES init.lua.example init.lua.default
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/sirenwm
+)
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/sirenwm.desktop.in
+    ${CMAKE_BINARY_DIR}/sirenwm.desktop
+    @ONLY
+)
+install(FILES ${CMAKE_BINARY_DIR}/sirenwm.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/xsessions
+)

@@ -61,11 +61,19 @@ See [`CONFIG.md`](CONFIG.md) for the full configuration reference.
 
 ### 4. Run
 
-Add to your `.xinitrc` or display manager session:
+**xinitrc:** add to your `.xinitrc`:
 
 ```bash
 exec /path/to/output/sirenwm
 ```
+
+**System install** (puts `sirenwm` in PATH and registers the DM session):
+
+```bash
+sudo cmake --install build
+```
+
+Then select "SirenWM" from your display manager's session list.
 
 ## Documentation
 
