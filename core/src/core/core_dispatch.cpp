@@ -92,6 +92,27 @@ void Core::emit_focus_changed(WindowId window) {
     pending_core_events.push_back(event::FocusChanged{ window });
 }
 
+bool Core::focus_monitor_at_point(int x, int y) {
+    bool changed = wsman.focus_monitor_at_point(x, y);
+    if (!changed)
+        return false;
+
+    // Clear X focus on the old monitor: send focus to root.
+    emit_backend_effect(BackendEffectKind::FocusRoot);
+    emit_focus_changed(NO_WINDOW);
+
+    // Restore the last focused window on the new monitor, if any.
+    int      mon = wsman.get_focused_monitor();
+    int      ws  = wsman.active_workspace(mon);
+    WindowId win = wsman.last_focused_window(mon, ws);
+    if (win != NO_WINDOW && wsman.find_window_in_all(win)) {
+        wsman.focus_window(win);
+        emit_backend_effect(BackendEffectKind::FocusWindow, win);
+        emit_focus_changed(win);
+    }
+    return true;
+}
+
 void Core::emit_workspace_switched(int workspace_id) {
     pending_core_events.push_back(event::WorkspaceSwitched{ workspace_id });
 }
@@ -188,12 +209,26 @@ bool Core::dispatch(const command::FocusWindow& cmd) {
 }
 
 bool Core::dispatch(const command::SwitchWorkspace& cmd) {
+    // Capture target monitor before switch_to so we know if it's the focused one.
+    int target_mon = cmd.monitor_index.has_value() ? *cmd.monitor_index
+                   : wsman.monitor_of_workspace(cmd.workspace_id);
+    if (target_mon < 0)
+        target_mon = wsman.get_focused_monitor();
+
     bool switched = wsman.switch_to(cmd.workspace_id, settings.monitor_aliases,
             cmd.monitor_index.has_value() ? *cmd.monitor_index : -1,
             settings.monitor_compose);
     if (!switched)
         return false;
-    reconcile();
+
+    sync_workspace_visibility();
+    arrange();
+
+    // Only update X focus when switching workspace on the focused monitor.
+    // Switching on a background monitor must not steal keyboard input.
+    if (target_mon == wsman.get_focused_monitor())
+        sync_current_focus();
+
     emit_workspace_switched(cmd.workspace_id);
     return true;
 }
@@ -529,12 +564,30 @@ bool Core::dispatch(const command::FocusMonitor& cmd) {
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
         return false;
-    bool ok = dispatch(command::SwitchWorkspace{ mon->active_ws, n });
-    if (ok)
-        emit_warp_pointer(
-            (int16_t)(mon->x + mon->width  / 2),
-            (int16_t)(mon->y + mon->height / 2));
-    return ok;
+
+    int old_mon = wsman.get_focused_monitor();
+    if (n != old_mon) {
+        // Clear X focus on the old monitor.
+        emit_backend_effect(BackendEffectKind::FocusRoot);
+        emit_focus_changed(NO_WINDOW);
+
+        wsman.set_focused_monitor(n);
+
+        // Restore last focused window on the new monitor.
+        WindowId win = wsman.last_focused_window(n, mon->active_ws);
+        if (win != NO_WINDOW && wsman.find_window_in_all(win)) {
+            wsman.focus_window(win);
+            emit_backend_effect(BackendEffectKind::FocusWindow, win);
+            emit_focus_changed(win);
+        } else {
+            sync_current_focus();
+        }
+    }
+
+    emit_warp_pointer(
+        (int16_t)(mon->x + mon->width  / 2),
+        (int16_t)(mon->y + mon->height / 2));
+    return true;
 }
 
 bool Core::dispatch(const command::MoveWindowToMonitor& cmd) {

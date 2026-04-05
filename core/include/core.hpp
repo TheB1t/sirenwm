@@ -231,15 +231,19 @@ class Core {
         }
         const FocusState& focus_state()       const { return wsman.get_focus_state(); }
         int focused_monitor_index()           const { return wsman.get_focused_monitor(); }
-        bool focus_monitor_at_point(int x, int y) {
-            return wsman.focus_monitor_at_point(x, y);
-        }
+        bool focus_monitor_at_point(int x, int y);
         int workspace_count()         const { return (int)workspace_states().size(); }
 
         std::vector<WindowId> all_window_ids() const;
 
         WindowStateRef focused_window_state() const {
-            WindowId w = wsman.get_focus_state().window;
+            int mon  = wsman.get_focused_monitor();
+            int ws   = wsman.active_workspace(mon);
+            WindowId w = wsman.last_focused_window(mon, ws);
+            if (w == NO_WINDOW) {
+                // Fall back to workspace cursor (covers fresh windows not yet recorded).
+                w = wsman.get_focus_state().window;
+            }
             if (w == NO_WINDOW)
                 return nullptr;
             return wsman.find_window_in_all(w);

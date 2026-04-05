@@ -41,6 +41,11 @@ struct FocusState {
     WindowId window  = NO_WINDOW;
 };
 
+// Per-monitor focus: remembers the last focused window per workspace.
+struct MonitorFocusState {
+    std::unordered_map<int, WindowId> last_window_per_ws;
+};
+
 class WorkspaceManager {
     private:
         std::vector<Workspace> workspaces;
@@ -59,7 +64,12 @@ class WorkspaceManager {
         std::unordered_map<WindowId, std::shared_ptr<WindowState> > window_index;
         std::unordered_map<WindowId, int> window_workspace;
 
-        FocusState focus_;
+        FocusState focus_; // cache — always derived from focused_monitor_ + monitor_focus_
+
+        int                          focused_monitor_ = 0;
+        std::vector<MonitorFocusState> monitor_focus_;
+
+        void ensure_monitor_focus_size();
 
         inline bool is_ws_valid(int id) const {
             return id >= 0 && id < (int)workspaces.size();
@@ -162,8 +172,15 @@ class WorkspaceManager {
         Workspace&       workspace(int id);
         const Workspace& workspace(int id) const;
 
-        int get_focused_monitor() const { return focus_.monitor; }
+        int get_focused_monitor() const { return focused_monitor_; }
         const FocusState& get_focus_state() const { return focus_; }
+
+        // Returns the last focused window on mon_idx/ws_id, or NO_WINDOW.
+        // Validates that the window still exists before returning.
+        WindowId last_focused_window(int mon_idx, int ws_id) const;
+
+        // Explicitly set focused monitor (used by FocusMonitor command).
+        void set_focused_monitor(int mon_idx);
 
         const MonitorState* monitor_state(int idx) const {
             if (!is_mon_valid(idx))
