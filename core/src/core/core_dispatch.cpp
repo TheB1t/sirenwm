@@ -150,7 +150,7 @@ void Core::arrange() {
                 // Fixed-size windows (min==max hints): honour their own size,
                 // only let the layout set the position.
                 auto w = wsman.find_window_in_all(win);
-                if (w && w->wm_fixed_size && w->width > 0 && w->height > 0) {
+                if (w && w->size_locked && w->width > 0 && w->height > 0) {
                     width  = w->width;
                     height = w->height;
                 }
@@ -405,8 +405,8 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     bool wm_borderless     = !self_managed && h.covers_monitor && (h.no_decorations || h.fixed_size);
     bool will_be_borderless = self_managed || wm_borderless;
 
-    w->wm_fixed_size     = h.fixed_size;
-    w->wm_never_focus    = h.never_focus;
+    w->size_locked       = h.fixed_size;
+    w->no_input_focus    = h.never_focus;
     w->preserve_position = h.static_gravity;
 
     w->self_managed          = self_managed;
@@ -428,7 +428,7 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
         dispatch(command::SetWindowFloating{ cmd.window, true });
 
     // Fixed-size non-borderless windows float.
-    if (!w->floating && !w->borderless && w->wm_fixed_size && !will_be_borderless)
+    if (!w->floating && !w->borderless && w->size_locked && !will_be_borderless)
         dispatch(command::SetWindowFloating{ cmd.window, true });
 
     return true;

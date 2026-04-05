@@ -152,7 +152,7 @@ void X11Backend::focus_window(WindowId win) {
     auto window = core.window_state_any(win);
 
     // Respect WM_HINTS.input: if explicitly False, skip xcb_set_input_focus.
-    if (!window || !window->wm_never_focus) {
+    if (!window || !window->no_input_focus) {
         xcb_set_input_focus(xconn.raw_conn(),
             XCB_INPUT_FOCUS_POINTER_ROOT, win, last_event_time_);
         xconn.set_property(root_window, NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, win);

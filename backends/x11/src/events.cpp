@@ -359,7 +359,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
 
         const auto& mons = core.monitor_states();
         if (target_mon >= 0 && target_mon < (int)mons.size()) {
-            bool center = (mapped_window && mapped_window->is_dialog()) || (mapped_window && mapped_window->wm_fixed_size);
+            bool center = (mapped_window && mapped_window->is_dialog()) || (mapped_window && mapped_window->size_locked);
             place_window_on_monitor(core, xconn, ev->window, mons[target_mon], center);
         }
     }
@@ -725,7 +725,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
 
         // Fixed-size windows: clamp position to keep them on their monitor.
         // Skip for static_gravity/borderless — client may intentionally position off-edge.
-        if (!borderless_fs && window->wm_fixed_size && !window->preserve_position) {
+        if (!borderless_fs && window->size_locked && !window->preserve_position) {
             int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
             const auto& mons    = core.monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
