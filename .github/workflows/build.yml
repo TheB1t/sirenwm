@@ -26,7 +26,7 @@ jobs:
             cmake make pkg-config g++ \
             libx11-dev libx11-xcb-dev \
             libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
-            libxkbcommon-dev libxkbfile-dev liblua5.4-dev \
+            libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
             libcairo2-dev libcairo-gobject2 libpango1.0-dev \
             libfontconfig1-dev libfreetype-dev libpng-dev \
             libspdlog-dev
@@ -57,7 +57,7 @@ jobs:
             cmake make pkg-config g++ \
             libx11-dev libx11-xcb-dev \
             libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
-            libxkbcommon-dev libxkbfile-dev liblua5.4-dev \
+            libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
             libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev libfreetype-dev libpng-dev \
             libspdlog-dev
@@ -79,9 +79,8 @@ jobs:
         run: |
           dnf install -y \
             cmake make pkgconf gcc-c++ \
-            libX11-devel libxcb-devel \
-            xcb-util-keysyms-devel \
-            libxkbcommon-devel libxkbfile-devel lua-devel \
+            libX11-devel libxcb-devel xcb-util-keysyms-devel \
+            libxkbcommon-devel libxkbfile-devel libXfixes-devel lua-devel \
             cairo-devel pango-devel \
             fontconfig-devel freetype-devel libpng-devel \
             spdlog-devel
@@ -105,7 +104,7 @@ jobs:
           pacman -S --noconfirm \
             cmake make pkgconf gcc \
             libx11 libxcb xcb-util-keysyms \
-            libxkbcommon libxkbfile lua \
+            libxkbcommon libxkbfile libxfixes lua \
             cairo pango fontconfig freetype2 libpng \
             spdlog
 

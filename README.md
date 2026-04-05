@@ -33,8 +33,8 @@ sudo apt install \
   cmake pkg-config g++ \
   libx11-dev libx11-xcb-dev \
   libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
-  libxkbcommon-dev liblua5.4-dev \
-  libcairo2-dev libpango1.0-dev libfontconfig1-dev
+  libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
+  libcairo2-dev libpango1.0-dev libfontconfig1-dev libspdlog-dev
 ```
 
 ### 2. Build
