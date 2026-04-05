@@ -61,8 +61,11 @@ void X11Backend::apply_core_backend_effects() {
     for (const auto& e : effects) {
         switch (e.kind) {
             case BackendEffectKind::MapWindow:
-                if (e.window != NO_WINDOW)
+                if (e.window != NO_WINDOW) {
                     xconn.map_window(e.window);
+                    // Sync EWMH state for workspace-driven maps (no MapNotify triggers notify).
+                    notify(event::WindowMapped{ e.window });
+                }
                 break;
             case BackendEffectKind::UnmapWindow:
                 if (e.window != NO_WINDOW) {
