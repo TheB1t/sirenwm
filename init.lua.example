@@ -227,14 +227,14 @@ siren.wallpaper = {
 
 -- ============================================================
 -- AUTOSTART PROCESSES
--- policy: "once"   — spawn only if not already running
---         "always" — always spawn at each start/reload
---         "daemon" — spawn once, restart if it dies
+-- policy: "once"             — spawn only if not already running
+--         "restart"          — always spawn, restart if it dies
+--         "restart-on-error" — restart only if it exits with non-zero code
 -- ============================================================
 siren.autostart = {
-    { cmd = "picom --experimental-backends", policy = "once"   },
-    { cmd = "dunst",                         policy = "once"   },
-    -- { cmd = "feh --bg-fill ~/wallpaper.jpg", policy = "always" },
+    { cmd = "picom --experimental-backends", policy = "once"    },
+    { cmd = "dunst",                         policy = "once"    },
+    -- { cmd = "some-daemon",                policy = "restart" },
 }
 
 -- ============================================================
