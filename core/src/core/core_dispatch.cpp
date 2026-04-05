@@ -395,19 +395,20 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     w->wm_instance       = cmd.wm_instance;
     w->wm_class          = cmd.wm_class;
     w->type              = cmd.type;
-    w->wm_fixed_size     = cmd.wm_fixed_size;
-    w->wm_never_focus    = cmd.wm_never_focus;
-    w->preserve_position = cmd.preserve_position;
-    w->wm_no_decorations = cmd.wm_no_decorations;
 
-    // Classify from geometry facts supplied by the backend.
+    // Classify from geometry hints supplied by the backend.
     // Self-managed: client had _NET_WM_STATE_FULLSCREEN before MapRequest and
     //   covers the monitor (not XEMBED) — client controls its own geometry.
     // WM-borderless: WM pins geometry to monitor (MOTIF no-decos or fixed-size covers monitor).
-    bool self_managed  = cmd.pre_fullscreen_state && !cmd.is_xembed && cmd.covers_monitor;
-    bool wm_borderless = !self_managed && cmd.covers_monitor &&
-        (cmd.wm_no_decorations || cmd.wm_fixed_size);
+    const auto& h = cmd.hints;
+    bool self_managed      = h.pre_fullscreen && !h.is_xembed && h.covers_monitor;
+    bool wm_borderless     = !self_managed && h.covers_monitor && (h.no_decorations || h.fixed_size);
     bool will_be_borderless = self_managed || wm_borderless;
+
+    w->wm_fixed_size     = h.fixed_size;
+    w->wm_never_focus    = h.never_focus;
+    w->preserve_position = h.static_gravity;
+    w->wm_no_decorations = h.no_decorations;
 
     w->self_managed          = self_managed;
     w->promote_to_borderless = will_be_borderless;

@@ -150,18 +150,20 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
 
 static void apply_window_metadata(Core& core, WindowId window, WindowMetadata meta) {
     (void)core.dispatch(command::SetWindowMetadata{
-            .window               = window,
-            .wm_instance          = std::move(meta.wm_instance),
-            .wm_class             = std::move(meta.wm_class),
-            .type                 = meta.type,
-            .wm_fixed_size        = meta.wm_fixed_size,
-            .wm_never_focus       = meta.wm_never_focus,
-            .preserve_position    = meta.wm_static_gravity,
-            .wm_no_decorations    = meta.wm_no_decorations,
-            .covers_monitor       = meta.covers_monitor,
-            .pre_fullscreen_state = meta.pre_fullscreen_state,
-            .is_xembed            = meta.is_xembed,
-            .transient_for        = meta.transient_for,
+            .window        = window,
+            .wm_instance   = std::move(meta.wm_instance),
+            .wm_class      = std::move(meta.wm_class),
+            .type          = meta.type,
+            .hints = {
+                .no_decorations = meta.wm_no_decorations,
+                .fixed_size     = meta.wm_fixed_size,
+                .never_focus    = meta.wm_never_focus,
+                .static_gravity = meta.wm_static_gravity,
+                .covers_monitor = meta.covers_monitor,
+                .pre_fullscreen = meta.pre_fullscreen_state,
+                .is_xembed      = meta.is_xembed,
+            },
+            .transient_for = meta.transient_for,
         });
 }
 
@@ -543,9 +545,11 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
             ev->atom == motif_atom;
         if (refresh_meta) {
             auto meta = read_window_metadata(xconn, ev->window);
-            // Geometry facts are set once at MapRequest; preserve them on property refresh.
+            // Geometry facts are set once at MapRequest; reconstruct from current state on refresh.
             meta.pre_fullscreen_state = window->self_managed;
             meta.covers_monitor       = window->self_managed || window->borderless;
+            // (pre_fullscreen_state and covers_monitor are repurposed proxies here, not literal
+            //  X11 facts — they preserve the classification outcome from the original MapRequest)
             if (ev->atom == motif_atom) {
                 LOG_INFO("PropertyNotify(%d): _MOTIF_WM_HINTS changed, no_decos=%d",
                     ev->window, (int)meta.wm_no_decorations);

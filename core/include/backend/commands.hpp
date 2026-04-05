@@ -57,20 +57,25 @@ struct AssignWindowWorkspace {
     int      workspace_id = -1;
 };
 
+// Raw observable facts about a window supplied by the backend at map time.
+// No policy decisions — just what the protocol says.
+struct WindowHints {
+    bool no_decorations = false; // _MOTIF_WM_HINTS decorations == 0
+    bool fixed_size     = false; // min == max in WM_NORMAL_HINTS
+    bool never_focus    = false; // WM_HINTS.input == False
+    bool static_gravity = false; // WM_NORMAL_HINTS StaticGravity
+    bool covers_monitor = false; // outer size >= any monitor usable area at map time
+    bool pre_fullscreen = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
+    bool is_xembed      = false; // _XEMBED_INFO present — not self-managed
+};
+
 struct SetWindowMetadata {
     WindowId     window = NO_WINDOW;
     std::string  wm_instance;
     std::string  wm_class;
-    WindowType   type              = WindowType::Normal;
-    bool         wm_fixed_size     = false;
-    bool         wm_never_focus    = false;
-    bool         preserve_position  = false; // X11: WM_NORMAL_HINTS StaticGravity
-    bool         wm_no_decorations = false;
-    // Geometry facts: backend supplies these at map time; core classifies from them.
-    bool         covers_monitor       = false; // outer size >= monitor usable area
-    bool         pre_fullscreen_state = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
-    bool         is_xembed            = false; // _XEMBED_INFO present — not self-managed
-    WindowId     transient_for        = NO_WINDOW;
+    WindowType   type          = WindowType::Normal;
+    WindowHints  hints;
+    WindowId     transient_for = NO_WINDOW;
 };
 
 struct SetWindowMapped {

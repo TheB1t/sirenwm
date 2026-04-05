@@ -45,15 +45,17 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             });
 
         (void)core.dispatch(command::SetWindowMetadata{
-                .window            = snap.window,
-                .wm_instance       = snap.wm_instance,
-                .wm_class          = snap.wm_class,
-                .type              = snap.type,
-                .wm_fixed_size     = snap.wm_fixed_size,
-                .wm_no_decorations = snap.wm_no_decorations,
-                // covers_monitor intentionally omitted: geometry classification happens
-                // at MapRequest time. Borderless state is restored explicitly via
-                // SetWindowBorderless for from_restart windows.
+                .window      = snap.window,
+                .wm_instance = snap.wm_instance,
+                .wm_class    = snap.wm_class,
+                .type        = snap.type,
+                .hints = {
+                    .no_decorations = snap.wm_no_decorations,
+                    .fixed_size     = snap.wm_fixed_size,
+                    // covers_monitor/pre_fullscreen/is_xembed intentionally zero:
+                    // geometry classification happens at MapRequest. Borderless is
+                    // restored explicitly via SetWindowBorderless for from_restart windows.
+                },
             });
 
         (void)core.dispatch(command::SetWindowMapped{
