@@ -19,6 +19,7 @@ SirenWM is a keyboard-first tiling WM for X11. Configuration is plain Lua — no
 - Hot config reload and exec-restart with Lua syntax pre-check
 - Cairo/Pango status bar with widget API and system tray (XEmbed)
 - Fullscreen and borderless game support (EWMH, MOTIF, Wine/Proton, SDL2, LibGDX)
+- Pointer barriers: cursor confined to monitor while a fullscreen or borderless window is active
 - Mod+drag move and resize for floating windows
 - Autostart process management
 - ICCCM WM_DELETE_WINDOW and WM_TAKE_FOCUS support
