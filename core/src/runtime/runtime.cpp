@@ -50,8 +50,8 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .wm_class    = snap.wm_class,
                 .type        = snap.type,
                 .hints = {
-                    .no_decorations = snap.wm_no_decorations,
-                    .fixed_size     = snap.wm_fixed_size,
+                    .no_decorations = snap.hints.no_decorations,
+                    .fixed_size     = snap.hints.fixed_size,
                     // covers_monitor/pre_fullscreen/is_xembed intentionally zero:
                     // geometry classification happens at MapRequest. Borderless is
                     // restored explicitly via SetWindowBorderless for from_restart windows.

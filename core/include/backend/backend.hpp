@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <backend/commands.hpp>
 #include <backend/events.hpp>
 #include <backend/render_port.hpp>
 #include <backend/tray_host.hpp>
@@ -53,8 +54,7 @@ struct ExistingWindowSnapshot {
     std::string  wm_instance;
     std::string  wm_class;
     WindowType   type             = WindowType::Normal;
-    bool         wm_fixed_size    = false;
-    bool         wm_no_decorations = false;
+    command::WindowHints  hints;
 };
 
 class Backend {

@@ -233,8 +233,8 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         snap.wm_instance        = std::move(meta.wm_instance);
         snap.wm_class           = std::move(meta.wm_class);
         snap.type               = meta.type;
-        snap.wm_fixed_size      = meta.wm_fixed_size;
-        snap.wm_no_decorations  = meta.wm_no_decorations;
+        snap.hints.fixed_size     = meta.wm_fixed_size;
+        snap.hints.no_decorations = meta.wm_no_decorations;
         if (from_restart) {
             snap.restart_workspace_id      = it_state->second.ws_id;
             snap.restart_floating          = it_state->second.floating;
