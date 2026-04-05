@@ -25,23 +25,23 @@ void apply_window_flush(XConnection& xconn, const WindowFlush& flush, const Wind
     uint32_t values[7] = {};
     int      n         = 0;
 
-    if (flush.x_dirty) {
+    if (flush.dirty & WindowFlush::X) {
         mask       |= XCB_CONFIG_WINDOW_X;
         values[n++] = static_cast<uint32_t>(state.x);
     }
-    if (flush.y_dirty) {
+    if (flush.dirty & WindowFlush::Y) {
         mask       |= XCB_CONFIG_WINDOW_Y;
         values[n++] = static_cast<uint32_t>(state.y);
     }
-    if (flush.width_dirty) {
+    if (flush.dirty & WindowFlush::Width) {
         mask       |= XCB_CONFIG_WINDOW_WIDTH;
         values[n++] = state.width;
     }
-    if (flush.height_dirty) {
+    if (flush.dirty & WindowFlush::Height) {
         mask       |= XCB_CONFIG_WINDOW_HEIGHT;
         values[n++] = state.height;
     }
-    if (flush.border_width_dirty) {
+    if (flush.dirty & WindowFlush::BorderWidth) {
         mask       |= XCB_CONFIG_WINDOW_BORDER_WIDTH;
         values[n++] = state.border_width;
     }

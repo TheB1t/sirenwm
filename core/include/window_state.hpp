@@ -20,23 +20,24 @@ enum class WindowType {
 struct WindowState {
     WindowId    id                         = NO_WINDOW;
 
-    bool        visible                    = false;
+    bool        mapped                     = false; // window is mapped in X11 (MapNotify received)
+    bool        hidden_by_workspace        = false; // hidden because its workspace is inactive
+    bool        hidden_explicitly          = false; // hidden via HideWindow command
     bool        floating                   = false;
     bool        fullscreen                 = false;
     bool        borderless                 = false;
     bool        floating_before_fullscreen = false;
     uint32_t    border_before_fullscreen   = 0;
     bool        suppress_focus_once        = false;
-    bool        hidden_by_workspace        = false;
 
     std::string wm_instance;
     std::string wm_class;
     WindowType  type                    = WindowType::Normal;
     bool        wm_fixed_size           = false;
     bool        wm_never_focus          = false; // WM_HINTS.input == False
-    bool        wm_static_gravity       = false; // WM_NORMAL_HINTS win_gravity == StaticGravity
+    bool        preserve_position        = false; // client wants to keep physical coordinates (X11: StaticGravity)
     bool        wm_no_decorations       = false; // _MOTIF_WM_HINTS decorations == 0
-    bool        fullscreen_self_managed = false; // client owns geometry (pre-map _NET_WM_STATE_FULLSCREEN)
+    bool        self_managed            = false; // client owns geometry; WM must not override position/size
     bool        promote_to_borderless   = false; // set by core at MapRequest: backend should make this borderless
 
     int32_t     x            = 0;
@@ -45,5 +46,7 @@ struct WindowState {
     uint32_t    height       = 0;
     uint32_t    border_width = 0;
 
-    bool is_dialog() const { return type == WindowType::Dialog || type == WindowType::Modal; }
+    bool is_visible()      const { return mapped && !hidden_by_workspace && !hidden_explicitly; }
+    bool is_dialog()       const { return type == WindowType::Dialog || type == WindowType::Modal; }
+    bool is_self_managed() const { return self_managed || preserve_position; }
 };

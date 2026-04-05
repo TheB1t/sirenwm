@@ -156,7 +156,7 @@ static void apply_window_metadata(Core& core, WindowId window, WindowMetadata me
             .type                 = meta.type,
             .wm_fixed_size        = meta.wm_fixed_size,
             .wm_never_focus       = meta.wm_never_focus,
-            .wm_static_gravity    = meta.wm_static_gravity,
+            .preserve_position    = meta.wm_static_gravity,
             .wm_no_decorations    = meta.wm_no_decorations,
             .covers_monitor       = meta.covers_monitor,
             .pre_fullscreen_state = meta.pre_fullscreen_state,
@@ -269,7 +269,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
 
         meta.transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
 
-        LOG_INFO("MapRequest(%d): class='%s' no_decos=%d static_grav=%d fixed=%d pre_fs=%d covers=%d transient=%d",
+        LOG_INFO("MapRequest(%d): class='%s' no_decos=%d preserve_pos=%d fixed=%d pre_fs=%d covers=%d transient=%d",
             ev->window, meta.wm_class.c_str(),
             (int)meta.wm_no_decorations, (int)meta.wm_static_gravity,
             (int)meta.wm_fixed_size, (int)meta.pre_fullscreen_state,
@@ -307,12 +307,12 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             int         phy_h     = mon.height + top + bottom;
             LOG_INFO("MapRequest(%d): %s, promoting to borderless at %d,%d %dx%d",
                 ev->window,
-                mapped_window->fullscreen_self_managed ? "self-managed (Wine/Proton)" : "borderless",
+                mapped_window->self_managed ? "self-managed (Wine/Proton)" : "borderless",
                 mon.x, phy_y, mon.width, phy_h);
             (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
             (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
             // Self-managed: client controls its own geometry, do not override.
-            if (!mapped_window->fullscreen_self_managed) {
+            if (!mapped_window->self_managed) {
                 (void)core.dispatch(command::SetWindowGeometry{
                     ev->window, mon.x, phy_y, (uint32_t)mon.width, (uint32_t)phy_h });
             }
@@ -320,7 +320,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             mapped_window = core.window_state_any(ev->window);
         }
     } else if (mapped_window && mapped_window->borderless &&
-               !mapped_window->fullscreen_self_managed) {
+               !mapped_window->self_managed) {
         // Re-map of an already-borderless window: repin geometry to prevent drift.
         int         mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons    = core.monitor_states();
@@ -383,7 +383,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         !suppress_focus &&
         ws_visible &&
         mapped_window &&
-        mapped_window->visible) {
+        mapped_window->is_visible()) {
         (void)core.dispatch(command::FocusWindow{ ev->window });
         xconn.focus_window(ev->window);
         notify(event::FocusChanged{ ev->window });
@@ -404,7 +404,7 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
     bool pending_wm_unmap = pending_wm_unmaps_.count(ev->window) > 0 &&
                             pending_wm_unmaps_.at(ev->window) > 0;
 
-    (void)core.dispatch(command::SetWindowVisible{ ev->window, !pending_wm_unmap });
+    (void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
     if (!pending_wm_unmap)
         (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
 
@@ -465,7 +465,7 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     }
 
     bool ws_hidden_unmap = core.is_window_hidden_by_workspace(ev->window);
-    (void)core.dispatch(command::SetWindowVisible{ ev->window, false });
+    (void)core.dispatch(command::SetWindowMapped{ ev->window, false });
 
     if (ws_hidden_unmap) {
         runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
@@ -519,14 +519,14 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
         if (refresh_meta) {
             auto meta = read_window_metadata(xconn, ev->window);
             // Geometry facts are set once at MapRequest; preserve them on property refresh.
-            meta.pre_fullscreen_state = window->fullscreen_self_managed;
-            meta.covers_monitor       = window->fullscreen_self_managed || window->borderless;
+            meta.pre_fullscreen_state = window->self_managed;
+            meta.covers_monitor       = window->self_managed || window->borderless;
             if (ev->atom == motif_atom) {
                 LOG_INFO("PropertyNotify(%d): _MOTIF_WM_HINTS changed, no_decos=%d",
                     ev->window, (int)meta.wm_no_decorations);
                 // Promote to borderless if MOTIF says no decorations and we haven't yet.
                 if (meta.wm_no_decorations && !window->borderless) {
-                    if (window->fullscreen_self_managed) {
+                    if (window->self_managed) {
                         // Self-managed: mark borderless only, do not override geometry.
                         LOG_INFO("PropertyNotify(%d): MOTIF no-decorations (self-managed), marking borderless",
                             ev->window);
@@ -608,7 +608,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     // Tiled clients receive a synthetic ConfigureNotify with current WM-assigned geometry.
     bool floating       = core.is_window_floating(ev->window);
     bool borderless     = window->borderless;
-    bool static_gravity = window->wm_static_gravity;
+    bool static_gravity = window->preserve_position;
 
     if (m & XCB_CONFIG_WINDOW_BORDER_WIDTH)
         (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, ev->border_width });
@@ -666,7 +666,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         // WM-pinned windows (fullscreen, WM-placed borderless): reject geometry requests.
         bool pinned = (window->fullscreen && !borderless_fs) ||
             (window->borderless && (window->wm_no_decorations || window->wm_fixed_size) &&
-                !borderless_fs && !window->fullscreen_self_managed);
+                !borderless_fs && !window->self_managed);
         if (pinned) {
             send_synthetic_configure_notify(xconn, ev->window,
                 window->x, window->y,
@@ -697,7 +697,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
 
         // Fixed-size windows: clamp position to keep them on their monitor.
         // Skip for static_gravity/borderless — client may intentionally position off-edge.
-        if (!borderless_fs && window->wm_fixed_size && !window->wm_static_gravity) {
+        if (!borderless_fs && window->wm_fixed_size && !window->preserve_position) {
             int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
             const auto& mons    = core.monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
@@ -822,7 +822,7 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
     }
 
     auto window = core.window_state_any(ev->event);
-    if (!window || !window->visible)
+    if (!window || !window->is_visible())
         return;
 
     // Sync internal focus state only — do NOT call xconn.focus_window() here.
@@ -911,7 +911,7 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     // workspace are found even when focused_monitor hasn't been updated yet
     // (focused_monitor is only updated on button press / motion, not on enter).
     auto window = core.window_state_any(ev->event);
-    if (!window || !window->visible)
+    if (!window || !window->is_visible())
         return;
 
     // Keep focused_monitor in sync so subsequent workspace/layout ops target

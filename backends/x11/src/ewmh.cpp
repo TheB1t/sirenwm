@@ -68,7 +68,7 @@ void X11Backend::set_border_color(WindowId win, uint32_t pixel) {
 
 void X11Backend::restore_visible_focus() {
     WindowId win = NO_WINDOW;
-    if (auto focused = core.focused_window_state(); focused&& focused->visible) {
+    if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
         win = focused->id;
         xconn.focus_window(win);
     } else {
@@ -354,7 +354,7 @@ void X11Backend::notify(event::WindowMapped ev) {
         // breaks render child placement. wm_no_decorations windows are already
         // borderless — applying fullscreen on top would cause bars/tray to lower.
         bool skip_fullscreen = w && w->wm_no_decorations;
-        bool self_managed    = w && (w->wm_static_gravity || w->fullscreen_self_managed);
+        bool self_managed    = w && w->is_self_managed();
         if (!skip_fullscreen && ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
             if (self_managed)
                 (void)core.dispatch(command::SetWindowFullscreen{
@@ -432,7 +432,7 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
         if (!w) continue;
         auto win = w->id;
         if (core.is_window_hidden_by_workspace(win)) continue;
-        if (w->wm_static_gravity || w->fullscreen_self_managed) continue; // self-managed: skip geometry pin
+        if (w->is_self_managed()) continue; // client owns geometry: skip fullscreen pin
         if (w->wm_no_decorations) continue; // already borderless; fullscreen would lower bars/tray
         if (!core.is_window_fullscreen(win) && ewmh_has_fullscreen_state(win))
             ewmh_apply_fullscreen(win, true);
@@ -464,8 +464,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
 
         // Self-managed windows control their own position; pinning to mon.x/mon.y breaks them.
         // no_decorations windows are already borderless — applying fullscreen would lower bars/tray.
-        bool self_managed = window->wm_static_gravity || window->fullscreen_self_managed
-            || window->wm_no_decorations;
+        bool self_managed = window->is_self_managed() || window->wm_no_decorations;
         if (enable) {
             if (!self_managed && should_apply_fullscreen_now(core, ev.window))
                 ewmh_apply_fullscreen(ev.window, true);
@@ -483,7 +482,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
     if (ev.type == NET_ACTIVE_WINDOW) {
         auto window = core.window_state_any(ev.window);
         if (!window) return false;
-        if (!window->visible) return true;
+        if (!window->is_visible()) return true;
 
         int ws_id = core.workspace_of_window(ev.window);
         // Do not force workspace jumps on external focus requests.

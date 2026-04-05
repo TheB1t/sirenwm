@@ -87,7 +87,7 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
         int  owner_mon = (it_owner != ws_owner_mon.end()) ? it_owner->second : -1;
 
         int  score     = 1;
-        if (w->visible)
+        if (w->is_visible())
             score += 100;
         if (owner_mon >= 0 && core_ref->active_workspace_on_monitor(owner_mon) == ws_id)
             score += 10;

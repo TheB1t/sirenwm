@@ -64,7 +64,7 @@ struct SetWindowMetadata {
     WindowType   type              = WindowType::Normal;
     bool         wm_fixed_size     = false;
     bool         wm_never_focus    = false;
-    bool         wm_static_gravity = false;
+    bool         preserve_position  = false; // X11: WM_NORMAL_HINTS StaticGravity
     bool         wm_no_decorations = false;
     // Geometry facts: backend supplies these at map time; core classifies from them.
     bool         covers_monitor       = false; // outer size >= monitor usable area
@@ -73,9 +73,9 @@ struct SetWindowMetadata {
     WindowId     transient_for        = NO_WINDOW;
 };
 
-struct SetWindowVisible {
-    WindowId window  = NO_WINDOW;
-    bool     visible = false;
+struct SetWindowMapped {
+    WindowId window = NO_WINDOW;
+    bool     mapped = false;
 };
 
 struct SetWindowHiddenByWorkspace {
@@ -191,7 +191,7 @@ using CoreCommand = std::variant<
     EnsureWindow,
     AssignWindowWorkspace,
     SetWindowMetadata,
-    SetWindowVisible,
+    SetWindowMapped,
     SetWindowHiddenByWorkspace,
     SetWindowSuppressFocusOnce,
     SetWindowFloating,

@@ -75,15 +75,22 @@ struct BackendEffect {
 };
 
 struct WindowFlush {
-    WindowId window             = NO_WINDOW;
-    bool     x_dirty            = false;
-    bool     y_dirty            = false;
-    bool     width_dirty        = false;
-    bool     height_dirty       = false;
-    bool     border_width_dirty = false;
-    bool has_config_changes() const {
-        return x_dirty || y_dirty || width_dirty || height_dirty || border_width_dirty;
-    }
+    enum Dirty : uint8_t {
+        X            = 1 << 0,
+        Y            = 1 << 1,
+        Width        = 1 << 2,
+        Height       = 1 << 3,
+        BorderWidth  = 1 << 4,
+        Geometry     = X | Y | Width | Height,
+        Position     = X | Y,
+        Size         = Width | Height,
+        All          = Geometry | BorderWidth,
+    };
+
+    WindowId window    = NO_WINDOW;
+    uint8_t  dirty     = 0;
+
+    bool has_config_changes() const { return dirty != 0; }
 };
 
 class Core {
@@ -108,13 +115,10 @@ class Core {
         void         emit_backend_effect(BackendEffectKind kind, WindowId window = NO_WINDOW);
         void         emit_warp_pointer(int16_t x, int16_t y);
         WindowFlush& ensure_window_flush(WindowId win);
-        void         mark_window_x(WindowId win);
-        void         mark_window_y(WindowId win);
-        void         mark_window_width(WindowId win);
-        void         mark_window_height(WindowId win);
-        void         mark_window_border_width(WindowId win);
+        void         mark_window_dirty(WindowId win, uint8_t bits);
         void         sync_workspace_visibility();
         void         sync_current_focus();
+        void         reconcile(); // sync_workspace_visibility + arrange + sync_current_focus
         void         emit_focus_changed(WindowId window);
         void         emit_workspace_switched(int workspace_id);
         void         emit_raise_docks();
@@ -173,7 +177,7 @@ class Core {
         bool dispatch(const command::EnsureWindow& cmd);
         bool dispatch(const command::AssignWindowWorkspace& cmd);
         bool dispatch(const command::SetWindowMetadata& cmd);
-        bool dispatch(const command::SetWindowVisible& cmd);
+        bool dispatch(const command::SetWindowMapped& cmd);
         bool dispatch(const command::SetWindowHiddenByWorkspace& cmd);
         bool dispatch(const command::SetWindowSuppressFocusOnce& cmd);
         bool dispatch(const command::SetWindowFloating& cmd);
@@ -287,10 +291,10 @@ class Core {
             for (auto& w : ws->windows) {
                 if (!w)
                     continue;
-                if (w->fullscreen && w->visible)
+                if (w->fullscreen && w->is_visible())
                     return true;
-                // Self-managed: fullscreen_self_managed+borderless, fullscreen flag stays false.
-                if (w->fullscreen_self_managed && w->borderless && w->visible)
+                // Self-managed fullscreen: client owns geometry, fullscreen flag stays false.
+                if (w->self_managed && w->borderless && w->is_visible())
                     return true;
             }
             return false;
@@ -308,7 +312,7 @@ class Core {
             for (auto& w : ws->windows) {
                 if (!w)
                     continue;
-                if (w->borderless && w->visible)
+                if (w->borderless && w->is_visible())
                     return true;
             }
             return false;
@@ -321,7 +325,7 @@ class Core {
 
         bool is_window_visible(WindowId win) const {
             auto w = wsman.find_window_in_all(win);
-            return w && w->visible;
+            return w && w->is_visible();
         }
 
         bool is_window_hidden_by_workspace(WindowId win) const {

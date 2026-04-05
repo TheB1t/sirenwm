@@ -39,21 +39,21 @@ bool Workspace::remove_window(WindowId win, std::shared_ptr<WindowState>* remove
 std::shared_ptr<WindowState> Workspace::focused() {
     bool any_visible = false;
     for (auto& w : windows)
-        if (w && w->visible) {
+        if (w && w->is_visible()) {
             any_visible = true;
             break;
         }
 
     if (current >= 0 && current < (int)windows.size()) {
         auto cur = windows[current];
-        if (cur && (!any_visible || cur->visible))
+        if (cur && (!any_visible || cur->is_visible()))
             return cur;
     }
 
     for (auto& w : windows) {
         if (!w)
             continue;
-        if (any_visible && !w->visible)
+        if (any_visible && !w->is_visible())
             continue;
         return w;
     }
@@ -64,14 +64,14 @@ std::shared_ptr<WindowState> Workspace::focused() {
 std::shared_ptr<WindowState> Workspace::advance_focus() {
     bool any_visible = false;
     for (auto& w : windows)
-        if (w && w->visible) {
+        if (w && w->is_visible()) {
             any_visible = true;
             break;
         }
 
     if (current >= 0 && current < (int)windows.size()) {
         auto cur = windows[current];
-        if (cur && (!any_visible || cur->visible))
+        if (cur && (!any_visible || cur->is_visible()))
             return cur;
     }
 
@@ -79,7 +79,7 @@ std::shared_ptr<WindowState> Workspace::advance_focus() {
         auto& w = windows[i];
         if (!w)
             continue;
-        if (any_visible && !w->visible)
+        if (any_visible && !w->is_visible())
             continue;
         current = i;
         return w;
@@ -91,21 +91,21 @@ std::shared_ptr<WindowState> Workspace::advance_focus() {
 std::shared_ptr<const WindowState> Workspace::focused() const {
     bool any_visible = false;
     for (const auto& w : windows)
-        if (w && w->visible) {
+        if (w && w->is_visible()) {
             any_visible = true;
             break;
         }
 
     if (current >= 0 && current < (int)windows.size()) {
         auto cur = windows[(size_t)current];
-        if (cur && (!any_visible || cur->visible))
+        if (cur && (!any_visible || cur->is_visible()))
             return cur;
     }
 
     for (const auto& w : windows) {
         if (!w)
             continue;
-        if (any_visible && !w->visible)
+        if (any_visible && !w->is_visible())
             continue;
         return w;
     }
@@ -118,7 +118,7 @@ void Workspace::focus_next() {
     if (n == 0) return;
     bool any_visible = false;
     for (auto& w : windows)
-        if (w && w->visible) {
+        if (w && w->is_visible()) {
             any_visible = true;
             break;
         }
@@ -126,7 +126,7 @@ void Workspace::focus_next() {
         int idx = (current + i) % n;
         if (!windows[idx])
             continue;
-        if (any_visible && !windows[idx]->visible)
+        if (any_visible && !windows[idx]->is_visible())
             continue;
         if (!windows[idx]->floating) {
             current = idx; return;
@@ -136,7 +136,7 @@ void Workspace::focus_next() {
         int idx = (current + i) % n;
         if (!windows[idx])
             continue;
-        if (any_visible && !windows[idx]->visible)
+        if (any_visible && !windows[idx]->is_visible())
             continue;
         current = idx;
         return;
@@ -148,7 +148,7 @@ void Workspace::focus_prev() {
     if (n == 0) return;
     bool any_visible = false;
     for (auto& w : windows)
-        if (w && w->visible) {
+        if (w && w->is_visible()) {
             any_visible = true;
             break;
         }
@@ -156,7 +156,7 @@ void Workspace::focus_prev() {
         int idx = (current - i + n) % n;
         if (!windows[idx])
             continue;
-        if (any_visible && !windows[idx]->visible)
+        if (any_visible && !windows[idx]->is_visible())
             continue;
         if (!windows[idx]->floating) {
             current = idx; return;
@@ -166,7 +166,7 @@ void Workspace::focus_prev() {
         int idx = (current - i + n) % n;
         if (!windows[idx])
             continue;
-        if (any_visible && !windows[idx]->visible)
+        if (any_visible && !windows[idx]->is_visible())
             continue;
         current = idx;
         return;

@@ -34,33 +34,9 @@ WindowFlush& Core::ensure_window_flush(WindowId win) {
 }
 
 
-void Core::mark_window_x(WindowId win) {
+void Core::mark_window_dirty(WindowId win, uint8_t bits) {
     auto& flush = ensure_window_flush(win);
-    flush.x_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
-
-void Core::mark_window_y(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.y_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
-
-void Core::mark_window_width(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.width_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
-
-void Core::mark_window_height(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.height_dirty = true;
-    emit_backend_effect(BackendEffectKind::UpdateWindow, win);
-}
-
-void Core::mark_window_border_width(WindowId win) {
-    auto& flush = ensure_window_flush(win);
-    flush.border_width_dirty = true;
+    flush.dirty |= bits;
     emit_backend_effect(BackendEffectKind::UpdateWindow, win);
 }
 
@@ -82,18 +58,19 @@ void Core::sync_workspace_visibility() {
         for (auto& w : ws.windows) {
             if (!w) continue;
             if (!v) {
-                if (w->visible) {
-                    w->hidden_by_workspace = true;
-                    w->visible             = false;
-                                emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
-                }
+                bool emit_unmap = !w->hidden_by_workspace && !w->hidden_explicitly && w->mapped;
+                w->hidden_by_workspace = true;
+                if (emit_unmap)
+                    emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
                 continue;
             }
 
             if (w->hidden_by_workspace) {
                 w->hidden_by_workspace = false;
-                w->visible             = true;
-                emit_backend_effect(BackendEffectKind::MapWindow, w->id);
+                if (!w->hidden_explicitly) {
+                    w->mapped = true;
+                    emit_backend_effect(BackendEffectKind::MapWindow, w->id);
+                }
             }
         }
     }
@@ -101,7 +78,7 @@ void Core::sync_workspace_visibility() {
 
 void Core::sync_current_focus() {
     auto f = wsman.current().advance_focus();
-    if (f && f->visible) {
+    if (f && f->is_visible()) {
         wsman.focus_window(f->id);
         emit_backend_effect(BackendEffectKind::FocusWindow, f->id);
         emit_focus_changed(f->id);
@@ -151,6 +128,12 @@ void Core::init(std::vector<Monitor> initial_monitors) {
         settings.monitor_compose);
 }
 
+void Core::reconcile() {
+    sync_workspace_visibility();
+    arrange();
+    sync_current_focus();
+}
+
 void Core::arrange() {
     if (!layouts.count(active_layout)) return;
     for (auto& mon : wsman.get_monitors()) {
@@ -158,8 +141,8 @@ void Core::arrange() {
         auto& ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->visible && !w->floating && !w->borderless && !w->wm_static_gravity &&
-                !w->fullscreen_self_managed) tiled.push_back(w->id);
+            if (w && w->is_visible() && !w->floating && !w->borderless && !w->preserve_position &&
+                !w->self_managed) tiled.push_back(w->id);
 
         layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
             uint32_t width, uint32_t height,
@@ -185,7 +168,7 @@ void Core::arrange() {
         // border_width would otherwise stay at 0 (no border drawn by X).
         // Fullscreen and borderless windows keep border_width=0.
         for (auto& w : ws.windows) {
-            if (!w || !w->visible || !w->floating || w->fullscreen || w->borderless) continue;
+            if (!w || !w->is_visible() || !w->floating || w->fullscreen || w->borderless) continue;
             if (w->border_width == settings.theme.border_thickness) continue;
             (void)dispatch(command::SetWindowBorderWidth{ w->id,
                                                           (uint32_t)settings.theme.border_thickness });
@@ -210,9 +193,7 @@ bool Core::dispatch(const command::SwitchWorkspace& cmd) {
             settings.monitor_compose);
     if (!switched)
         return false;
-    sync_workspace_visibility();
-    arrange();
-    sync_current_focus();
+    reconcile();
     emit_workspace_switched(cmd.workspace_id);
     return true;
 }
@@ -229,7 +210,7 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     // monitor — the game's D3D context is bound to the original monitor.
     // Only block if the window actually covers its monitor (true fullscreen),
     // not just any borderless window (dialogs, remote-viewer, etc.).
-    if (w->wm_static_gravity) {
+    if (w->preserve_position) {
         int src_mon = monitor_of_workspace(workspace_of_window(cmd.window));
         int dst_mon = monitor_of_workspace(cmd.workspace_id);
         if (src_mon != dst_mon) {
@@ -259,10 +240,7 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
             w->y      = std::max(0, dm.y - top_inset);
             w->width  = (uint32_t)std::max(1, dm.width);
             w->height = (uint32_t)std::max(1, dm.height + top_inset + bottom_inset);
-            mark_window_x(cmd.window);
-            mark_window_y(cmd.window);
-            mark_window_width(cmd.window);
-            mark_window_height(cmd.window);
+            mark_window_dirty(cmd.window, WindowFlush::Geometry);
         }
     }
 
@@ -270,7 +248,7 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     arrange();
 
     bool moved_ws_visible = is_workspace_visible(cmd.workspace_id);
-    bool focus_moved      = moved_ws_visible && w->visible && !w->suppress_focus_once;
+    bool focus_moved      = moved_ws_visible && w->is_visible() && !w->suppress_focus_once;
     if (focus_moved) {
         wsman.focus_window(w->id);
         emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
@@ -279,7 +257,7 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
         bool follow_hidden = settings.follow_moved_window;
         if (follow_hidden && !w->suppress_focus_once) {
             (void)dispatch(command::SwitchWorkspace{ cmd.workspace_id, std::nullopt });
-            if (w->visible) {
+            if (w->is_visible()) {
                 wsman.focus_window(w->id);
                 emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
                 emit_focus_changed(w->id);
@@ -302,9 +280,10 @@ bool Core::dispatch(const command::MapWindow& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    if (!w->visible) {
-        w->visible = true;
-        emit_backend_effect(BackendEffectKind::MapWindow, w->id);
+    if (!w->mapped) {
+        w->mapped = true;
+        if (w->is_visible())
+            emit_backend_effect(BackendEffectKind::MapWindow, w->id);
     }
     return true;
 }
@@ -313,8 +292,8 @@ bool Core::dispatch(const command::UnmapWindow& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    if (w->visible) {
-        w->visible             = false;
+    if (w->mapped) {
+        w->mapped = false;
         emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
     }
     return true;
@@ -353,7 +332,7 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
         w->fullscreen   = true;
         w->floating     = true;
         w->border_width = 0;
-        mark_window_border_width(cmd.window);
+        mark_window_dirty(cmd.window, WindowFlush::BorderWidth);
         if (!cmd.preserve_geometry && mon) {
             int top_inset    = std::max(0, monitor_top_inset_applied);
             int bottom_inset = std::max(0, monitor_bottom_inset_applied);
@@ -361,15 +340,11 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
             w->y      = std::max(0, mon->y - top_inset);
             w->width  = (uint32_t)std::max(1, mon->width);
             w->height = (uint32_t)std::max(1, mon->height + top_inset + bottom_inset);
-            mark_window_x(cmd.window);
-            mark_window_y(cmd.window);
-            mark_window_width(cmd.window);
-            mark_window_height(cmd.window);
+            mark_window_dirty(cmd.window, WindowFlush::Geometry);
         }
         arrange();
         emit_raise_docks();
-        if (ws_id >= 0 && is_workspace_visible(ws_id) &&
-            w->visible && !w->hidden_by_workspace) {
+        if (ws_id >= 0 && is_workspace_visible(ws_id) && w->is_visible()) {
             wsman.focus_window(cmd.window);
             emit_backend_effect(BackendEffectKind::FocusWindow, cmd.window);
             emit_focus_changed(cmd.window);
@@ -383,7 +358,7 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
     w->fullscreen   = false;
     w->floating     = w->floating_before_fullscreen;
     w->border_width = w->border_before_fullscreen;
-    mark_window_border_width(cmd.window);
+    mark_window_dirty(cmd.window, WindowFlush::BorderWidth);
     arrange();
     emit_raise_docks();
     return true;
@@ -422,7 +397,7 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     w->type              = cmd.type;
     w->wm_fixed_size     = cmd.wm_fixed_size;
     w->wm_never_focus    = cmd.wm_never_focus;
-    w->wm_static_gravity = cmd.wm_static_gravity;
+    w->preserve_position = cmd.preserve_position;
     w->wm_no_decorations = cmd.wm_no_decorations;
 
     // Classify from geometry facts supplied by the backend.
@@ -434,7 +409,7 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
         (cmd.wm_no_decorations || cmd.wm_fixed_size);
     bool will_be_borderless = self_managed || wm_borderless;
 
-    w->fullscreen_self_managed = self_managed;
+    w->self_managed = self_managed;
     w->promote_to_borderless   = will_be_borderless;
 
     // Transient routing: assign to parent's workspace and float.
@@ -460,11 +435,11 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
 }
 
 
-bool Core::dispatch(const command::SetWindowVisible& cmd) {
+bool Core::dispatch(const command::SetWindowMapped& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->visible = cmd.visible;
+    w->mapped = cmd.mapped;
     return true;
 }
 
@@ -529,7 +504,7 @@ bool Core::dispatch(const command::ToggleWindowFloating& cmd) {
 
 bool Core::dispatch(const command::FocusNextWindow&) {
     auto w = wsman.focus_next();
-    if (!w || !w->visible) {
+    if (!w || !w->is_visible()) {
         emit_focus_changed(NO_WINDOW);
         return true;
     }
@@ -540,7 +515,7 @@ bool Core::dispatch(const command::FocusNextWindow&) {
 
 bool Core::dispatch(const command::FocusPrevWindow&) {
     auto w = wsman.focus_prev();
-    if (!w || !w->visible) {
+    if (!w || !w->is_visible()) {
         emit_focus_changed(NO_WINDOW);
         return true;
     }
@@ -590,9 +565,7 @@ bool Core::dispatch(const command::SwitchWorkspaceLocalIndex& cmd) {
     if (!wsman.switch_local_index(mon, cmd.local_index))
         return false;
     int ws_id = wsman.active_workspace(mon);
-    sync_workspace_visibility();
-    arrange();
-    sync_current_focus();
+    reconcile();
     if (ws_id >= 0)
         emit_workspace_switched(ws_id);
     return true;
@@ -602,11 +575,10 @@ bool Core::dispatch(const command::HideWindow& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->hidden_by_workspace = true;
-    if (w->visible) {
-        w->visible             = false;
+    bool was_visible = w->is_visible();
+    w->hidden_explicitly = true;
+    if (was_visible)
         emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
-    }
     return true;
 }
 
@@ -616,10 +588,8 @@ bool Core::dispatch(const command::ApplyMonitorTopology& cmd) {
     monitor_bottom_inset_applied = 0;
     wsman.assign_workspaces(settings.monitor_aliases,
         settings.monitor_compose);
-    sync_workspace_visibility();
     emit_display_topology_changed();
-    arrange();
-    sync_current_focus();
+    reconcile();
     return true;
 }
 
@@ -707,10 +677,7 @@ bool Core::dispatch(const command::SetWindowGeometry& cmd) {
     w->y      = cmd.y;
     w->width  = cmd.width;
     w->height = cmd.height;
-    mark_window_x(cmd.window);
-    mark_window_y(cmd.window);
-    mark_window_width(cmd.window);
-    mark_window_height(cmd.window);
+    mark_window_dirty(cmd.window, WindowFlush::Geometry);
     return true;
 }
 
@@ -720,8 +687,7 @@ bool Core::dispatch(const command::SetWindowPosition& cmd) {
         return false;
     w->x = cmd.x;
     w->y = cmd.y;
-    mark_window_x(cmd.window);
-    mark_window_y(cmd.window);
+    mark_window_dirty(cmd.window, WindowFlush::Position);
     return true;
 }
 
@@ -731,8 +697,7 @@ bool Core::dispatch(const command::SetWindowSize& cmd) {
         return false;
     w->width  = cmd.width;
     w->height = cmd.height;
-    mark_window_width(cmd.window);
-    mark_window_height(cmd.window);
+    mark_window_dirty(cmd.window, WindowFlush::Size);
     return true;
 }
 
@@ -741,7 +706,7 @@ bool Core::dispatch(const command::SetWindowBorderWidth& cmd) {
     if (!w)
         return false;
     w->border_width = cmd.border_width;
-    mark_window_border_width(cmd.window);
+    mark_window_dirty(cmd.window, WindowFlush::BorderWidth);
     return true;
 }
 
@@ -753,11 +718,11 @@ bool Core::dispatch(const command::SyncWindowFromConfigureNotify& cmd) {
 
     auto               it      = pending_window_flushes.find(cmd.window);
     const WindowFlush* pending = (it == pending_window_flushes.end()) ? nullptr : &it->second;
-    if (!pending || !pending->x_dirty)            w->x = cmd.x;
-    if (!pending || !pending->y_dirty)            w->y = cmd.y;
-    if (!pending || !pending->width_dirty)        w->width = cmd.width;
-    if (!pending || !pending->height_dirty)       w->height = cmd.height;
-    if (!pending || !pending->border_width_dirty) w->border_width = cmd.border_width;
+    if (!pending || !(pending->dirty & WindowFlush::X))           w->x = cmd.x;
+    if (!pending || !(pending->dirty & WindowFlush::Y))           w->y = cmd.y;
+    if (!pending || !(pending->dirty & WindowFlush::Width))       w->width = cmd.width;
+    if (!pending || !(pending->dirty & WindowFlush::Height))      w->height = cmd.height;
+    if (!pending || !(pending->dirty & WindowFlush::BorderWidth)) w->border_width = cmd.border_width;
     return true;
 }
 
@@ -792,7 +757,7 @@ std::vector<WindowId> Core::visible_window_ids() const {
     std::vector<WindowId> out;
     for (const auto& ws : workspace_states()) {
         for (const auto& w : ws.windows) {
-            if (!w || !w->visible)
+            if (!w || !w->is_visible())
                 continue;
             out.push_back(w->id);
         }
