@@ -408,7 +408,6 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     w->wm_fixed_size     = h.fixed_size;
     w->wm_never_focus    = h.never_focus;
     w->preserve_position = h.static_gravity;
-    w->wm_no_decorations = h.no_decorations;
 
     w->self_managed          = self_managed;
     w->promote_to_borderless = will_be_borderless;

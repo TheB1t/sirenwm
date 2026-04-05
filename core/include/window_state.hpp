@@ -36,7 +36,6 @@ struct WindowState {
     bool        wm_fixed_size           = false;
     bool        wm_never_focus          = false; // WM_HINTS.input == False
     bool        preserve_position        = false; // client wants to keep physical coordinates (X11: StaticGravity)
-    bool        wm_no_decorations       = false; // _MOTIF_WM_HINTS decorations == 0
     bool        self_managed            = false; // client owns geometry; WM must not override position/size
     bool        promote_to_borderless   = false; // set by core at MapRequest: backend should make this borderless
 

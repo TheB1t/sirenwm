@@ -364,9 +364,9 @@ void X11Backend::notify(event::WindowMapped ev) {
     {
         auto w = core.window_state_any(ev.window);
         // Self-managed windows already know their position; pinning to mon.x/mon.y
-        // breaks render child placement. wm_no_decorations windows are already
-        // borderless — applying fullscreen on top would cause bars/tray to lower.
-        bool skip_fullscreen = w && w->wm_no_decorations;
+        // breaks render child placement. WM-pinned borderless windows are already
+        // fullscreen-equivalent — applying fullscreen on top would cause bars/tray to lower.
+        bool skip_fullscreen = w && w->borderless && !w->self_managed;
         bool self_managed    = w && w->is_self_managed();
         if (!skip_fullscreen && ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
             if (self_managed)
@@ -450,8 +450,8 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
         if (!w) continue;
         auto win = w->id;
         if (core.is_window_hidden_by_workspace(win)) continue;
-        if (w->is_self_managed()) continue; // client owns geometry: skip fullscreen pin
-        if (w->wm_no_decorations) continue; // already borderless; fullscreen would lower bars/tray
+        if (w->is_self_managed()) continue;                   // client owns geometry: skip fullscreen pin
+        if (w->borderless && !w->self_managed) continue;     // WM-pinned borderless: fullscreen would lower bars/tray
         if (!core.is_window_fullscreen(win) && ewmh_has_fullscreen_state(win))
             ewmh_apply_fullscreen(win, true);
     }
@@ -481,8 +481,9 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         else return true;
 
         // Self-managed windows control their own position; pinning to mon.x/mon.y breaks them.
-        // no_decorations windows are already borderless — applying fullscreen would lower bars/tray.
-        bool self_managed = window->is_self_managed() || window->wm_no_decorations;
+        // WM-pinned borderless windows are already fullscreen-equivalent — applying fullscreen
+        // on top would lower bars/tray.
+        bool self_managed = window->is_self_managed() || (window->borderless && !window->self_managed);
         if (enable) {
             if (!self_managed && should_apply_fullscreen_now(core, ev.window))
                 ewmh_apply_fullscreen(ev.window, true);

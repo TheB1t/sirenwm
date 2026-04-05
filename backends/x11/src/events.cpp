@@ -694,8 +694,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     if (floating || borderless || static_gravity) {
         // WM-pinned windows (fullscreen, WM-placed borderless): reject geometry requests.
         bool pinned = (window->fullscreen && !borderless_fs) ||
-            (window->borderless && (window->wm_no_decorations || window->wm_fixed_size) &&
-                !borderless_fs && !window->self_managed);
+            (window->borderless && !borderless_fs && !window->self_managed);
         if (pinned) {
             send_synthetic_configure_notify(xconn, ev->window,
                 window->x, window->y,
