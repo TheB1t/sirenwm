@@ -74,7 +74,7 @@ void X11Backend::restore_visible_focus() {
     } else {
         xconn.focus_window(root_window);
     }
-    notify(event::FocusChanged{ win });
+    core.emit_focus_changed(win);
 }
 
 void X11Backend::ewmh_intern_atoms() {
@@ -412,11 +412,6 @@ void X11Backend::update_focus(event::FocusChanged ev) {
     }
 }
 
-void X11Backend::notify(event::FocusChanged ev) {
-    runtime.emit(core, ev);
-    update_focus(ev);
-}
-
 void X11Backend::notify(event::WorkspaceSwitched ev) {
     ewmh_update_desktop_props();
     xconn.set_property(root_window, NET_CURRENT_DESKTOP,
@@ -481,8 +476,10 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
 
     if (ev.type == NET_ACTIVE_WINDOW) {
         auto window = core.window_state_any(ev.window);
-        if (!window) return false;
-        if (!window->is_visible()) return true;
+        if (!window)
+            return false;
+        if (!window->is_visible())
+            return true;
 
         int ws_id = core.workspace_of_window(ev.window);
         // Do not force workspace jumps on external focus requests.
@@ -491,7 +488,10 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
 
         (void)core.dispatch(command::FocusWindow{ ev.window });
         xconn.focus_window(ev.window);
-        notify(event::FocusChanged{ ev.window });
+        // Queue via pending_core_events so drain_core_events applies this
+        // *after* any older queued FocusChanged events, preventing stale
+        // workspace-switch focus from overwriting _NET_ACTIVE_WINDOW.
+        core.emit_focus_changed(ev.window);
         xconn.flush();
         return true;
     }

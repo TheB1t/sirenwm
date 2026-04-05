@@ -128,7 +128,6 @@ class X11Backend final : public Backend {
         // Always includes runtime.emit so callers don't have to.
         void notify(event::WindowMapped ev);
         void notify(event::WindowUnmapped ev);
-        void notify(event::FocusChanged ev);
         void notify(event::WorkspaceSwitched ev);
         void notify(event::WindowAssignedToWorkspace ev);
         // handle() — EWMH request handlers that return a consumed flag

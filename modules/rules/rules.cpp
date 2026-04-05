@@ -175,8 +175,6 @@ void RulesModule::on(Core& core, event::ApplyWindowRules ev) {
             // rule explicitly routes the new window.
             (void)core.dispatch(command::SetWindowSuppressFocusOnce{ win, true });
             (void)core.dispatch(command::MoveWindowToWorkspace{ win, rule.workspace });
-            if (!visible)
-                (void)core.dispatch(command::HideWindow{ win });
         }
         return;
     }

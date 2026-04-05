@@ -119,7 +119,6 @@ class Core {
         void         sync_workspace_visibility();
         void         sync_current_focus();
         void         reconcile(); // sync_workspace_visibility + arrange + sync_current_focus
-        void         emit_focus_changed(WindowId window);
         void         emit_workspace_switched(int workspace_id);
         void         emit_raise_docks();
         void         emit_display_topology_changed();
@@ -129,6 +128,11 @@ class Core {
 
     public:
         Core() = default;
+
+        // Schedule a FocusChanged event for delivery via drain_core_events.
+        // Use instead of a direct backend notify so the event is ordered after
+        // any older queued events — prevents stale focus from overwriting state.
+        void         emit_focus_changed(WindowId window);
 
         void register_layout(const std::string& name, LayoutFn fn) {
             layouts[name] = std::move(fn);

@@ -386,7 +386,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         mapped_window->is_visible()) {
         (void)core.dispatch(command::FocusWindow{ ev->window });
         xconn.focus_window(ev->window);
-        notify(event::FocusChanged{ ev->window });
+        core.emit_focus_changed(ev->window);
     } else {
         restore_visible_focus();
     }
@@ -405,8 +405,16 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
                             pending_wm_unmaps_.at(ev->window) > 0;
 
     (void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
-    if (!pending_wm_unmap)
-        (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
+    if (!pending_wm_unmap) {
+        // Only clear hidden_by_workspace if the window's workspace is currently active.
+        // If the window mapped on an inactive workspace (e.g. rule-routed), the WM will
+        // immediately unmap it again; clearing here would leave mapped=true,
+        // hidden_by_workspace=false with no xcb_map_window pending for the next switch.
+        int ws_id  = core.workspace_of_window(ev->window);
+        bool ws_active = ws_id >= 0 && core.is_workspace_visible(ws_id);
+        if (ws_active)
+            (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
+    }
 
     // Override-redirect windows (menus, tooltips) must appear above bars, not below.
     if (!ev->override_redirect)
@@ -920,7 +928,7 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
 
     (void)core.dispatch(command::FocusWindow{ ev->event });
     xconn.focus_window(ev->event);
-    notify(event::FocusChanged{ ev->event });
+    core.emit_focus_changed(ev->event);
 }
 
 void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
