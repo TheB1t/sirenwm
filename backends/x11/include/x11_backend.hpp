@@ -79,6 +79,14 @@ class X11Backend final : public Backend {
         void set_border_color(WindowId win, uint32_t pixel);
         void reload_border_colors();
 
+        // Focus requested by a real pointer crossing (EnterNotify) this tick.
+        // Applied after apply_core_backend_effects() so it wins over stale backend effects.
+        WindowId pending_enter_focus_ = NO_WINDOW;
+
+        // Timestamp from the most recent user-input X event (button/key/motion/enter).
+        // Used for xcb_set_input_focus to satisfy clients that reject timestamp=0.
+        xcb_timestamp_t last_event_time_ = XCB_CURRENT_TIME;
+
         // Pending WM-initiated unmaps: X11 sends two UnmapNotify per xcb_unmap_window
         // (SubstructureNotify on root + StructureNotify on the window itself).
         // Backend tracks this to distinguish WM-initiated unmaps from client withdrawals.

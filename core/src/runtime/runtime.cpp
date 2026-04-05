@@ -55,9 +55,13 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .window = snap.window,
                 .mapped = snap.currently_viewable,
             });
+        // Force hidden_by_workspace=true for currently-visible snapshot windows so the
+        // subsequent SwitchWorkspace drives sync_workspace_visibility to emit MapWindow
+        // effects. This causes xconn.map_window → MapNotify on all visible windows,
+        // which Electron/Chromium apps require to activate input handling after a reload.
         (void)core.dispatch(command::SetWindowHiddenByWorkspace{
                 .window = snap.window,
-                .hidden = !snap.currently_viewable,
+                .hidden = true,
             });
 
         if (snap.from_restart) {

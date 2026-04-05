@@ -385,7 +385,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         mapped_window &&
         mapped_window->is_visible()) {
         (void)core.dispatch(command::FocusWindow{ ev->window });
-        xconn.focus_window(ev->window);
+        focus_window(ev->window);
         core.emit_focus_changed(ev->window);
     } else {
         restore_visible_focus();
@@ -915,6 +915,8 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
         ev->detail == XCB_NOTIFY_DETAIL_INFERIOR)
         return;
 
+    last_event_time_ = ev->time;
+
     // Use window_state_any so that windows on the second monitor's active
     // workspace are found even when focused_monitor hasn't been updated yet
     // (focused_monitor is only updated on button press / motion, not on enter).
@@ -927,8 +929,9 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     core.focus_monitor_at_point(ev->root_x, ev->root_y);
 
     (void)core.dispatch(command::FocusWindow{ ev->event });
-    xconn.focus_window(ev->event);
-    core.emit_focus_changed(ev->event);
+    // Defer X focus + FocusChanged until after apply_core_backend_effects() so
+    // stale backend effects cannot overwrite pointer-driven focus or _NET_WM_STATE_FOCUSED.
+    pending_enter_focus_ = ev->event;
 }
 
 void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {

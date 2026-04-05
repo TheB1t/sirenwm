@@ -70,7 +70,7 @@ void X11Backend::restore_visible_focus() {
     WindowId win = NO_WINDOW;
     if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
         win = focused->id;
-        xconn.focus_window(win);
+        focus_window(win);
     } else {
         xconn.focus_window(root_window);
     }
@@ -155,7 +155,7 @@ void X11Backend::focus_window(WindowId win) {
     // Respect WM_HINTS.input: if explicitly False, skip xcb_set_input_focus.
     if (!window || !window->wm_never_focus) {
         xcb_set_input_focus(xconn.raw_conn(),
-            XCB_INPUT_FOCUS_POINTER_ROOT, win, XCB_CURRENT_TIME);
+            XCB_INPUT_FOCUS_POINTER_ROOT, win, last_event_time_);
         xconn.set_property(root_window, NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, win);
     }
 

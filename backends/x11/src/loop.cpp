@@ -160,6 +160,14 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
 
     apply_core_backend_effects();
 
+    // Apply pointer-driven focus last: wins over any stale FocusWindow backend effects
+    // emitted by a prior reload or workspace switch that arrived in the same tick.
+    if (pending_enter_focus_ != NO_WINDOW) {
+        focus_window(pending_enter_focus_);
+        core.emit_focus_changed(pending_enter_focus_);
+        pending_enter_focus_ = NO_WINDOW;
+    }
+
     if (randr_dirty)
         runtime.dispatch_display_change();
 
@@ -185,4 +193,6 @@ void X11Backend::render_frame() {
 void X11Backend::on_reload_applied() {
     key_down.fill(false);
     reload_border_colors();
+    restore_visible_focus();
+    xconn.flush();
 }
