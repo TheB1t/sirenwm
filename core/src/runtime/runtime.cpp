@@ -22,7 +22,8 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
     if (startup.windows.empty())
         return;
 
-    int adopted = 0;
+    int  adopted      = 0;
+    bool any_restart  = false; // true if at least one window came from the restart snapshot
     for (const auto& snap : startup.windows) {
         if (snap.window == NO_WINDOW)
             continue;
@@ -44,11 +45,15 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             });
 
         (void)core.dispatch(command::SetWindowMetadata{
-                .window      = snap.window,
-                .wm_instance = snap.wm_instance,
-                .wm_class    = snap.wm_class,
-                .type        = snap.type,
-                .wm_fixed_size = snap.wm_fixed_size,
+                .window            = snap.window,
+                .wm_instance       = snap.wm_instance,
+                .wm_class          = snap.wm_class,
+                .type              = snap.type,
+                .wm_fixed_size     = snap.wm_fixed_size,
+                .wm_no_decorations = snap.wm_no_decorations,
+                // covers_monitor intentionally omitted: geometry classification happens
+                // at MapRequest time. Borderless state is restored explicitly via
+                // SetWindowBorderless for from_restart windows.
             });
 
         (void)core.dispatch(command::SetWindowMapped{
@@ -71,6 +76,19 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                     .window   = snap.window,
                     .floating = snap.restart_floating,
                 });
+            if (snap.restart_fullscreen)
+                (void)core.dispatch(command::SetWindowFullscreen{
+                        .window            = snap.window,
+                        .enabled           = true,
+                        .preserve_geometry = false,
+                    });
+            if (snap.restart_borderless)
+                (void)core.dispatch(command::SetWindowBorderless{
+                        .window     = snap.window,
+                        .borderless = true,
+                    });
+            if (snap.restart_hidden_explicitly)
+                (void)core.dispatch(command::HideWindow{ snap.window });
         }
 
         // Seed geometry from the actual X state so floating windows have correct
@@ -84,32 +102,52 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         runtime.emit(core, event::WindowMapped{ snap.window });
         backend.on(event::WindowAdopted{ snap.window, snap.currently_viewable });
 
+        if (snap.from_restart)
+            any_restart = true;
         adopted++;
     }
 
     if (adopted <= 0)
         return;
 
-    // Restore active workspace per monitor from restart snapshot.
+    // Drive visibility: SwitchWorkspace forces sync_workspace_visibility so windows
+    // with hidden_by_workspace=true get un-hidden.
+    //
+    // When we have restart-snapshot windows: switch every monitor to its saved workspace
+    // (or fall back to current active_ws so the monitor still gets a SwitchWorkspace call).
+    //
+    // When all windows came from a fresh scan (no snapshot): only switch the focused monitor
+    // so we don't accidentally reassign scan windows to ws=0 on all monitors.
     const auto& mon_ws = startup.monitor_active_ws;
     const auto& mons   = core.monitor_states();
-    if (!mon_ws.empty()) {
+    bool any_switched  = false;
+    if (any_restart) {
+        // Restore every monitor to its saved active workspace (Phase 2 fix).
         for (int i = 0; i < (int)mons.size(); i++) {
+            int ws_id = -1;
             auto it = mon_ws.find(i);
             if (it != mon_ws.end() && it->second >= 0 && it->second < core.workspace_count())
-                (void)core.dispatch(command::SwitchWorkspace{ it->second, i });
+                ws_id = it->second;
+            else
+                ws_id = mons[(size_t)i].active_ws;
+            if (ws_id >= 0) {
+                (void)core.dispatch(command::SwitchWorkspace{ ws_id, i });
+                any_switched = true;
+            }
         }
     } else {
+        // Fresh scan: switch only the focused monitor (legacy behaviour).
         int ws_id = -1;
         int fmon  = core.focused_monitor_index();
         if (fmon >= 0 && fmon < (int)mons.size())
             ws_id = mons[(size_t)fmon].active_ws;
-
-        if (ws_id >= 0)
+        if (ws_id >= 0) {
             (void)core.dispatch(command::SwitchWorkspace{ ws_id, std::nullopt });
-        else
-            (void)core.dispatch(command::ReconcileNow{});
+            any_switched = true;
+        }
     }
+    if (!any_switched)
+        (void)core.dispatch(command::ReconcileNow{});
 
     LOG_INFO("adopt: restored %d existing window(s) at runtime start", adopted);
 }
@@ -230,10 +268,18 @@ void Runtime::run_loop(Backend& backend, Core& core) {
         dispatch_watched_fds(fds);
         backend.pump_events(kMaxBackendEventsPerTick);
 
-        if (process_pending_reload(core))
+        bool reloaded = process_pending_reload(core);
+        if (reloaded)
             backend.on_reload_applied();
 
         drain_core_events(core);
+
+        // After drain: any MapWindow effects from reload are now applied.
+        // Re-raise bars so they end up above borderless/fullscreen windows that were
+        // re-mapped during drain (on_reload_applied fires before drain_core_events).
+        if (reloaded && active_backend_)
+            emit(core, event::RaiseDocks{});
+
         backend.render_frame();
     }
 
@@ -260,24 +306,33 @@ void Runtime::save_restart_state(const Core& core) {
     for (int i = 0; i < (int)mons.size(); i++)
         out << "MON " << i << " " << mons[(size_t)i].active_ws << "\n";
 
-    // Save per-window state: "<window_id> <ws_id> <floating>"
+    // Save per-window state: "WINDOW <win_id> <ws_id> <floating> <fullscreen> <hidden_explicitly>"
     std::unordered_set<WindowId> seen;
+    int saved_windows = 0;
     for (auto id : core.all_window_ids()) {
         if (!seen.insert(id).second)
             continue;
         int ws_id = core.workspace_of_window(id);
         if (ws_id < 0)
             continue;
-        // Skip borderless windows (Proton/Wine service windows) — they are
-        // recreated by the application and must not be restored by the WM.
         auto ws = core.window_state_any(id);
-        if (ws && ws->borderless)
+        // Skip self-managed borderless (Proton/Wine service windows) — recreated by the app.
+        if (ws && ws->borderless && ws->self_managed)
             continue;
-        out << id << " " << ws_id << " " << (core.is_window_floating(id) ? 1 : 0) << "\n";
+        int fs = core.is_window_fullscreen(id) ? 1 : 0;
+        int he = (ws && ws->hidden_explicitly) ? 1 : 0;
+        int bl = (ws && ws->borderless) ? 1 : 0;
+        out << "WINDOW " << id << " " << ws_id
+            << " " << (core.is_window_floating(id) ? 1 : 0)
+            << " " << fs
+            << " " << he
+            << " " << bl
+            << "\n";
+        saved_windows++;
     }
 
     LOG_INFO("restart: saved %d monitor(s) + %d window(s) to %s",
-        (int)mons.size(), (int)seen.size(), restart_state_path().c_str());
+        (int)mons.size(), saved_windows, restart_state_path().c_str());
 }
 
 void Runtime::request_exec_restart(Core& core) {

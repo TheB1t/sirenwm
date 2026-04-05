@@ -36,9 +36,12 @@ struct ExistingWindowSnapshot {
     bool default_manage = true;
 
     // Restart restore metadata (if loaded from restart snapshot file).
-    bool from_restart         = false;
-    int  restart_workspace_id = -1;
-    bool restart_floating     = false;
+    bool from_restart            = false;
+    int  restart_workspace_id    = -1;
+    bool restart_floating        = false;
+    bool restart_fullscreen        = false;
+    bool restart_hidden_explicitly = false;
+    bool restart_borderless        = false;
 
     // Actual X geometry at scan time — used to seed WindowState so floating
     // windows have correct coordinates before the first ConfigureNotify arrives.
@@ -49,8 +52,9 @@ struct ExistingWindowSnapshot {
     // Metadata snapshot used by rules/policy.
     std::string  wm_instance;
     std::string  wm_class;
-    WindowType   type          = WindowType::Normal;
-    bool         wm_fixed_size = false;
+    WindowType   type             = WindowType::Normal;
+    bool         wm_fixed_size    = false;
+    bool         wm_no_decorations = false;
 };
 
 class Backend {

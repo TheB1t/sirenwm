@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -22,8 +23,11 @@ struct WindowTypeAtoms {
 };
 
 struct RestartWinState {
-    int  ws_id    = -1;
-    bool floating = false;
+    int  ws_id             = -1;
+    bool floating          = false;
+    bool fullscreen        = false;
+    bool hidden_explicitly = false;
+    bool borderless        = false;
 };
 
 struct RestartState {
@@ -35,8 +39,9 @@ struct RestartState {
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
-    WindowType  type          = WindowType::Normal;
-    bool        wm_fixed_size = false;
+    WindowType  type             = WindowType::Normal;
+    bool        wm_fixed_size    = false;
+    bool        wm_no_decorations = false;
 };
 
 bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
@@ -62,16 +67,25 @@ RestartState load_restart_state() {
             int mon_idx = -1, ws_id = -1;
             if (in >> mon_idx >> ws_id)
                 out.monitor_active_ws[mon_idx] = ws_id;
-        } else {
-            // window line: "<win_id> <ws_id> <floating>"
-            xcb_window_t win = (xcb_window_t)std::stoul(token);
-            int          ws = -1, fl = 0;
-            if (in >> ws >> fl)
-                out.windows[win] = RestartWinState{ ws, fl != 0 };
+        } else if (token == "WINDOW") {
+            // "WINDOW <win_id> <ws_id> <floating> [<fullscreen> [<hidden_explicitly> [<borderless>]]]"
+            // Extra fields are optional so older state files still parse correctly.
+            std::string line;
+            if (!std::getline(in, line))
+                continue;
+            std::istringstream ss(line);
+            xcb_window_t win = 0;
+            int ws = -1, fl = 0, fs = 0, he = 0, bl = 0;
+            if (!(ss >> win >> ws >> fl))
+                continue;
+            ss >> fs; ss >> he; ss >> bl; // ignore failures — fields are optional
+            out.windows[win] = RestartWinState{ ws, fl != 0, fs != 0, he != 0, bl != 0 };
         }
     }
     in.close();
     std::remove(restart_state_path().c_str());
+    LOG_DEBUG("load_restart_state: %d window(s), %d monitor(s)",
+        (int)out.windows.size(), (int)out.monitor_active_ws.size());
     return out;
 }
 
@@ -116,7 +130,8 @@ WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
     else if (has_atom(types, atoms.dialog))  out.type = WindowType::Dialog;
     else if (has_atom(types, atoms.utility)) out.type = WindowType::Utility;
     else if (has_atom(types, atoms.splash))  out.type = WindowType::Splash;
-    out.wm_fixed_size = xconn.has_fixed_size_hints(window);
+    out.wm_fixed_size     = xconn.has_fixed_size_hints(window);
+    out.wm_no_decorations = xconn.motif_no_decorations(window);
     return out;
 }
 
@@ -219,9 +234,13 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         snap.wm_class           = std::move(meta.wm_class);
         snap.type               = meta.type;
         snap.wm_fixed_size      = meta.wm_fixed_size;
+        snap.wm_no_decorations  = meta.wm_no_decorations;
         if (from_restart) {
-            snap.restart_workspace_id = it_state->second.ws_id;
-            snap.restart_floating     = it_state->second.floating;
+            snap.restart_workspace_id      = it_state->second.ws_id;
+            snap.restart_floating          = it_state->second.floating;
+            snap.restart_fullscreen        = it_state->second.fullscreen;
+            snap.restart_hidden_explicitly = it_state->second.hidden_explicitly;
+            snap.restart_borderless        = it_state->second.borderless;
         }
 
         if (snap.default_manage)

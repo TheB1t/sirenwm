@@ -213,6 +213,9 @@ void X11Backend::render_frame() {
 void X11Backend::on_reload_applied() {
     key_down.fill(false);
     reload_border_colors();
+    // Re-raise bars: borderless/fullscreen windows don't go through MapNotify on reload,
+    // so RaiseDocks would never fire without this explicit call.
+    runtime.emit(core, event::RaiseDocks{});
     // Apply focus immediately (not via arbiter) — reload happens between pump_events
     // and drain_core_events, so the arbiter won't fire until the next tick.
     if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
