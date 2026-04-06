@@ -147,24 +147,22 @@ static bool parse_wallpaper_table(LuaContext& lua, int table_idx,
     return true;
 }
 
-static void register_lua(Config& config,
-    std::unordered_map<std::string, WallpaperEntry>& entries) {
-    config.register_lua_assignment_handler("wallpaper",
-        [&entries](LuaContext& lua, int idx, std::string& err) -> bool {
-            return parse_wallpaper_table(lua, idx, entries, err);
-        });
-}
-
 // ---------------------------------------------------------------------------
 // Module lifecycle
 // ---------------------------------------------------------------------------
 
 void WallpaperModule::on_init(Core&) {
-    register_lua(config(), entries_);
+    config().register_lua_assignment_handler("wallpaper",
+        [this](LuaContext& lua, int idx, std::string& err) -> bool {
+            return parse_wallpaper_table(lua, idx, entries_, err);
+        });
 }
 
 void WallpaperModule::on_lua_init(Core&) {
-    register_lua(config(), entries_);
+    config().register_lua_assignment_handler("wallpaper",
+        [this](LuaContext& lua, int idx, std::string& err) -> bool {
+            return parse_wallpaper_table(lua, idx, entries_, err);
+        });
 }
 
 void WallpaperModule::on_start(Core&) {

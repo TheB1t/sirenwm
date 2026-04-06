@@ -77,25 +77,24 @@ static bool parse_autostart_table(LuaContext& lua, int table_idx,
     return true;
 }
 
-static void register_handler(Config& config, std::vector<ProcessEntry>& pending) {
-    config.register_lua_assignment_handler("autostart",
-        [&pending](LuaContext& lua, int idx, std::string& err) -> bool {
-            return parse_autostart_table(lua, idx, pending, err);
-        });
-}
-
 // ---------------------------------------------------------------------------
 // Module lifecycle
 // ---------------------------------------------------------------------------
 
 void ProcessModule::on_init(Core&) {
     pending_.clear();
-    register_handler(config(), pending_);
+    config().register_lua_assignment_handler("autostart",
+        [this](LuaContext& lua, int idx, std::string& err) -> bool {
+            return parse_autostart_table(lua, idx, pending_, err);
+        });
 }
 
 void ProcessModule::on_lua_init(Core&) {
     // Re-register after Lua VM reset; map overwrite is safe.
-    register_handler(config(), pending_);
+    config().register_lua_assignment_handler("autostart",
+        [this](LuaContext& lua, int idx, std::string& err) -> bool {
+            return parse_autostart_table(lua, idx, pending_, err);
+        });
     pending_.clear();
 }
 

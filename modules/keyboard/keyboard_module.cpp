@@ -58,15 +58,6 @@ static bool parse_keyboard_table(LuaContext& lua, int idx,
     return true;
 }
 
-static void register_lua(Config& config,
-    std::vector<std::string>& layouts,
-    std::string& options) {
-    config.register_lua_assignment_handler("keyboard",
-        [&layouts, &options](LuaContext& lua, int idx, std::string& err) -> bool {
-            return parse_keyboard_table(lua, idx, layouts, options, err);
-        });
-}
-
 // ---------------------------------------------------------------------------
 // Module lifecycle
 // ---------------------------------------------------------------------------
@@ -93,11 +84,17 @@ void KeyboardModule::apply() {
 }
 
 void KeyboardModule::on_init(Core&) {
-    register_lua(config(), layouts_, options_);
+    config().register_lua_assignment_handler("keyboard",
+        [this](LuaContext& lua, int idx, std::string& err) -> bool {
+            return parse_keyboard_table(lua, idx, layouts_, options_, err);
+        });
 }
 
 void KeyboardModule::on_lua_init(Core&) {
-    register_lua(config(), layouts_, options_);
+    config().register_lua_assignment_handler("keyboard",
+        [this](LuaContext& lua, int idx, std::string& err) -> bool {
+            return parse_keyboard_table(lua, idx, layouts_, options_, err);
+        });
 }
 
 void KeyboardModule::on_start(Core&) {
