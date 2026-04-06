@@ -101,6 +101,37 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+if(BUILD_TESTING)
+    enable_testing()
+
+    file(GLOB SWM_TEST_SOURCES tests/test_*.cpp)
+
+    add_executable(sirenwm_tests ${SWM_TEST_SOURCES})
+
+    target_include_directories(sirenwm_tests PRIVATE
+        core/include
+        tests
+        modules
+        ${LUA_INCLUDE_DIR}
+    )
+
+    target_link_libraries(sirenwm_tests PRIVATE
+        swm_core
+        -Wl,--whole-archive
+        mod_rules
+        -Wl,--no-whole-archive
+        dl
+    )
+
+    add_test(NAME sirenwm_tests COMMAND sirenwm_tests)
+    set_target_properties(sirenwm_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
+    )
+endif()
+
+# ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)

@@ -5,5 +5,4 @@ output/
 .vscode/
 glad/
 *.log*
-tests/
 tools/
