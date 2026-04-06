@@ -265,17 +265,7 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
         emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
         emit_focus_changed(w->id);
     } else {
-        bool follow_hidden = settings.follow_moved_window;
-        if (follow_hidden && !w->suppress_focus_once) {
-            (void)dispatch(command::SwitchWorkspace{ cmd.workspace_id, std::nullopt });
-            if (w->is_visible()) {
-                wsman.focus_window(w->id);
-                emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
-                emit_focus_changed(w->id);
-            }
-        } else {
-            sync_current_focus();
-        }
+        sync_current_focus();
     }
     return true;
 }

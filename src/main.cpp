@@ -38,8 +38,6 @@ CoreSettings make_core_settings_from_config(const Config& cfg) {
     out.monitor_aliases     = cfg.get_monitor_aliases();
     out.monitor_compose     = cfg.get_monitor_compose();
     out.workspace_defs      = cfg.get_workspace_defs();
-    out.follow_moved_window = cfg.get_follow_moved_window();
-    out.focus_new_window    = cfg.get_focus_new_window();
     out.theme               = cfg.get_theme();
     return out;
 }

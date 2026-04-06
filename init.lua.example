@@ -96,14 +96,6 @@ siren.theme = {
 }
 
 -- ============================================================
--- BEHAVIOR
--- ============================================================
-siren.behavior = {
-    follow_moved_window = false,  -- warp cursor when moving window to another monitor
-    focus_new_window    = true,   -- focus newly mapped windows
-}
-
--- ============================================================
 -- KEYBOARD
 -- XKB layout and options.
 -- ============================================================

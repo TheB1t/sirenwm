@@ -397,12 +397,9 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
 
     (void)core.dispatch(command::ReconcileNow{});
 
-    bool suppress_focus     = core.consume_window_suppress_focus_once(ev->window);
+    bool suppress_focus = core.consume_window_suppress_focus_once(ev->window);
 
-    bool focus_new_window   = core.current_settings().focus_new_window;
-    bool force_dialog_focus = mapped_window && mapped_window->is_dialog();
-    if ((focus_new_window || force_dialog_focus) &&
-        !suppress_focus &&
+    if (!suppress_focus &&
         ws_visible &&
         mapped_window &&
         mapped_window->is_visible()) {

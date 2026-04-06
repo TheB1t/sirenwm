@@ -49,44 +49,6 @@ std::optional<std::string> check_known_fields(
     return std::nullopt;
 }
 
-std::optional<std::string> parse_behavior_runtime(
-    const Config& config,
-    const RuntimeValue& value,
-    bool& follow_moved_out,
-    bool& focus_new_out) {
-    const auto* obj = value.as_object();
-    if (!obj)
-        return std::string("must be an object");
-
-    if (auto e = check_known_fields(
-        *obj,
-        { "follow_moved_window", "focus_new_window" },
-        "behavior");
-        e.has_value()) {
-        return e;
-    }
-
-    bool follow_moved = config.get_follow_moved_window();
-    bool focus_new    = config.get_focus_new_window();
-
-    auto read_bool = [&](const char* key, bool& out) -> std::optional<std::string> {
-            auto it = obj->find(key);
-            if (it == obj->end())
-                return std::nullopt;
-            const auto* bv = it->second.as_bool();
-            if (!bv)
-                return std::string("'") + key + "' must be a boolean";
-            out = *bv;
-            return std::nullopt;
-        };
-
-    if (auto e = read_bool("follow_moved_window", follow_moved); e.has_value()) return e;
-    if (auto e = read_bool("focus_new_window", focus_new); e.has_value()) return e;
-
-    follow_moved_out = follow_moved;
-    focus_new_out    = focus_new;
-    return std::nullopt;
-}
 
 std::optional<std::string> parse_monitors_runtime(
     const RuntimeValue& value,
@@ -302,26 +264,6 @@ std::optional<std::string> parse_workspaces_runtime(
 namespace config_runtime {
 
 void register_builtin_runtime_settings(Config& config) {
-    config.register_runtime_setting("behavior", RuntimeSettingSpec{
-            .expected_type = RuntimeValueType::Object,
-            .validate      = [&config](const RuntimeValue& value) -> std::optional<std::string> {
-                bool follow_moved = false;
-                bool focus_new    = false;
-                return parse_behavior_runtime(config, value, follow_moved, focus_new);
-            },
-            .apply = [&config](const RuntimeValue& value) {
-                bool follow_moved = false;
-                bool focus_new    = false;
-                auto err          = parse_behavior_runtime(config, value, follow_moved, focus_new);
-                if (err.has_value()) {
-                    LOG_ERR("behavior.apply: unexpected parse failure after validation: %s", err->c_str());
-                    return;
-                }
-                config.set_follow_moved_window(follow_moved);
-                config.set_focus_new_window(focus_new);
-            },
-        });
-
     config.register_runtime_setting("monitors", RuntimeSettingSpec{
             .expected_type = RuntimeValueType::Array,
             .validate      = [](const RuntimeValue& value) -> std::optional<std::string> {

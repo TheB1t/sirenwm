@@ -43,8 +43,6 @@ class Config {
         std::optional<BarConfig> bar_config;
         std::optional<BarConfig> bottom_bar_config;
         std::optional<uint16_t> mod_mask;
-        bool follow_moved_window_ = false;
-        bool focus_new_window_    = true;
         std::vector<BarWidget> bar_widgets;
         ThemeConfig theme_;
         std::unordered_map<std::string, LuaAssignmentHandler> lua_assignment_handlers;
@@ -74,8 +72,6 @@ class Config {
             std::optional<BarConfig>  bar_config;
             std::optional<BarConfig>  bottom_bar_config;
             std::optional<uint16_t>   mod_mask;
-            bool                      follow_moved_window = false;
-            bool                      focus_new_window    = true;
             std::vector<BarWidget>    bar_widgets;
             std::vector<MouseBinding> mouse_bindings;
             ThemeConfig               theme;
@@ -139,12 +135,6 @@ class Config {
             return *mod_mask;
         }
 
-        void set_follow_moved_window(bool v) { follow_moved_window_ = v; }
-        bool get_follow_moved_window() const { return follow_moved_window_; }
-
-        void set_focus_new_window(bool v) { focus_new_window_ = v; }
-        bool get_focus_new_window() const { return focus_new_window_; }
-
         void add_mouse_binding(MouseBinding mb) { mouse_bindings.push_back(std::move(mb)); }
         const std::vector<MouseBinding>& get_mouse_bindings() const { return mouse_bindings; }
 
@@ -165,8 +155,6 @@ class Config {
             out.bar_config          = bar_config;
             out.bottom_bar_config   = bottom_bar_config;
             out.mod_mask            = mod_mask;
-            out.follow_moved_window = follow_moved_window_;
-            out.focus_new_window    = focus_new_window_;
             out.bar_widgets         = bar_widgets;
             out.mouse_bindings      = mouse_bindings;
             out.theme               = theme_;
@@ -181,8 +169,6 @@ class Config {
             bar_config           = snap.bar_config;
             bottom_bar_config    = snap.bottom_bar_config;
             mod_mask             = snap.mod_mask;
-            follow_moved_window_ = snap.follow_moved_window;
-            focus_new_window_    = snap.focus_new_window;
             bar_widgets          = snap.bar_widgets;
             mouse_bindings       = snap.mouse_bindings;
             theme_               = snap.theme;
@@ -265,8 +251,6 @@ class Config {
             bar_config.reset();
             bottom_bar_config.reset();
             mod_mask.reset();
-            follow_moved_window_ = false;
-            focus_new_window_    = true;
             bar_widgets.clear();
             mouse_bindings.clear();
             theme_ = {};

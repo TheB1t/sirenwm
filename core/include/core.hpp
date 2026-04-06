@@ -32,8 +32,6 @@ struct CoreSettings {
     std::vector<MonitorAlias> monitor_aliases;
     MonitorCompose            monitor_compose;
     std::vector<WorkspaceDef> workspace_defs;
-    bool                      follow_moved_window = false;
-    bool                      focus_new_window    = true;
     ThemeConfig               theme;
 };
 
