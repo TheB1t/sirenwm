@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <unistd.h>
 #include <sys/select.h>
+#include <map>
 
 namespace {
 
@@ -152,6 +153,14 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         (void)core.dispatch(command::ReconcileNow{});
 
     LOG_INFO("adopt: restored %d existing window(s) at runtime start", adopted);
+
+    std::map<std::string, int> window_types;
+    for (const auto& snap : startup.windows) {
+        window_types[snap.wm_class]++;
+    }
+    for (const auto& [class_name, count] : window_types) {
+        LOG_DEBUG("Window class %s: %d instances", class_name.c_str(), count);
+    }
 }
 
 } // namespace
