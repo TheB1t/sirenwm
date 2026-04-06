@@ -319,9 +319,13 @@ void BarModule::on_init(Core& core) {
                 s.tags.push_back({ ws_id, ws->name, focused, has_windows, false });
             }
 
-            if (mon_idx == core.focused_monitor_index()) {
-                if (auto focused = core.focused_window_state())
-                    s.title = runtime().backend().window_title(focused->id);
+            if (mon_ws >= 0) {
+                WindowId w = core.ws().last_focused_window(safe_mon_idx, mon_ws);
+                if (w == NO_WINDOW && safe_mon_idx == core.focused_monitor_index())
+                    if (auto focused = core.focused_window_state())
+                        w = focused->id;
+                if (w != NO_WINDOW)
+                    s.title = runtime().backend().window_title(w);
             }
             return s;
         };

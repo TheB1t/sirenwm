@@ -160,6 +160,10 @@ std::vector<TagHit> TagsWidget::draw(PaintContext& paint,
     const BarConfig& cfg,
     int& cursor_x) const {
     std::vector<TagHit> hits;
+    if (state.tags.empty()) {
+        paint.draw_text(cursor_x, "No workspaces", cfg.colors.normal_fg, cfg.colors.bar_bg);
+        return hits;
+    }
     for (const auto& tag : state.tags) {
         const std::string& fg = tag.focused ? cfg.colors.focused_fg : cfg.colors.normal_fg;
         const std::string& bg = tag.focused ? cfg.colors.focused_bg : cfg.colors.bar_bg;
