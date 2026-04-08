@@ -29,7 +29,8 @@ jobs:
             libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
             libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev libfreetype-dev libpng-dev \
-            libspdlog-dev
+            libspdlog-dev \
+            fonts-dejavu-core
 
       - name: Build
         run: |
@@ -68,7 +69,8 @@ jobs:
             libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
             libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev libfreetype-dev libpng-dev \
-            libspdlog-dev
+            libspdlog-dev \
+            fonts-dejavu-core
 
       - name: Build
         run: |
@@ -99,7 +101,8 @@ jobs:
             libxkbcommon-devel libxkbfile-devel libXfixes-devel lua-devel \
             cairo-devel pango-devel \
             fontconfig-devel freetype-devel libpng-devel \
-            spdlog-devel
+            spdlog-devel \
+            dejavu-fonts-all
 
       - name: Build
         run: |
@@ -132,7 +135,8 @@ jobs:
             libfontconfig1-dev libfreetype-dev libpng-dev \
             libspdlog-dev \
             xvfb xserver-xephyr \
-            x11-utils x11-apps xterm wmctrl
+            x11-utils x11-apps xterm wmctrl \
+            fonts-dejavu-core
 
       - name: Build
         run: |
@@ -165,7 +169,8 @@ jobs:
             libx11 libxcb xcb-util-keysyms \
             libxkbcommon libxkbfile libxfixes lua \
             cairo pango fontconfig freetype2 libpng \
-            spdlog
+            spdlog \
+            ttf-dejavu
 
       - name: Build
         run: |
