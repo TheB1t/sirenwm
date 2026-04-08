@@ -164,3 +164,172 @@ TEST(Window, BorderlessCrossMonitorMove) {
     EXPECT_EQ(ws->size().x(), 2560);
     EXPECT_EQ(ws->size().y(), 1440);
 }
+
+// ---------------------------------------------------------------------------
+// Domain events
+// ---------------------------------------------------------------------------
+
+TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
+    TestHarness h;
+    h.start();
+    h.core.take_core_events(); // drain
+
+    h.core.dispatch(command::SwitchWorkspace{ 1 });
+    auto events = h.core.take_core_events();
+
+    bool found = false;
+    for (const auto& e : events) {
+        if (auto* ev = std::get_if<event::WorkspaceSwitched>(&e)) {
+            if (ev->workspace_id == 1) { found = true; break; }
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(Workspace, MoveWindowEmitsAssignedEvent) {
+    TestHarness h;
+    h.start();
+
+    WindowId win = h.map_window(0x1000, 0);
+    h.core.take_core_events(); // drain
+
+    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    auto events = h.core.take_core_events();
+
+    bool found = false;
+    for (const auto& e : events) {
+        if (auto* ev = std::get_if<event::WindowAssignedToWorkspace>(&e)) {
+            if (ev->window == win && ev->workspace_id == 1) { found = true; break; }
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(Workspace, BorderlessEmitsBorderlessActivatedEvent) {
+    TestHarness h;
+    h.start();
+
+    WindowId win = h.map_window(0x1000, 0);
+    h.core.take_core_events(); // drain
+
+    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    auto events = h.core.take_core_events();
+
+    bool found = false;
+    for (const auto& e : events) {
+        if (auto* ev = std::get_if<event::BorderlessActivated>(&e)) {
+            if (ev->window == win) { found = true; break; }
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(Workspace, ClearLastBorderlessEmitsDeactivatedEvent) {
+    TestHarness h;
+    h.start();
+
+    WindowId win = h.map_window(0x1000, 0);
+    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.take_core_events(); // drain
+
+    h.core.dispatch(command::SetWindowBorderless{ win, false });
+    auto events = h.core.take_core_events();
+
+    bool found = false;
+    for (const auto& e : events) {
+        if (std::holds_alternative<event::BorderlessDeactivated>(e)) {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// ---------------------------------------------------------------------------
+// Zoom
+// ---------------------------------------------------------------------------
+
+TEST(Workspace, ZoomSwapsFocusedWithMaster) {
+    TestHarness h;
+    h.start();
+
+    WindowId w1 = h.map_window(0x1000, 0);
+    WindowId w2 = h.map_window(0x2000, 0);
+    WindowId w3 = h.map_window(0x3000, 0);
+
+    h.core.dispatch(command::FocusWindow{ w3 });
+
+    bool ok = h.core.dispatch(command::Zoom{});
+    EXPECT_TRUE(ok);
+
+    auto& wst = h.core.workspace_states()[0];
+    ASSERT_FALSE(wst.windows.empty());
+    EXPECT_EQ(wst.windows[0]->id, w3);
+}
+
+TEST(Workspace, ZoomOnSingleWindowReturnsFalse) {
+    TestHarness h;
+    h.start();
+
+    h.map_window(0x1000, 0);
+    bool ok = h.core.dispatch(command::Zoom{});
+    EXPECT_FALSE(ok);
+}
+
+// ---------------------------------------------------------------------------
+// IncMaster / AdjustMasterFactor
+// ---------------------------------------------------------------------------
+
+TEST(Workspace, IncMasterChangesCount) {
+    TestHarness h;
+    h.start();
+
+    h.core.dispatch(command::IncMaster{ 1 });
+    EXPECT_EQ(h.core.cfg().nmaster, 2);
+
+    h.core.dispatch(command::IncMaster{ -1 });
+    EXPECT_EQ(h.core.cfg().nmaster, 1);
+}
+
+TEST(Workspace, AdjustMasterFactorChangesRatio) {
+    TestHarness h;
+    h.start();
+
+    double before = h.core.cfg().master_factor;
+    h.core.dispatch(command::AdjustMasterFactor{ 0.05 });
+    double after = h.core.cfg().master_factor;
+    EXPECT_GT(after, before);
+}
+
+// ---------------------------------------------------------------------------
+// HideWindow
+// ---------------------------------------------------------------------------
+
+TEST(Workspace, HideWindowMakesInvisible) {
+    TestHarness h;
+    h.start();
+
+    WindowId win = h.map_window(0x1000, 0);
+    EXPECT_TRUE(h.core.window_state_any(win)->is_visible());
+
+    h.core.dispatch(command::HideWindow{ win });
+    EXPECT_FALSE(h.core.window_state_any(win)->is_visible());
+}
+
+TEST(Workspace, HideWindowEmitsUnmap) {
+    TestHarness h;
+    h.start();
+
+    WindowId win = h.map_window(0x1000, 0);
+    h.core.take_backend_effects(); // drain
+
+    h.core.dispatch(command::HideWindow{ win });
+    auto effects = h.core.take_backend_effects();
+
+    bool found = false;
+    for (const auto& e : effects) {
+        if (e.kind == BackendEffectKind::UnmapWindow && e.window == win) {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
