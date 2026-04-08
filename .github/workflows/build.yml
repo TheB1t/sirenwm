@@ -35,7 +35,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
       - name: Build tests
@@ -55,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coredumps-ubuntu-${{ matrix.version }}
-          path: /tmp/cores/
+          path: |
+            /tmp/cores/
+            output/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -89,7 +91,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
       - name: Build tests
@@ -109,7 +111,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coredumps-debian-${{ matrix.codename }}
-          path: /tmp/cores/
+          path: |
+            /tmp/cores/
+            output/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -135,7 +139,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
       - name: Build tests
@@ -155,7 +159,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coredumps-fedora-41
-          path: /tmp/cores/
+          path: |
+            /tmp/cores/
+            output/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -182,7 +188,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
       - name: Run integration tests
@@ -206,6 +212,7 @@ jobs:
           path: |
             /tmp/cores/
             /tmp/sirenwm-itest/
+            output/sirenwm
           if-no-files-found: ignore
           retention-days: 7
 
@@ -231,7 +238,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
       - name: Build tests
@@ -251,6 +258,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coredumps-arch
-          path: /tmp/cores/
+          path: |
+            /tmp/cores/
+            output/
           if-no-files-found: ignore
           retention-days: 7
