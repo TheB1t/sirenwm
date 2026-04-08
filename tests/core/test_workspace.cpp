@@ -114,13 +114,13 @@ TEST(Window, ToggleFloating) {
 }
 
 // ---------------------------------------------------------------------------
-// Fullscreen blocks cross-monitor move
+// Fullscreen/borderless windows can move across monitors and get re-pinned
 // ---------------------------------------------------------------------------
 
-TEST(Window, FullscreenBlocksCrossMonitorMove) {
+TEST(Window, FullscreenCrossMonitorMove) {
     TestHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
-        make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
+        make_monitor(1, 1920, 0, 2560, 1440, "secondary"),
     });
     CoreSettings s;
     s.workspace_defs = { { "[1]", "primary" }, { "[2]", "secondary" } };
@@ -131,14 +131,20 @@ TEST(Window, FullscreenBlocksCrossMonitorMove) {
     h.core.dispatch(command::SetWindowFullscreen{ win, true });
 
     bool moved = h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
-    EXPECT_FALSE(moved);
-    EXPECT_EQ(h.core.workspace_of_window(win), 0);
+    EXPECT_TRUE(moved);
+    EXPECT_EQ(h.core.workspace_of_window(win), 1);
+
+    auto ws = h.core.window_state_any(win);
+    ASSERT_TRUE(ws);
+    EXPECT_EQ(ws->pos().x(), 1920);
+    EXPECT_EQ(ws->size().x(), 2560);
+    EXPECT_EQ(ws->size().y(), 1440);
 }
 
-TEST(Window, BorderlessBlocksCrossMonitorMove) {
+TEST(Window, BorderlessCrossMonitorMove) {
     TestHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
-        make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
+        make_monitor(1, 1920, 0, 2560, 1440, "secondary"),
     });
     CoreSettings s;
     s.workspace_defs = { { "[1]", "primary" }, { "[2]", "secondary" } };
@@ -149,6 +155,12 @@ TEST(Window, BorderlessBlocksCrossMonitorMove) {
     h.core.dispatch(command::SetWindowBorderless{ win, true });
 
     bool moved = h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
-    EXPECT_FALSE(moved);
-    EXPECT_EQ(h.core.workspace_of_window(win), 0);
+    EXPECT_TRUE(moved);
+    EXPECT_EQ(h.core.workspace_of_window(win), 1);
+
+    auto ws = h.core.window_state_any(win);
+    ASSERT_TRUE(ws);
+    EXPECT_EQ(ws->pos().x(), 1920);
+    EXPECT_EQ(ws->size().x(), 2560);
+    EXPECT_EQ(ws->size().y(), 1440);
 }

@@ -119,7 +119,8 @@ class X11Backend final : public Backend {
         // Pointer barriers: confine cursor to monitor when a borderless window is active.
         // PointerBarrier is unsigned long (Xlib); avoid pulling Xlib.h into this header.
         unsigned long barriers_[4]    = { 0, 0, 0, 0 };
-        WindowId      barrier_window_ = NO_WINDOW;
+        WindowId      barrier_window_   = NO_WINDOW;
+        int           barrier_mon_idx_  = -1;
         void set_pointer_barriers(WindowId win, int mon_idx);
         void clear_pointer_barriers();
 

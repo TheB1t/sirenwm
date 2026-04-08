@@ -183,12 +183,13 @@ void X11Backend::clear_pointer_barriers() {
             b = 0;
         }
     }
-    barrier_window_ = NO_WINDOW;
+    barrier_window_  = NO_WINDOW;
+    barrier_mon_idx_ = -1;
     LOG_DEBUG("pointer barriers cleared");
 }
 
 void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
-    if (barrier_window_ == win)
+    if (barrier_window_ == win && barrier_mon_idx_ == mon_idx)
         return;
     clear_pointer_barriers();
 
@@ -210,7 +211,8 @@ void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
     barriers_[2] = XFixesCreatePointerBarrier(dpy, root, x1, y1, x2, y1, BarrierPositiveY, 0, nullptr);
     barriers_[3] = XFixesCreatePointerBarrier(dpy, root, x1, y2, x2, y2, BarrierNegativeY, 0, nullptr);
 
-    barrier_window_ = win;
+    barrier_window_  = win;
+    barrier_mon_idx_ = mon_idx;
     LOG_DEBUG("pointer barriers set for window %d: [%d,%d %dx%d]",
         win, x1, y1, x2 - x1, y2 - y1);
 }

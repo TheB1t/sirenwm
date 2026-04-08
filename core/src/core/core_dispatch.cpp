@@ -380,22 +380,22 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     if (!w)
         return false;
 
-    int src_mon_idx = monitor_of_workspace(workspace_of_window(cmd.window));
-    int dst_mon_idx = monitor_of_workspace(cmd.workspace_id);
-
-    // Borderless and fullscreen windows cannot be moved across monitors:
-    // their renderer is bound to the physical monitor at creation time and
-    // will not reinitialize on a simple geometry change.
-    if (dst_mon_idx != src_mon_idx && (w->borderless || w->fullscreen)) {
-        LOG_DEBUG("MoveWindowToWorkspace(%d): blocked cross-monitor move for borderless/fullscreen window", cmd.window);
-        return false;
-    }
+    int src_ws_id = workspace_of_window(cmd.window);
+    bool is_fs    = w->borderless || w->fullscreen;
 
     wsman.move_window_to(cmd.workspace_id, w);
     emit_window_assigned_to_workspace(cmd.window, cmd.workspace_id);
 
     sync_workspace_visibility();
     arrange();
+
+    // Re-pin fullscreen/borderless geometry to the destination monitor
+    // and evaluate stacking on both source and destination workspaces.
+    if (is_fs) {
+        pin_fullscreen_to_monitor(*w, cmd.workspace_id);
+        evaluate_workspace_fullscreen(src_ws_id);
+        evaluate_workspace_fullscreen(cmd.workspace_id);
+    }
 
     bool moved_ws_visible = is_workspace_visible(cmd.workspace_id);
     bool focus_moved      = moved_ws_visible && w->is_visible() && !w->suppress_focus_once;
