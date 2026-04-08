@@ -11,7 +11,6 @@ list(APPEND SIRENWM_BACKEND_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/monitor_port.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/tray_host.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/xconn.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/gl_port.cpp
 )
 
 list(APPEND SIRENWM_BACKEND_INCLUDE_DIRS
@@ -23,13 +22,16 @@ list(APPEND SIRENWM_BACKEND_INCLUDE_DIRS
     ${XCBKEYSYMS_INCLUDE_DIRS}
 )
 
-find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
-
 list(APPEND SIRENWM_BACKEND_LINK_LIBS
     X11 X11-xcb xcb xcb-randr xkbfile Xfixes
     ${CAIRO_LIBRARIES}
     ${CAIROXCB_LIBRARIES}
     ${XCBKEYSYMS_LIBRARIES}
     xkbcommon
-    OpenGL::GL OpenGL::EGL
 )
+
+if(SIRENWM_DEBUG_UI)
+    find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
+    list(APPEND SIRENWM_BACKEND_SOURCES ${CMAKE_CURRENT_LIST_DIR}/src/gl_port.cpp)
+    list(APPEND SIRENWM_BACKEND_LINK_LIBS OpenGL::GL OpenGL::EGL)
+endif()

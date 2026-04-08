@@ -18,7 +18,9 @@ X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     input_port_impl    = backend::x11::create_input_port(xconn, key_syms);
     monitor_port_impl  = backend::x11::create_monitor_port(xconn, runtime_ref);
     keyboard_port_impl = backend::x11::create_keyboard_port(xconn);
+#ifdef SIRENWM_DEBUG_UI
     gl_port_impl       = backend::x11::create_gl_port();
+#endif
     auto atoms = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
     net_wm_name = atoms["_NET_WM_NAME"];
     utf8_string = atoms["UTF8_STRING"];
@@ -234,7 +236,11 @@ backend::RenderPort* X11Backend::render_port() {
 }
 
 backend::GLPort* X11Backend::gl_port() {
+#ifdef SIRENWM_DEBUG_UI
     return gl_port_impl.get();
+#else
+    return nullptr;
+#endif
 }
 
 std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {

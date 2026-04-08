@@ -29,7 +29,9 @@ class X11Backend final : public Backend {
         std::unique_ptr<backend::InputPort>    input_port_impl;
         std::unique_ptr<backend::MonitorPort>  monitor_port_impl;
         std::unique_ptr<backend::KeyboardPort> keyboard_port_impl;
+#ifdef SIRENWM_DEBUG_UI
         std::unique_ptr<backend::GLPort>       gl_port_impl;
+#endif
         xcb_key_symbols_t* key_syms = nullptr;
         uint32_t net_wm_name        = 0;
         uint32_t utf8_string        = 0;

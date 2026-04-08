@@ -1,4 +1,3 @@
-option(SIRENWM_DEBUG_UI "Build ImGui debug overlay module" OFF)
 if(NOT SIRENWM_DEBUG_UI)
     return()
 endif()

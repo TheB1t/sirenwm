@@ -14,6 +14,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
+option(SIRENWM_DEBUG_UI "Build ImGui debug overlay (requires OpenGL/EGL)" OFF)
+
 set(CMAKE_C_FLAGS_RELEASE   "-g0 -Ofast")
 set(CMAKE_C_FLAGS_DEBUG     "-g3 -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
@@ -91,6 +93,9 @@ target_link_libraries(sirenwm_backend PUBLIC
     sirenwm_core
     ${SIRENWM_BACKEND_LINK_LIBS}
 )
+if(SIRENWM_DEBUG_UI)
+    target_compile_definitions(sirenwm_backend PUBLIC SIRENWM_DEBUG_UI)
+endif()
 
 # ---------------------------------------------------------------------------
 # Application
