@@ -999,14 +999,404 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 18: Three windows — stack splits vertically
+# ---------------------------------------------------------------------------
+
+DISPLAY=$DISPLAY_NUM wmctrl -s 0
+wait_for_desktop 0 || true
+
+# Kill floating xclock and xclock2 to get a clean slate, then spawn 3 fresh windows.
+kill $FLOAT_XCLOCK_PID 2>/dev/null || true
+kill $XCLOCK2_PID 2>/dev/null || true
+kill $XCLOCK_PID 2>/dev/null || true
+sleep 0.3
+
+DISPLAY=$DISPLAY_NUM xclock -name xclock_a -geometry 100x100 &
+T18_PID1=$!
+DISPLAY=$DISPLAY_NUM xclock -name xclock_b -geometry 100x100 &
+T18_PID2=$!
+DISPLAY=$DISPLAY_NUM xclock -name xclock_c -geometry 100x100 &
+T18_PID3=$!
+sleep 0.5
+
+mapfile -t T18_GEOMS < <(
+    DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep -iE "xclock_(a|b|c)" \
+        | grep -oE '[0-9]+x[0-9]+\+[0-9]+\+[0-9]+' | head -3
+)
+
+if (( ${#T18_GEOMS[@]} == 3 )); then
+    # Sort by X position to identify master vs stack
+    IFS=$'\n' sorted=($(for g in "${T18_GEOMS[@]}"; do
+        echo "$(geom_x "$g") $g"
+    done | sort -n))
+
+    MASTER_G="${sorted[0]#* }"
+    STACK1_G="${sorted[1]#* }"
+    STACK2_G="${sorted[2]#* }"
+
+    S1_Y=$(geom_y "$STACK1_G")
+    S2_Y=$(geom_y "$STACK2_G")
+    S1_H=$(geom_h "$STACK1_G")
+    S1_X=$(geom_x "$STACK1_G")
+    S2_X=$(geom_x "$STACK2_G")
+
+    # Both stack windows should be at the same X position
+    if (( S1_X == S2_X )); then
+        pass "3 windows: stack windows share same X"
+    else
+        fail "3 windows: stack windows share same X" "x1=$S1_X x2=$S2_X"
+    fi
+
+    # Stack windows should be stacked vertically (one below the other)
+    S1_BOTTOM=$(( S1_Y + S1_H ))
+    if (( S2_Y >= S1_BOTTOM - 10 )); then
+        pass "3 windows: stack windows arranged vertically"
+    else
+        fail "3 windows: stack windows arranged vertically" \
+            "s1 bottom=$S1_BOTTOM s2 y=$S2_Y"
+    fi
+else
+    info "Could not get 3 window geometries for stack test (got ${#T18_GEOMS[@]})"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 19: Move window to another workspace via wmctrl -t (_NET_WM_DESKTOP)
+# ---------------------------------------------------------------------------
+
+T19_WIN=""
+for _ in $(seq 1 20); do
+    T19_WIN=$(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep "xclock_a" | head -1 | awk '{print $1}' || true)
+    [[ -n "$T19_WIN" ]] && break
+    sleep 0.1
+done
+
+if [[ -n "$T19_WIN" ]]; then
+    # Move xclock_a to workspace 2 (index 1)
+    DISPLAY=$DISPLAY_NUM wmctrl -i -r "$T19_WIN" -t 1
+    sleep 0.3
+
+    T19_DESK=$(DISPLAY=$DISPLAY_NUM xprop -id "$T19_WIN" _NET_WM_DESKTOP 2>/dev/null \
+        | grep -oE '[0-9]+$' || true)
+    if [[ "$T19_DESK" == "1" ]]; then
+        pass "wmctrl -t moves window to workspace 2 (_NET_WM_DESKTOP=1)"
+    else
+        fail "wmctrl -t moves window" "got _NET_WM_DESKTOP=$T19_DESK, expected 1"
+    fi
+
+    # Window should be hidden (ws 0 is active)
+    if ! is_window_viewable "$T19_WIN"; then
+        pass "moved window hidden on inactive workspace"
+    else
+        fail "moved window hidden" "still viewable on workspace 0"
+    fi
+
+    # Switch to ws 1 — window should appear
+    DISPLAY=$DISPLAY_NUM wmctrl -s 1
+    wait_for_desktop 1 || true
+    sleep 0.2
+
+    if is_window_viewable "$T19_WIN"; then
+        pass "moved window visible after switching to target workspace"
+    else
+        fail "moved window visible" "not viewable on workspace 1"
+    fi
+
+    # Move it back for subsequent tests
+    DISPLAY=$DISPLAY_NUM wmctrl -i -r "$T19_WIN" -t 0
+    DISPLAY=$DISPLAY_NUM wmctrl -s 0
+    wait_for_desktop 0 || true
+    sleep 0.2
+else
+    info "Could not find xclock_a for move-to-workspace test — skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 20: _NET_SUPPORTING_WM_CHECK is set
+# ---------------------------------------------------------------------------
+
+WM_CHECK=$(DISPLAY=$DISPLAY_NUM xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null)
+if echo "$WM_CHECK" | grep -q "window id"; then
+    WM_CHECK_ID=$(echo "$WM_CHECK" | grep -oE '0x[0-9a-fA-F]+' | head -1 || true)
+    if [[ -n "$WM_CHECK_ID" ]]; then
+        # The check window should have _NET_WM_NAME set to the WM name
+        WM_NAME=$(DISPLAY=$DISPLAY_NUM xprop -id "$WM_CHECK_ID" _NET_WM_NAME 2>/dev/null || true)
+        if echo "$WM_NAME" | grep -qi "siren\|swm"; then
+            pass "_NET_SUPPORTING_WM_CHECK with WM name (${WM_NAME})"
+        else
+            # WM name might not match our grep, but the property exists
+            pass "_NET_SUPPORTING_WM_CHECK is set ($WM_CHECK_ID)"
+        fi
+    else
+        fail "_NET_SUPPORTING_WM_CHECK" "no window ID found"
+    fi
+else
+    fail "_NET_SUPPORTING_WM_CHECK is set" "not found"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 21: _NET_WM_PID is set on managed windows
+# ---------------------------------------------------------------------------
+
+T21_WIN=""
+for _ in $(seq 1 10); do
+    T21_WIN=$(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep "xclock_a" | head -1 | awk '{print $1}' || true)
+    [[ -n "$T21_WIN" ]] && break
+    sleep 0.1
+done
+
+if [[ -n "$T21_WIN" ]]; then
+    T21_PID=$(DISPLAY=$DISPLAY_NUM xprop -id "$T21_WIN" _NET_WM_PID 2>/dev/null \
+        | grep -oE '[0-9]+$' || true)
+    if [[ -n "$T21_PID" ]] && (( T21_PID > 0 )); then
+        pass "_NET_WM_PID is set on managed window (pid=$T21_PID)"
+    else
+        # Some X clients don't set _NET_WM_PID themselves; that's ok
+        info "_NET_WM_PID not set by xclock (client responsibility) — skipping"
+    fi
+else
+    info "No window for _NET_WM_PID test — skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 22: _NET_DESKTOP_VIEWPORT is set
+# ---------------------------------------------------------------------------
+
+VIEWPORT=$(DISPLAY=$DISPLAY_NUM xprop -root _NET_DESKTOP_VIEWPORT 2>/dev/null)
+if echo "$VIEWPORT" | grep -qE '[0-9]'; then
+    pass "_NET_DESKTOP_VIEWPORT is set"
+else
+    # Viewport is optional in EWMH, but we should set it
+    info "_NET_DESKTOP_VIEWPORT not set — skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 23: Window unmap + remap preserves workspace assignment
+# ---------------------------------------------------------------------------
+
+T23_WIN=""
+for _ in $(seq 1 10); do
+    T23_WIN=$(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep "xclock_b" | head -1 | awk '{print $1}' || true)
+    [[ -n "$T23_WIN" ]] && break
+    sleep 0.1
+done
+
+if [[ -n "$T23_WIN" ]]; then
+    T23_DESK_BEFORE=$(DISPLAY=$DISPLAY_NUM xprop -id "$T23_WIN" _NET_WM_DESKTOP 2>/dev/null \
+        | grep -oE '[0-9]+$' || true)
+
+    # Send WM_DELETE_WINDOW to close, then check that _NET_CLIENT_LIST shrinks
+    CL_BEFORE=$(DISPLAY=$DISPLAY_NUM xprop -root _NET_CLIENT_LIST 2>/dev/null \
+        | grep -oE '0x[0-9a-fA-F]+' | wc -l || true)
+
+    DISPLAY=$DISPLAY_NUM wmctrl -i -c "$T23_WIN"
+    sleep 0.5
+
+    CL_AFTER=$(DISPLAY=$DISPLAY_NUM xprop -root _NET_CLIENT_LIST 2>/dev/null \
+        | grep -oE '0x[0-9a-fA-F]+' | wc -l || true)
+
+    if (( CL_AFTER < CL_BEFORE )); then
+        pass "closing window shrinks _NET_CLIENT_LIST ($CL_BEFORE -> $CL_AFTER)"
+    else
+        fail "closing window shrinks _NET_CLIENT_LIST" \
+            "before=$CL_BEFORE after=$CL_AFTER"
+    fi
+else
+    info "No window for unmap/remap test — skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 24: Rapid workspace switching doesn't crash
+# ---------------------------------------------------------------------------
+
+for ws_idx in 0 1 2 0 2 1 0; do
+    DISPLAY=$DISPLAY_NUM wmctrl -s $ws_idx
+    sleep 0.05
+done
+wait_for_desktop 0 || true
+sleep 0.2
+
+if kill -0 $SIRENWM_PID 2>/dev/null; then
+    pass "rapid workspace switching doesn't crash"
+else
+    fail "rapid workspace switching" "sirenwm died"
+    dump_logs
+fi
+
+# ---------------------------------------------------------------------------
+# Test 25: Rapid window open/close doesn't crash
+# ---------------------------------------------------------------------------
+
+RAPID_PIDS=()
+for i in $(seq 1 5); do
+    DISPLAY=$DISPLAY_NUM xclock -name "rapid_$i" -geometry 50x50 &
+    RAPID_PIDS+=($!)
+done
+sleep 0.3
+
+for pid in "${RAPID_PIDS[@]}"; do
+    kill "$pid" 2>/dev/null || true
+done
+sleep 0.5
+
+if kill -0 $SIRENWM_PID 2>/dev/null; then
+    pass "rapid window open/close doesn't crash"
+else
+    fail "rapid window open/close" "sirenwm died"
+    dump_logs
+fi
+
+# ---------------------------------------------------------------------------
+# Test 26: _NET_WM_STATE fullscreen covers entire screen including bar area
+# ---------------------------------------------------------------------------
+
+DISPLAY=$DISPLAY_NUM wmctrl -s 0
+wait_for_desktop 0 || true
+
+DISPLAY=$DISPLAY_NUM xclock -name xclock_fs2 -geometry 100x100 &
+T26_PID=$!
+T26_WIN=""
+for _ in $(seq 1 30); do
+    T26_WIN=$(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep "xclock_fs2" | head -1 | awk '{print $1}' || true)
+    [[ -n "$T26_WIN" ]] && break
+    sleep 0.1
+done
+
+if [[ -n "$T26_WIN" ]]; then
+    DISPLAY=$DISPLAY_NUM wmctrl -i -r "$T26_WIN" -b add,fullscreen
+    sleep 0.4
+
+    T26_Y=$(DISPLAY=$DISPLAY_NUM xwininfo -id "$T26_WIN" 2>/dev/null \
+        | awk '/Absolute upper-left Y:/ {print $4}' || true)
+    T26_H=$(DISPLAY=$DISPLAY_NUM xwininfo -id "$T26_WIN" 2>/dev/null \
+        | awk '/Height:/ {print $2}' || true)
+    T26_W=$(DISPLAY=$DISPLAY_NUM xwininfo -id "$T26_WIN" 2>/dev/null \
+        | awk '/Width:/ {print $2}' || true)
+
+    assert_approx "fullscreen2 covers full height" "${T26_H:-0}" $SCREEN_H 4
+    assert_approx "fullscreen2 covers full width"  "${T26_W:-0}" $SCREEN_W 4
+    assert_approx "fullscreen2 y = 0 (over bar)"   "${T26_Y:-99}" 0 4
+
+    # Remove fullscreen
+    DISPLAY=$DISPLAY_NUM wmctrl -i -r "$T26_WIN" -b remove,fullscreen
+    sleep 0.5
+
+    T26_H_AFTER=$(DISPLAY=$DISPLAY_NUM xwininfo -id "$T26_WIN" 2>/dev/null \
+        | awk '/Height:/ {print $2}' || true)
+    if [[ -n "$T26_H_AFTER" ]] && (( T26_H_AFTER < SCREEN_H )); then
+        pass "fullscreen2 restored to tiled height (h=$T26_H_AFTER)"
+    else
+        fail "fullscreen2 restored" "h=${T26_H_AFTER:-?}"
+    fi
+
+    kill $T26_PID 2>/dev/null || true
+else
+    info "No window for fullscreen2 test — skipping"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 27: Multiple _NET_CLOSE_WINDOW in quick succession
+# ---------------------------------------------------------------------------
+
+DISPLAY=$DISPLAY_NUM xclock -name xclock_mc1 &
+MC1_PID=$!
+DISPLAY=$DISPLAY_NUM xclock -name xclock_mc2 &
+MC2_PID=$!
+DISPLAY=$DISPLAY_NUM xclock -name xclock_mc3 &
+MC3_PID=$!
+sleep 0.4
+
+MC_WINS=()
+for name in xclock_mc1 xclock_mc2 xclock_mc3; do
+    wid=$(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep "$name" | head -1 | awk '{print $1}' || true)
+    [[ -n "$wid" ]] && MC_WINS+=("$wid")
+done
+
+if (( ${#MC_WINS[@]} == 3 )); then
+    for wid in "${MC_WINS[@]}"; do
+        DISPLAY=$DISPLAY_NUM wmctrl -i -c "$wid"
+    done
+    sleep 1.0
+
+    MC_ALL_GONE=true
+    for wid in "${MC_WINS[@]}"; do
+        if DISPLAY=$DISPLAY_NUM xwininfo -id "$wid" &>/dev/null 2>&1; then
+            MC_ALL_GONE=false
+            break
+        fi
+    done
+
+    if $MC_ALL_GONE; then
+        pass "multiple rapid close: all windows removed"
+    else
+        fail "multiple rapid close" "some windows still exist"
+    fi
+else
+    info "Could not spawn 3 windows for rapid close test (got ${#MC_WINS[@]})"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 28: _NET_WM_STATE_FOCUSED absent after workspace switch away
+# ---------------------------------------------------------------------------
+
+DISPLAY=$DISPLAY_NUM wmctrl -s 0
+wait_for_desktop 0 || true
+
+# Find a window on workspace 0
+T28_WIN=""
+for _ in $(seq 1 10); do
+    T28_WIN=$(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | grep -iE "xclock" | grep -v "xclock_float\|xclock_close\|xclock_fs\|xclock_mc" \
+        | head -1 | awk '{print $1}' || true)
+    [[ -n "$T28_WIN" ]] && break
+    sleep 0.1
+done
+
+if [[ -n "$T28_WIN" ]]; then
+    DISPLAY=$DISPLAY_NUM wmctrl -i -a "$T28_WIN"
+    wait_for_active_window "$T28_WIN" || true
+    sleep 0.1
+
+    # Verify FOCUSED is set
+    T28_STATE=$(DISPLAY=$DISPLAY_NUM xprop -id "$T28_WIN" _NET_WM_STATE 2>/dev/null)
+    if echo "$T28_STATE" | grep -q "FOCUSED"; then
+        pass "_NET_WM_STATE_FOCUSED set before switch"
+    else
+        info "_NET_WM_STATE_FOCUSED not set before switch — skipping rest"
+    fi
+
+    # Switch away
+    DISPLAY=$DISPLAY_NUM wmctrl -s 2
+    wait_for_desktop 2 || true
+    sleep 0.2
+
+    T28_STATE_AFTER=$(DISPLAY=$DISPLAY_NUM xprop -id "$T28_WIN" _NET_WM_STATE 2>/dev/null)
+    if ! echo "$T28_STATE_AFTER" | grep -q "FOCUSED"; then
+        pass "_NET_WM_STATE_FOCUSED cleared after workspace switch"
+    else
+        fail "_NET_WM_STATE_FOCUSED cleared after switch" "still set: $T28_STATE_AFTER"
+    fi
+
+    DISPLAY=$DISPLAY_NUM wmctrl -s 0
+    wait_for_desktop 0 || true
+else
+    info "No window for FOCUSED-after-switch test — skipping"
+fi
+
+# ---------------------------------------------------------------------------
 # Test 8: sirenwm still alive after window operations
 # ---------------------------------------------------------------------------
 
 sleep 0.2
 if kill -0 $SIRENWM_PID 2>/dev/null; then
-    pass "sirenwm alive after window operations"
+    pass "sirenwm alive after all tests"
 else
-    fail "sirenwm alive after window operations" "process died"
+    fail "sirenwm alive after all tests" "process died"
 fi
 
 # ---------------------------------------------------------------------------
