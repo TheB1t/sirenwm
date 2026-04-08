@@ -73,14 +73,38 @@ Lua modules use the same `require()` — or `siren.load()` for optional ones.
 
 ### 1. Dependencies
 
+#### Debian / Ubuntu
+
 ```bash
-# Debian/Ubuntu
 sudo apt install \
   cmake pkg-config g++ \
   libx11-dev libx11-xcb-dev \
   libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
   libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
-  libcairo2-dev libpango1.0-dev libfontconfig1-dev libspdlog-dev
+  libcairo2-dev libpango1.0-dev libfontconfig1-dev libfreetype-dev libpng-dev \
+  libspdlog-dev
+```
+
+#### Fedora
+
+```bash
+sudo dnf install \
+  cmake make pkgconf gcc-c++ \
+  libX11-devel libxcb-devel xcb-util-keysyms-devel \
+  libxkbcommon-devel libxkbfile-devel libXfixes-devel lua-devel \
+  cairo-devel pango-devel fontconfig-devel freetype-devel libpng-devel \
+  spdlog-devel
+```
+
+#### Arch Linux
+
+```bash
+sudo pacman -S \
+  cmake make pkgconf gcc \
+  libx11 libxcb xcb-util-keysyms \
+  libxkbcommon libxkbfile libxfixes lua \
+  cairo pango fontconfig freetype2 libpng \
+  spdlog
 ```
 
 ### 2. Build
@@ -94,8 +118,12 @@ cmake --build build -j$(nproc)
 To build with the ImGui debug overlay:
 
 ```bash
-# extra dependencies (Debian/Ubuntu)
+# extra dependencies — Debian/Ubuntu
 sudo apt install libegl-dev libgl-dev
+# extra dependencies — Fedora
+sudo dnf install mesa-libEGL-devel mesa-libGL-devel
+# extra dependencies — Arch Linux
+sudo pacman -S mesa
 
 cmake -S . -B build -DSIRENWM_DEBUG_UI=ON
 cmake --build build -j$(nproc)

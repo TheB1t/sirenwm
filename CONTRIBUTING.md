@@ -2,18 +2,20 @@
 
 ## Building
 
-```bash
-# Dependencies (Debian/Ubuntu)
-sudo apt install \
-  cmake pkg-config g++ \
-  libx11-dev libx11-xcb-dev \
-  libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
-  libxkbcommon-dev liblua5.4-dev \
-  libcairo2-dev libpango1.0-dev libfontconfig1-dev
+See the [Dependencies](README.md#1-dependencies) section in the README for package names per distro.
 
+```bash
 cmake -S . -B build
 cmake --build build -j$(nproc)
 # binary: output/sirenwm
+```
+
+## Running Tests
+
+```bash
+cmake -S . -B build-test -DBUILD_TESTING=ON
+cmake --build build-test -j$(nproc)
+ctest --test-dir build-test --output-on-failure
 ```
 
 ## Code Style

@@ -27,7 +27,7 @@ jobs:
             libx11-dev libx11-xcb-dev \
             libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
             libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
-            libcairo2-dev libcairo-gobject2 libpango1.0-dev \
+            libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev libfreetype-dev libpng-dev \
             libspdlog-dev
 
@@ -35,6 +35,14 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
+
+      - name: Build tests
+        run: |
+          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBUILD_TESTING=ON
+          cmake --build build-test -j$(nproc)
+
+      - name: Run tests
+        run: ctest --test-dir build-test --output-on-failure
 
   build-debian:
     name: Debian ${{ matrix.codename }}
@@ -67,6 +75,14 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
+      - name: Build tests
+        run: |
+          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBUILD_TESTING=ON
+          cmake --build build-test -j$(nproc)
+
+      - name: Run tests
+        run: ctest --test-dir build-test --output-on-failure
+
   build-fedora:
     name: Fedora 41
     runs-on: ubuntu-latest
@@ -90,6 +106,49 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
 
+      - name: Build tests
+        run: |
+          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBUILD_TESTING=ON
+          cmake --build build-test -j$(nproc)
+
+      - name: Run tests
+        run: ctest --test-dir build-test --output-on-failure
+
+  integration:
+    name: Integration tests (Xephyr)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake make pkg-config g++ \
+            libx11-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
+            libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
+            libcairo2-dev libpango1.0-dev \
+            libfontconfig1-dev libfreetype-dev libpng-dev \
+            libspdlog-dev \
+            xvfb xserver-xephyr \
+            x11-utils x11-apps xterm wmctrl
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build -j$(nproc)
+
+      - name: Run integration tests
+        run: |
+          Xvfb :98 -screen 0 1280x720x24 &
+          XVFB_PID=$!
+          sleep 1
+          DISPLAY=:98 bash tests/integration/run_tests.sh
+          EXIT=$?
+          kill $XVFB_PID 2>/dev/null || true
+          exit $EXIT
+
   build-arch:
     name: Arch Linux
     runs-on: ubuntu-latest
@@ -112,3 +171,11 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build -j$(nproc)
+
+      - name: Build tests
+        run: |
+          cmake -S . -B build-test -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBUILD_TESTING=ON
+          cmake --build build-test -j$(nproc)
+
+      - name: Run tests
+        run: ctest --test-dir build-test --output-on-failure
