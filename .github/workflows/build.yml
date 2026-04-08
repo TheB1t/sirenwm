@@ -184,7 +184,7 @@ jobs:
             libspdlog-dev \
             xvfb xserver-xephyr \
             x11-utils x11-apps xterm wmctrl \
-            fonts-dejavu-core
+            fonts-dejavu-core xfonts-base
 
       - name: Build
         run: |

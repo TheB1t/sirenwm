@@ -77,7 +77,7 @@ fi
 mkdir -p "$(dirname "$TEST_CONFIG")"
 cat >"$TEST_CONFIG" <<'LUA'
 require("keybindings")
-require("bar")
+local bar = require("bar")
 
 siren.modifier = "mod1"
 
@@ -107,11 +107,11 @@ siren.layout = {
   master_factor = 0.55,
 }
 
-siren.bar = {
+bar.settings = {
   top = {
     height = 18,
-    left   = { "tags" },
-    center = { "title" },
+    left   = { siren.load("widgets.tags") },
+    center = { siren.load("widgets.title") },
   },
 }
 
@@ -672,16 +672,20 @@ fi
 # Test 11: Bar window — dock type, override-redirect, top of screen, correct height
 # ---------------------------------------------------------------------------
 
+# Wait up to 2s for the bar window to appear in the X tree.
 BAR_ID=""
-while IFS= read -r wid; do
-    [[ "$wid" == 0x* ]] || continue
-    wtype=$(DISPLAY=$DISPLAY_NUM xprop -id "$wid" _NET_WM_WINDOW_TYPE 2>/dev/null)
-    if echo "$wtype" | grep -q "WINDOW_TYPE_DOCK"; then
-        BAR_ID="$wid"
-        break
-    fi
-done < <(DISPLAY=$DISPLAY_NUM xwininfo -root -children 2>/dev/null \
-    | awk '/^\s+0x/ {print $1}')
+for _ in $(seq 1 20); do
+    while IFS= read -r wid; do
+        [[ "$wid" == 0x* ]] || continue
+        wtype=$(DISPLAY=$DISPLAY_NUM xprop -id "$wid" _NET_WM_WINDOW_TYPE 2>/dev/null)
+        if echo "$wtype" | grep -q "WINDOW_TYPE_DOCK"; then
+            BAR_ID="$wid"
+            break 2
+        fi
+    done < <(DISPLAY=$DISPLAY_NUM xwininfo -root -tree 2>/dev/null \
+        | awk '/^\s+0x/ {print $1}')
+    sleep 0.1
+done
 
 if [[ -z "$BAR_ID" ]]; then
     fail "bar window has _NET_WM_WINDOW_TYPE_DOCK" "no dock-type window found"
