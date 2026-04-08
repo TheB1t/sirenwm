@@ -80,8 +80,7 @@ sudo apt install \
   libx11-dev libx11-xcb-dev \
   libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
   libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
-  libcairo2-dev libpango1.0-dev libfontconfig1-dev libspdlog-dev \
-  libegl-dev libgl-dev
+  libcairo2-dev libpango1.0-dev libfontconfig1-dev libspdlog-dev
 ```
 
 ### 2. Build
@@ -90,6 +89,16 @@ sudo apt install \
 cmake -S . -B build
 cmake --build build -j$(nproc)
 # binary: output/sirenwm
+```
+
+To build with the ImGui debug overlay:
+
+```bash
+# extra dependencies (Debian/Ubuntu)
+sudo apt install libegl-dev libgl-dev
+
+cmake -S . -B build -DSIRENWM_DEBUG_UI=ON
+cmake --build build -j$(nproc)
 ```
 
 ### 3. Config
