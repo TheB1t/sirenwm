@@ -335,10 +335,14 @@ fi
 
 DISPLAY=$DISPLAY_NUM xclock -geometry 200x200 &
 XCLOCK_PID=$!
-sleep 0.3
+GEOM=""
+for _ in $(seq 1 20); do
+    sleep 0.1
+    GEOM=$(get_geom "xclock")
+    [[ -n "$GEOM" ]] && break
+done
 XCLOCK1_ID="$(get_window_id "xclock")"
 
-GEOM=$(get_geom "xclock")
 if [[ -z "$GEOM" ]]; then
     fail "xclock appears on screen" "xwininfo returned empty"
 else
@@ -508,7 +512,16 @@ else
 fi
 
 if [[ -n "$XTERM_ID" ]]; then
-    if is_window_viewable "$XTERM_ID"; then
+    # Wait up to 2s for the window to become viewable after workspace switch.
+    XTERM_VIEWABLE=false
+    for _ in $(seq 1 20); do
+        if is_window_viewable "$XTERM_ID"; then
+            XTERM_VIEWABLE=true
+            break
+        fi
+        sleep 0.1
+    done
+    if $XTERM_VIEWABLE; then
         pass "rule-routed xterm becomes viewable on target workspace"
     else
         fail "rule-routed xterm becomes viewable on target workspace" "xterm still hidden on workspace 2"
