@@ -16,6 +16,7 @@ jobs:
         version: ["24.04"]
     container:
       image: ubuntu:${{ matrix.version }}
+      options: --ulimit core=-1 --privileged
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +44,20 @@ jobs:
           cmake --build build-test -j$(nproc)
 
       - name: Run tests
-        run: ctest --test-dir build-test --output-on-failure
+        run: |
+          echo '/tmp/cores/core.%e.%p' > /proc/sys/kernel/core_pattern
+          mkdir -p /tmp/cores
+          ulimit -c unlimited
+          ctest --test-dir build-test --output-on-failure
+
+      - name: Upload core dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coredumps-ubuntu-${{ matrix.version }}
+          path: /tmp/cores/
+          if-no-files-found: ignore
+          retention-days: 7
 
   build-debian:
     name: Debian ${{ matrix.codename }}
@@ -56,6 +70,7 @@ jobs:
           - codename: trixie
     container:
       image: debian:${{ matrix.codename }}
+      options: --ulimit core=-1 --privileged
     steps:
       - uses: actions/checkout@v4
 
@@ -83,13 +98,27 @@ jobs:
           cmake --build build-test -j$(nproc)
 
       - name: Run tests
-        run: ctest --test-dir build-test --output-on-failure
+        run: |
+          echo '/tmp/cores/core.%e.%p' > /proc/sys/kernel/core_pattern
+          mkdir -p /tmp/cores
+          ulimit -c unlimited
+          ctest --test-dir build-test --output-on-failure
+
+      - name: Upload core dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coredumps-debian-${{ matrix.codename }}
+          path: /tmp/cores/
+          if-no-files-found: ignore
+          retention-days: 7
 
   build-fedora:
     name: Fedora 41
     runs-on: ubuntu-latest
     container:
       image: fedora:41
+      options: --ulimit core=-1 --privileged
     steps:
       - uses: actions/checkout@v4
 
@@ -115,7 +144,20 @@ jobs:
           cmake --build build-test -j$(nproc)
 
       - name: Run tests
-        run: ctest --test-dir build-test --output-on-failure
+        run: |
+          echo '/tmp/cores/core.%e.%p' > /proc/sys/kernel/core_pattern
+          mkdir -p /tmp/cores
+          ulimit -c unlimited
+          ctest --test-dir build-test --output-on-failure
+
+      - name: Upload core dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coredumps-fedora-41
+          path: /tmp/cores/
+          if-no-files-found: ignore
+          retention-days: 7
 
   integration:
     name: Integration tests (Xephyr)
@@ -145,6 +187,9 @@ jobs:
 
       - name: Run integration tests
         run: |
+          echo '/tmp/cores/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+          mkdir -p /tmp/cores
+          ulimit -c unlimited
           Xvfb :98 -screen 0 1280x720x24 &
           XVFB_PID=$!
           sleep 1
@@ -153,11 +198,23 @@ jobs:
           kill $XVFB_PID 2>/dev/null || true
           exit $EXIT
 
+      - name: Upload core dumps and logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coredumps-integration
+          path: |
+            /tmp/cores/
+            /tmp/sirenwm-itest/
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-arch:
     name: Arch Linux
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
+      options: --ulimit core=-1 --privileged
     steps:
       - uses: actions/checkout@v4
 
@@ -183,4 +240,17 @@ jobs:
           cmake --build build-test -j$(nproc)
 
       - name: Run tests
-        run: ctest --test-dir build-test --output-on-failure
+        run: |
+          echo '/tmp/cores/core.%e.%p' > /proc/sys/kernel/core_pattern
+          mkdir -p /tmp/cores
+          ulimit -c unlimited
+          ctest --test-dir build-test --output-on-failure
+
+      - name: Upload core dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coredumps-arch
+          path: /tmp/cores/
+          if-no-files-found: ignore
+          retention-days: 7
