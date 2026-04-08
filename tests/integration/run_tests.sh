@@ -171,9 +171,9 @@ export PATH="$TEST_HOME/bin:$PATH"
 cat >>"$TEST_CONFIG" <<LUA
 
 local wallpaper = require("swm.wallpaper")
-wallpaper.setup({
+wallpaper.settings = {
   primary = { image = "$SCRIPT_DIR/picture.png", mode = "stretch" },
-})
+}
 LUA
 
 wait_for_display() {
