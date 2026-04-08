@@ -1,18 +1,27 @@
 #include <ws.hpp>
+#include <log.hpp>
 #include <algorithm>
-#include <cassert>
+
+#ifndef NDEBUG
+#define WS_ASSERT_CONSISTENT() do { \
+    if (!indexes_consistent()) \
+        LOG_ERR("WorkspaceManager: index consistency check FAILED at %s:%d", __FILE__, __LINE__); \
+} while (0)
+#else
+#define WS_ASSERT_CONSISTENT() ((void)0)
+#endif
 
 // ────────────────────────────────────────────────────────────────────────────
 // Workspace methods
 // ────────────────────────────────────────────────────────────────────────────
 
-void Workspace::add_window(std::shared_ptr<WindowState> w) {
+void Workspace::add_window(std::shared_ptr<swm::Window> w) {
     windows.push_back(w);
     if (current == -1)
         current = 0;
 }
 
-bool Workspace::remove_window(WindowId win, std::shared_ptr<WindowState>* removed) {
+bool Workspace::remove_window(WindowId win, std::shared_ptr<swm::Window>* removed) {
     for (int i = 0; i < (int)windows.size(); i++) {
         if (!windows[i] || windows[i]->id != win)
             continue;
@@ -36,7 +45,7 @@ bool Workspace::remove_window(WindowId win, std::shared_ptr<WindowState>* remove
     return false;
 }
 
-std::shared_ptr<WindowState> Workspace::focused() {
+std::shared_ptr<swm::Window> Workspace::focused() {
     bool any_visible = false;
     for (auto& w : windows)
         if (w && w->is_visible()) {
@@ -61,7 +70,7 @@ std::shared_ptr<WindowState> Workspace::focused() {
     return nullptr;
 }
 
-std::shared_ptr<WindowState> Workspace::advance_focus() {
+std::shared_ptr<swm::Window> Workspace::advance_focus() {
     bool any_visible = false;
     for (auto& w : windows)
         if (w && w->is_visible()) {
@@ -88,7 +97,7 @@ std::shared_ptr<WindowState> Workspace::advance_focus() {
     return nullptr;
 }
 
-std::shared_ptr<const WindowState> Workspace::focused() const {
+std::shared_ptr<const swm::Window> Workspace::focused() const {
     bool any_visible = false;
     for (const auto& w : windows)
         if (w && w->is_visible()) {
@@ -114,7 +123,7 @@ std::shared_ptr<const WindowState> Workspace::focused() const {
 }
 
 void Workspace::focus_next() {
-    int  n           = (int)windows.size();
+    int  n = (int)windows.size();
     if (n == 0) return;
     bool any_visible = false;
     for (auto& w : windows)
@@ -144,7 +153,7 @@ void Workspace::focus_next() {
 }
 
 void Workspace::focus_prev() {
-    int  n           = (int)windows.size();
+    int  n = (int)windows.size();
     if (n == 0) return;
     bool any_visible = false;
     for (auto& w : windows)
@@ -277,7 +286,7 @@ WindowId WorkspaceManager::last_focused_window(int mon_idx, int ws_id) const {
         return NO_WINDOW;
     WindowId win = it->second;
     // Validate that the window still exists in this workspace.
-    auto wit = window_workspace.find(win);
+    auto     wit = window_workspace.find(win);
     if (wit == window_workspace.end() || wit->second != ws_id)
         return NO_WINDOW;
     return win;
@@ -301,7 +310,7 @@ int WorkspaceManager::resolve_alias_monitor(const std::string& alias,
     return monitor_index_by_name(alias);
 }
 
-void WorkspaceManager::rebuild_pools_from_owner(const std::vector<std::vector<int> >& seed_pools,
+void WorkspaceManager::rebuild_pools_from_owner(const std::vector<std::vector<int>>& seed_pools,
     const std::vector<int>& preferred_active_ws) {
     monitor_pools.assign(monitors.size(), {});
     monitor_active_local.resize(monitors.size(), -1);
@@ -344,14 +353,17 @@ void WorkspaceManager::rebuild_pools_from_owner(const std::vector<std::vector<in
     }
 }
 
-Workspace& WorkspaceManager::fallback_workspace() {
+static Workspace& fallback_workspace_instance() {
     static Workspace fb(-1, "[fallback]");
     return fb;
 }
 
+Workspace& WorkspaceManager::fallback_workspace() {
+    return fallback_workspace_instance();
+}
+
 const Workspace& WorkspaceManager::fallback_workspace() const {
-    static Workspace fb(-1, "[fallback]");
-    return fb;
+    return fallback_workspace_instance();
 }
 
 void WorkspaceManager::clear_window_indexes() {
@@ -359,7 +371,7 @@ void WorkspaceManager::clear_window_indexes() {
     window_workspace.clear();
 }
 
-void WorkspaceManager::index_window(WindowId win, const std::shared_ptr<WindowState>& w, int ws_id) {
+void WorkspaceManager::index_window(WindowId win, const std::shared_ptr<swm::Window>& w, int ws_id) {
     if (win == NO_WINDOW || !w || !is_ws_valid(ws_id))
         return;
     window_index[win]     = w;
@@ -369,6 +381,19 @@ void WorkspaceManager::index_window(WindowId win, const std::shared_ptr<WindowSt
 void WorkspaceManager::unindex_window(WindowId win) {
     window_index.erase(win);
     window_workspace.erase(win);
+
+    // Purge stale focus references so we never try to restore focus
+    // to a window that no longer exists.
+    for (auto& mf : monitor_focus_) {
+        for (auto it = mf.last_window_per_ws.begin(); it != mf.last_window_per_ws.end(); ) {
+            if (it->second == win)
+                it = mf.last_window_per_ws.erase(it);
+            else
+                ++it;
+        }
+    }
+    if (focus_.window == win)
+        focus_.window = NO_WINDOW;
 }
 
 void WorkspaceManager::rebuild_window_indexes() {
@@ -404,15 +429,15 @@ void WorkspaceManager::update_workspace_defs(const std::vector<WorkspaceDef>& de
         // Find a safe fallback workspace to receive displaced windows.
         // Prefer the first workspace on the same monitor; fall back to ws 0.
         auto fallback_for = [&](int ws_id) -> int {
-            int mon = (ws_id < (int)ws_owner.size()) ? ws_owner[ws_id] : -1;
-            if (mon >= 0 && mon < (int)monitor_pools.size()) {
-                for (int id : monitor_pools[mon]) {
-                    if (id < new_count)
-                        return id;
+                int mon = (ws_id < (int)ws_owner.size()) ? ws_owner[ws_id] : -1;
+                if (mon >= 0 && mon < (int)monitor_pools.size()) {
+                    for (int id : monitor_pools[mon]) {
+                        if (id < new_count)
+                            return id;
+                    }
                 }
-            }
-            return 0;
-        };
+                return 0;
+            };
 
         for (int ws_id = new_count; ws_id < old_count; ++ws_id) {
             int dst = fallback_for(ws_id);
@@ -430,7 +455,7 @@ void WorkspaceManager::update_workspace_defs(const std::vector<WorkspaceDef>& de
         for (int mon = 0; mon < (int)monitors.size(); ++mon) {
             int active = active_ws_of_monitor(mon);
             if (active >= new_count) {
-                int dst = fallback_for(active);
+                int   dst = fallback_for(active);
                 // Find dst in this monitor's pool and activate it.
                 auto& pool = monitor_pools[mon];
                 auto  it   = std::find(pool.begin(), pool.end(), dst);
@@ -444,11 +469,15 @@ void WorkspaceManager::update_workspace_defs(const std::vector<WorkspaceDef>& de
         // Prune removed workspaces from all pools and parked state.
         for (auto& pool : monitor_pools) {
             pool.erase(std::remove_if(pool.begin(), pool.end(),
-                [&](int id) { return id >= new_count; }), pool.end());
+                [&](int id) {
+                    return id >= new_count;
+                }), pool.end());
         }
         for (auto& [name, pool] : parked_pools) {
             pool.erase(std::remove_if(pool.begin(), pool.end(),
-                [&](int id) { return id >= new_count; }), pool.end());
+                [&](int id) {
+                    return id >= new_count;
+                }), pool.end());
         }
         for (auto& [name, active] : parked_active_ws) {
             if (active >= new_count)
@@ -538,10 +567,10 @@ void WorkspaceManager::assign_workspaces(const std::vector<MonitorAlias>& aliase
 }
 
 void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
-    std::vector<Monitor>           old_monitors = monitors;
-    std::vector<std::vector<int> > old_pools    = monitor_pools;
-    std::vector<int>               old_owner    = ws_owner;
-    std::vector<int>               old_active_ws((int)old_monitors.size(), -1);
+    std::vector<Monitor>          old_monitors = monitors;
+    std::vector<std::vector<int>> old_pools    = monitor_pools;
+    std::vector<int>              old_owner    = ws_owner;
+    std::vector<int>              old_active_ws((int)old_monitors.size(), -1);
     for (int i = 0; i < (int)old_monitors.size(); i++)
         old_active_ws[i] = (i < (int)old_pools.size() && i < (int)monitor_active_local.size())
             ? active_ws_of_monitor(i)
@@ -590,8 +619,8 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
             new_owner[ws_id] = (int)std::distance(monitors.begin(), it_new);
     }
 
-    std::vector<std::vector<int> > seed_pools(monitors.size());
-    std::vector<int>               preferred_active_ws((int)monitors.size(), -1);
+    std::vector<std::vector<int>> seed_pools(monitors.size());
+    std::vector<int>              preferred_active_ws((int)monitors.size(), -1);
 
     for (int i = 0; i < (int)monitors.size(); i++) {
         const auto& name   = monitors[i].name;
@@ -642,6 +671,17 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
     select_valid_focused_monitor();
     sync_monitors_active_ws();
     sync_focus_state();
+}
+
+void WorkspaceManager::adjust_monitor_insets(int top_delta, int bottom_delta) {
+    for (auto& mon : monitors) {
+        if (top_delta != 0) {
+            mon.y()     += top_delta;
+            mon.height() = std::max(0, mon.height() - top_delta);
+        }
+        if (bottom_delta != 0)
+            mon.height() = std::max(0, mon.height() - bottom_delta);
+    }
 }
 
 Workspace& WorkspaceManager::current() {
@@ -772,7 +812,7 @@ bool WorkspaceManager::switch_to(int ws_id,
     return true;
 }
 
-void WorkspaceManager::add_window(std::shared_ptr<WindowState> w, int ws_id) {
+void WorkspaceManager::add_window(std::shared_ptr<swm::Window> w, int ws_id) {
     if (!w || workspaces.empty())
         return;
     int target = is_ws_valid(ws_id) ? ws_id : active_ws_of_monitor(focused_monitor_);
@@ -791,11 +831,17 @@ void WorkspaceManager::add_window(std::shared_ptr<WindowState> w, int ws_id) {
 
     workspaces[target].add_window(w);
     index_window(win, w, target);
+    WS_ASSERT_CONSISTENT();
 }
 
-std::shared_ptr<WindowState> WorkspaceManager::create_window(WindowId win, int ws_id) {
-    auto window = std::make_shared<WindowState>();
-    window->id = win;
+std::shared_ptr<swm::Window> WorkspaceManager::create_window(WindowId win, int ws_id) {
+    std::shared_ptr<swm::Window> window;
+    if (window_factory_) {
+        window = window_factory_(win);
+    } else {
+        window     = std::make_shared<swm::Window>();
+        window->id = win;
+    }
     add_window(window, ws_id);
     return window;
 }
@@ -804,15 +850,17 @@ void WorkspaceManager::remove_window(WindowId win, int ws_id) {
     if (is_ws_valid(ws_id)) {
         if (workspaces[ws_id].remove_window(win))
             unindex_window(win);
+        WS_ASSERT_CONSISTENT();
         return;
     }
     int active = active_ws_of_monitor(focused_monitor_);
     if (is_ws_valid(active))
         if (workspaces[active].remove_window(win))
             unindex_window(win);
+    WS_ASSERT_CONSISTENT();
 }
 
-std::shared_ptr<WindowState> WorkspaceManager::find_window(WindowId win, int ws_id) {
+std::shared_ptr<swm::Window> WorkspaceManager::find_window(WindowId win, int ws_id) {
     if (win == NO_WINDOW)
         return nullptr;
 
@@ -832,7 +880,7 @@ std::shared_ptr<WindowState> WorkspaceManager::find_window(WindowId win, int ws_
     return find_window_in_all(win);
 }
 
-std::shared_ptr<const WindowState> WorkspaceManager::find_window(WindowId win, int ws_id) const {
+std::shared_ptr<const swm::Window> WorkspaceManager::find_window(WindowId win, int ws_id) const {
     if (win == NO_WINDOW)
         return nullptr;
 
@@ -852,12 +900,12 @@ std::shared_ptr<const WindowState> WorkspaceManager::find_window(WindowId win, i
     return find_window_in_all(win);
 }
 
-std::shared_ptr<WindowState> WorkspaceManager::find_window_in_all(WindowId win) {
+std::shared_ptr<swm::Window> WorkspaceManager::find_window_in_all(WindowId win) {
     auto it = window_index.find(win);
     return (it == window_index.end()) ? nullptr : it->second;
 }
 
-std::shared_ptr<const WindowState> WorkspaceManager::find_window_in_all(WindowId win) const {
+std::shared_ptr<const swm::Window> WorkspaceManager::find_window_in_all(WindowId win) const {
     auto it = window_index.find(win);
     return (it == window_index.end()) ? nullptr : it->second;
 }
@@ -867,14 +915,16 @@ void WorkspaceManager::remove_window_from_all(WindowId win) {
     if (it != window_workspace.end() && is_ws_valid(it->second)) {
         workspaces[it->second].remove_window(win);
         unindex_window(win);
+        WS_ASSERT_CONSISTENT();
         return;
     }
     for (auto& ws : workspaces)
         ws.remove_window(win);
     unindex_window(win);
+    WS_ASSERT_CONSISTENT();
 }
 
-void WorkspaceManager::move_window_to(int ws_id, std::shared_ptr<WindowState> w) {
+void WorkspaceManager::move_window_to(int ws_id, std::shared_ptr<swm::Window> w) {
     if (!w || !is_ws_valid(ws_id))
         return;
     WindowId win = w->id;
@@ -889,6 +939,7 @@ void WorkspaceManager::move_window_to(int ws_id, std::shared_ptr<WindowState> w)
     }
     workspaces[ws_id].add_window(w);
     index_window(win, w, ws_id);
+    WS_ASSERT_CONSISTENT();
 }
 
 bool WorkspaceManager::focus_window(WindowId win) {
@@ -902,6 +953,8 @@ bool WorkspaceManager::focus_window(WindowId win) {
             continue;
 
         ws.current = i;
+        // Clear urgency when the window receives focus (ICCCM §4.1.2.4).
+        ws.windows[i]->urgent = false;
         int mon = monitor_of(ws.id);
         if (mon >= 0) {
             int li = local_index_of(mon, ws.id);
@@ -920,12 +973,12 @@ bool WorkspaceManager::focus_window(WindowId win) {
     return false;
 }
 
-std::shared_ptr<WindowState> WorkspaceManager::focus_next() {
+std::shared_ptr<swm::Window> WorkspaceManager::focus_next() {
     current().focus_next();
     return current().focused();
 }
 
-std::shared_ptr<WindowState> WorkspaceManager::focus_prev() {
+std::shared_ptr<swm::Window> WorkspaceManager::focus_prev() {
     current().focus_prev();
     return current().focused();
 }
@@ -954,8 +1007,7 @@ int WorkspaceManager::workspace_for_local_index(int mon_idx, int local_idx) cons
 int WorkspaceManager::monitor_at_point(int x, int y) const {
     for (int i = 0; i < (int)monitors.size(); i++) {
         const auto& m = monitors[i];
-        if (x >= m.x && x < m.x + m.width &&
-            y >= m.y && y < m.y + m.height)
+        if (m.contains({ x, y }))
             return i;
     }
     return -1;
@@ -965,23 +1017,21 @@ bool WorkspaceManager::focus_monitor_at_point(int x, int y) {
     int mon = monitor_at_point(x, y);
     if (mon < 0)
         return false;
-    bool changed    = (mon != focused_monitor_);
+    bool changed = (mon != focused_monitor_);
     focused_monitor_ = mon;
     sync_focus_state();
     return changed;
 }
 
 Workspace& WorkspaceManager::workspace(int id) {
-    if (workspaces.empty()) return fallback_workspace();
-    assert(id >= 0 && id < (int)workspaces.size());
-    if (id < 0 || id >= (int)workspaces.size()) return fallback_workspace();
+    if (workspaces.empty() || id < 0 || id >= (int)workspaces.size())
+        return fallback_workspace();
     return workspaces[id];
 }
 
 const Workspace& WorkspaceManager::workspace(int id) const {
-    if (workspaces.empty()) return fallback_workspace();
-    assert(id >= 0 && id < (int)workspaces.size());
-    if (id < 0 || id >= (int)workspaces.size()) return fallback_workspace();
+    if (workspaces.empty() || id < 0 || id >= (int)workspaces.size())
+        return fallback_workspace();
     return workspaces[id];
 }
 

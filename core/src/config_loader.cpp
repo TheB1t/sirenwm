@@ -6,20 +6,25 @@
 #include <runtime/config_runtime.hpp>
 #include <core.hpp>
 #include <log.hpp>
+#include <lua_helpers.hpp>
 #include <module_registry.hpp>
 #include <runtime.hpp>
 
-#include <cassert>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 
 namespace {
 
 Config& loader_config(void* userdata) {
-    assert(userdata && "config loader context is not set");
+    if (!userdata) {
+        LOG_ERR("config loader context is not set"); std::abort();
+    }
     return *static_cast<Config*>(userdata);
 }
 
@@ -31,49 +36,20 @@ Runtime& loader_runtime(void* userdata) {
     return loader_config(userdata).bound_runtime();
 }
 
-// Intercept `siren.modules = {...}` during init.lua execution:
-// load listed modules immediately and let them register their Lua namespaces.
-static int lua_root_newindex(LuaContext& lua, void* userdata) {
-    // args: table, key, value
-    if (lua.is_string(2) &&
-        lua.to_string(2) == "modules" &&
-        lua.is_table(3)) {
-        int n = lua.raw_len(3);
-        for (int i = 1; i <= n; i++) {
-            lua.raw_geti(3, i);
-            if (lua.is_string(-1))
-                loader_runtime(userdata).use(loader_core(userdata), lua.to_string(-1));
-            lua.pop();
-        }
-        loader_runtime(userdata).emit_lua_init(loader_core(userdata));
-    }
-
-    // rawset(table, key, value)
-    lua.raw_set(1);
-    return 0;
-}
-
-// Lazy module autoload on first access (order-independent init.lua).
-// Symbol -> module mapping is registered by modules in ModuleRegistry.
-static int lua_root_index(LuaContext& lua, void* userdata) {
-    if (!lua.is_string(2)) {
-        lua.push_nil();
+// package.preload loader for a C++ module: require("bar") → module API table.
+// The module registers its table via LuaHost::set_module_table() in on_lua_init().
+static int lua_module_preload(LuaContext& lua, void* userdata) {
+    if (!lua.is_string(1))
+        return 0;
+    const std::string name    = lua.to_string(1);
+    auto&             config  = loader_config(userdata);
+    auto&             runtime = loader_runtime(userdata);
+    runtime.use(name);
+    runtime.emit_lua_init();
+    if (config.lua().push_module_table(name))
         return 1;
-    }
-
-    const std::string key  = lua.to_string(2);
-    auto              mods = loader_runtime(userdata).module_registry().modules_for_lua_symbol(key);
-    if (!mods.empty()) {
-        auto& core = loader_core(userdata);
-        for (const auto& mod : mods)
-            loader_runtime(userdata).use(core, mod);
-        loader_runtime(userdata).emit_lua_init(core);
-    }
-
-    // Fall through to rawget so user-assigned fields (e.g. siren.monitors)
-    // are always readable after being set via __newindex.
-    lua.push_value(2);
-    lua.raw_get(1);
+    // Module registered no table — return true as a sentinel so require() succeeds.
+    lua.push_bool(true);
     return 1;
 }
 
@@ -81,11 +57,89 @@ static int lua_root_index(LuaContext& lua, void* userdata) {
 // siren.* — built-in globals (no module owns these)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Process object — userdata returned by siren.spawn()
+// Methods: proc:pid() -> int, proc:kill([sig]) -> bool, proc:alive() -> bool
+// ---------------------------------------------------------------------------
+
+static constexpr const char* PROCESS_MT = "SirenProcess";
+
+struct ProcessHandle {
+    pid_t pid = -1;
+};
+
+static ProcessHandle* process_check(LuaContext& lua, int idx) {
+    return static_cast<ProcessHandle*>(lua.to_userdata(idx));
+}
+
+static int lua_process_pid(LuaContext& lua, void*) {
+    auto* p = process_check(lua, 1);
+    lua.push_integer(p ? p->pid : -1);
+    return 1;
+}
+
+static int lua_process_alive(LuaContext& lua, void*) {
+    auto* p = process_check(lua, 1);
+    if (!p || p->pid <= 0) {
+        lua.push_bool(false);
+        return 1;
+    }
+    // Use kill(pid, 0) instead of waitpid — Runtime reaps children globally
+    // via SIGCHLD, so waitpid would race and return ECHILD.
+    bool alive = (kill(p->pid, 0) == 0);
+    lua.push_bool(alive);
+    return 1;
+}
+
+static int lua_process_kill(LuaContext& lua, void*) {
+    auto* p = process_check(lua, 1);
+    if (!p || p->pid <= 0) {
+        lua.push_bool(false);
+        return 1;
+    }
+    int  sig = lua.is_integer(2) ? (int)lua.to_integer(2) : SIGTERM;
+    bool ok  = (kill(p->pid, sig) == 0);
+    lua.push_bool(ok);
+    return 1;
+}
+
+static int lua_process_gc(LuaContext& lua, void*) {
+    auto* p = process_check(lua, 1);
+    if (p)
+        p->pid = -1; // Runtime handles reaping globally via SIGCHLD.
+    return 0;
+}
+
+// Register the SirenProcess metatable (idempotent — luaL_newmetatable is no-op if exists).
+static void ensure_process_metatable(LuaContext& lua, LuaHost& host) {
+    if (!lua.new_metatable(PROCESS_MT))
+        return; // already registered
+
+    // __index = method table
+    lua.new_table();
+    host.push_callback(lua_process_pid,   nullptr); lua.set_field(-2, "pid");
+    host.push_callback(lua_process_alive, nullptr); lua.set_field(-2, "alive");
+    host.push_callback(lua_process_kill,  nullptr); lua.set_field(-2, "kill");
+    lua.set_field(-2, "__index");
+
+    host.push_callback(lua_process_gc, nullptr);
+    lua.set_field(-2, "__gc");
+
+    lua.pop(); // pop metatable
+}
+
 // siren.spawn("xterm")  or  siren.spawn("xterm -e bash")
-static int lua_root_spawn(LuaContext& lua, void*) {
+// Returns a process object with methods: pid(), alive(), kill([sig])
+static int lua_root_spawn(LuaContext& lua, void* userdata) {
     std::string cmd = lua.check_string(1);
 
-    if (fork() == 0) {
+    pid_t       pid = fork();
+    if (pid < 0) {
+        lua.push_nil();
+        lua.push_string(("fork failed: " + std::string(strerror(errno))).c_str());
+        return 2;
+    }
+    if (pid == 0) {
         setsid();
 
         // Reset SIGCHLD to default so the child's own wait() calls work correctly.
@@ -105,6 +159,22 @@ static int lua_root_spawn(LuaContext& lua, void*) {
         execl("/bin/sh", "sh", "-c", cmd.c_str(), nullptr);
         _exit(1);
     }
+
+    // Build and return a ProcessHandle userdata.
+    auto& host = loader_config(userdata).lua();
+    ensure_process_metatable(lua, host);
+
+    auto* handle = static_cast<ProcessHandle*>(lua.new_userdata(sizeof(ProcessHandle)));
+    handle->pid = pid;
+    lua.get_metatable_reg(PROCESS_MT);
+    lua.set_metatable(-2);
+    return 1;
+}
+
+// siren.log_warn(msg) — log a warning through the WM logging system
+static int lua_log_warn(LuaContext& lua, void*) {
+    std::string msg = lua.is_string(1) ? lua.to_string(1) : "?";
+    LOG_WARN("Lua: %s", msg.c_str());
     return 0;
 }
 
@@ -119,25 +189,20 @@ static int lua_root_reload(LuaContext&, void* userdata) {
 // Use this to pick up a rebuilt binary without relogin.
 static int lua_root_restart(LuaContext&, void* userdata) {
     LOG_INFO("restart: exec restart requested");
-    loader_runtime(userdata).request_exec_restart(loader_core(userdata));
+    loader_runtime(userdata).request_exec_restart();
     return 0;
 }
 
-// siren.exec_restart() — explicit alias for hard restart via exec().
-static int lua_root_exec_restart(LuaContext&, void* userdata) {
-    LOG_INFO("exec_restart: request accepted, stopping event loop");
-    loader_runtime(userdata).request_exec_restart(loader_core(userdata));
-    return 0;
-}
-
-// siren.workspace.switch(n)  — 1-indexed absolute workspace index
+// siren.ws.switch(n)  — 1-indexed absolute workspace index
 static int lua_workspace_switch(LuaContext& lua, void* userdata) {
     int n = (int)lua.check_integer(1);
     (void)loader_core(userdata).dispatch(command::SwitchWorkspace{ n - 1, std::nullopt });
     return 0;
 }
 
-// siren.monitor.focused() -> { index, x, y, width, height, name }
+// siren.monitor.focused() -> { index, pos, size, name, output }
+// name   = logical alias if configured; falls back to output name
+// output = RandR output name (always set)
 static int lua_monitor_focused(LuaContext& lua, void* userdata) {
     auto& core = loader_core(userdata);
     int   idx  = core.focused_monitor_index();
@@ -146,28 +211,49 @@ static int lua_monitor_focused(LuaContext& lua, void* userdata) {
         lua.push_nil();
         return 1;
     }
+    const auto&        aliases = loader_config(userdata).get_monitor_aliases();
+    const std::string& output  = mon->name;
+    std::string        name    = output;
+    for (const auto& a : aliases)
+        if (a.output == output) {
+            name = a.alias; break;
+        }
+
     lua.new_table();
-    lua.push_integer(idx);       lua.set_field(-2, "index");
-    lua.push_integer(mon->x);    lua.set_field(-2, "x");
-    lua.push_integer(mon->y);    lua.set_field(-2, "y");
-    lua.push_integer(mon->width); lua.set_field(-2, "width");
-    lua.push_integer(mon->height); lua.set_field(-2, "height");
-    lua.push_string(mon->name);  lua.set_field(-2, "name");
+    lua.push_integer(idx);         lua.set_field(-2, "index");
+    push_vec2(lua, mon->pos());
+    lua.set_field(-2, "pos");
+    push_vec2(lua, mon->size());
+    lua.set_field(-2, "size");
+    lua.push_string(name);         lua.set_field(-2, "name");
+    lua.push_string(output);       lua.set_field(-2, "output");
     return 1;
 }
 
-// siren.monitor.list() -> array of { index, x, y, width, height, name }
+// siren.monitor.list() -> array of { index, pos, size, name, output }
+// output = RandR output name (e.g. "eDP-1", or "default" in Xephyr) — always set
+// name   = logical alias (e.g. "primary") if configured; falls back to output name
 static int lua_monitor_list(LuaContext& lua, void* userdata) {
-    const auto& mons = loader_core(userdata).monitor_states();
+    const auto& mons    = loader_core(userdata).monitor_states();
+    const auto& aliases = loader_config(userdata).get_monitor_aliases();
     lua.new_table();
     for (int i = 0; i < (int)mons.size(); i++) {
+        // mons[i].name is the RandR output name; find its logical alias if any.
+        const std::string& output = mons[i].name;
+        std::string        name   = output; // fallback: alias = output name
+        for (const auto& a : aliases)
+            if (a.output == output) {
+                name = a.alias; break;
+            }
+
         lua.new_table();
-        lua.push_integer(i);           lua.set_field(-2, "index");
-        lua.push_integer(mons[i].x);   lua.set_field(-2, "x");
-        lua.push_integer(mons[i].y);   lua.set_field(-2, "y");
-        lua.push_integer(mons[i].width);  lua.set_field(-2, "width");
-        lua.push_integer(mons[i].height); lua.set_field(-2, "height");
-        lua.push_string(mons[i].name); lua.set_field(-2, "name");
+        lua.push_integer(i);              lua.set_field(-2, "index");
+        push_vec2(lua, mons[i].pos());
+        lua.set_field(-2, "pos");
+        push_vec2(lua, mons[i].size());
+        lua.set_field(-2, "size");
+        lua.push_string(name);            lua.set_field(-2, "name");
+        lua.push_string(output);          lua.set_field(-2, "output");
         lua.raw_seti(-2, i + 1);
     }
     return 1;
@@ -180,93 +266,140 @@ static int lua_monitor_focus(LuaContext& lua, void* userdata) {
     return 0;
 }
 
-// siren.windows.move_to_monitor(n) — move focused window to monitor n (1-indexed)
-static int lua_windows_move_to_monitor(LuaContext& lua, void* userdata) {
-    int n = lua.to_integer(1) - 1; // convert to 0-indexed
-    (void)loader_core(userdata).dispatch(command::MoveWindowToMonitor{ NO_WINDOW, n });
+// siren.win.move_to_monitor(n) or siren.win.move_to_monitor(id, n)
+// 1-arg: move focused window; 2-arg: move window by id
+static int lua_win_move_to_monitor(LuaContext& lua, void* userdata) {
+    if (lua.arg_count() >= 2) {
+        WindowId id = (WindowId)lua.check_integer(1);
+        int      n  = (int)lua.check_integer(2) - 1;
+        (void)loader_core(userdata).dispatch(command::MoveWindowToMonitor{ id, n });
+    } else {
+        int n = (int)lua.check_integer(1) - 1;
+        (void)loader_core(userdata).dispatch(command::MoveWindowToMonitor{ NO_WINDOW, n });
+    }
     return 0;
 }
 
-// siren.sys.kbd_layout() -> "us" | "ru" | ...
-static int lua_sys_kbd_layout(LuaContext& lua, void* userdata) {
-    auto* kp = loader_runtime(userdata).backend().keyboard_port();
-    if (!kp) {
-        lua.push_nil();
-        return 1;
-    }
-    lua.push_string(kp->current_layout());
-    return 1;
-}
-
-// siren.theme_get() -> { font, bg, fg, alt_bg, alt_fg, accent }
-static int lua_theme_get(LuaContext& lua, void* userdata) {
-    const auto& t = loader_config(userdata).get_theme();
-    lua.new_table();
-    lua.push_string(t.font);    lua.set_field(-2, "font");
-    lua.push_string(t.bg);      lua.set_field(-2, "bg");
-    lua.push_string(t.fg);      lua.set_field(-2, "fg");
-    lua.push_string(t.alt_bg);  lua.set_field(-2, "alt_bg");
-    lua.push_string(t.alt_fg);  lua.set_field(-2, "alt_fg");
-    lua.push_string(t.accent);  lua.set_field(-2, "accent");
-    return 1;
-}
-
 // ---------------------------------------------------------------------------
-// siren.windows.*
+// siren.win.*
 // ---------------------------------------------------------------------------
 
-static int lua_windows_close(LuaContext&, void* userdata) {
+static int lua_win_close(LuaContext&, void* userdata) {
     auto focused = loader_core(userdata).focused_window_state();
     if (focused) {
         bool handled = loader_runtime(userdata).emit_until_handled(
-            loader_core(userdata), event::CloseWindowRequest{ focused->id });
+            event::CloseWindowRequest{ focused->id });
         if (!handled)
             handled = loader_runtime(userdata).backend().close_window(focused->id);
         if (!handled)
-            LOG_WARN("windows.close: no close handler accepted window %u", focused->id);
+            LOG_WARN("win.close: no close handler accepted window %u", focused->id);
     }
     return 0;
 }
 
-static int lua_windows_focus_next(LuaContext&, void* userdata) {
+static int lua_win_focus_next(LuaContext&, void* userdata) {
     (void)loader_core(userdata).dispatch(command::FocusNextWindow{});
     return 0;
 }
 
-static int lua_windows_focus_prev(LuaContext&, void* userdata) {
+static int lua_win_focus_prev(LuaContext&, void* userdata) {
     (void)loader_core(userdata).dispatch(command::FocusPrevWindow{});
     return 0;
 }
 
-static int lua_windows_move_to(LuaContext& lua, void* userdata) {
-    // 1-indexed absolute workspace index
-    int n = (int)lua.check_integer(1);
-    (void)loader_core(userdata).dispatch(command::MoveFocusedWindowToWorkspace{ n - 1 });
-    return 0;
-}
-
-static int lua_windows_toggle_floating(LuaContext&, void* userdata) {
+// siren.win.toggle_floating()
+static int lua_win_toggle_floating(LuaContext&, void* userdata) {
     (void)loader_core(userdata).dispatch(command::ToggleFocusedWindowFloating{});
     return 0;
 }
 
-static int lua_windows_zoom(LuaContext&, void* userdata) {
+// siren.win.set_floating(id, bool) — set floating state for a specific window
+static int lua_win_set_floating(LuaContext& lua, void* userdata) {
+    WindowId id       = (WindowId)lua.check_integer(1);
+    bool     floating = lua.to_bool(2);
+    (void)loader_core(userdata).dispatch(command::SetWindowFloating{ id, floating });
+    return 0;
+}
+
+// siren.win.move_to(ws)       — move focused window to workspace ws (1-indexed)
+// siren.win.move_to(id, ws)   — move window by id to workspace ws (1-indexed)
+static int lua_win_move_to(LuaContext& lua, void* userdata) {
+    if (lua.arg_count() >= 2) {
+        WindowId id = (WindowId)lua.check_integer(1);
+        int      ws = (int)lua.check_integer(2) - 1;
+        (void)loader_core(userdata).dispatch(command::SetWindowSuppressFocusOnce{ id, true });
+        (void)loader_core(userdata).dispatch(command::MoveWindowToWorkspace{ id, ws });
+    } else {
+        int n = (int)lua.check_integer(1);
+        (void)loader_core(userdata).dispatch(command::MoveFocusedWindowToWorkspace{ n - 1 });
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// siren.layout.*
+// ---------------------------------------------------------------------------
+
+static int lua_layout_zoom(LuaContext&, void* userdata) {
     (void)loader_core(userdata).dispatch(command::Zoom{});
     return 0;
 }
 
-static int lua_windows_set_layout(LuaContext& lua, void* userdata) {
+static int lua_layout_set(LuaContext& lua, void* userdata) {
     (void)loader_core(userdata).dispatch(command::SetLayout{ lua.check_string(1) });
     return 0;
 }
 
-static int lua_windows_adj_master_factor(LuaContext& lua, void* userdata) {
+static int lua_layout_adj_master(LuaContext& lua, void* userdata) {
     (void)loader_core(userdata).dispatch(command::AdjustMasterFactor{ (float)lua.check_number(1) });
     return 0;
 }
 
-static int lua_windows_inc_master(LuaContext& lua, void* userdata) {
+static int lua_layout_inc_master(LuaContext& lua, void* userdata) {
     (void)loader_core(userdata).dispatch(command::IncMaster{ (int)lua.check_integer(1) });
+    return 0;
+}
+
+// siren.layout.register(name, fn) — register a Lua-defined layout algorithm.
+// fn receives one table argument: { windows, monitor, gap, border, master_factor, nmaster }
+// and must call siren.layout.place() for each window it wants to position.
+static int lua_layout_register(LuaContext& lua, void* userdata) {
+    std::string    name = lua.check_string(1);
+    lua.check_function(2);
+    LuaHost&       host = loader_config(userdata).lua();
+    LuaRegistryRef ref  = host.ref_function(2);
+    loader_core(userdata).register_lua_layout(name, std::move(ref));
+    return 0;
+}
+
+// siren.layout.place(id, pos, size [, border])
+//   pos  = Vec2 {x, y}
+//   size = Vec2 {x, y}  (width=x, height=y)
+// Routes window placement back to the C++ PlacementSink during a Lua layout callback.
+static int lua_layout_place(LuaContext& lua, void* userdata) {
+    WindowId id = (WindowId)lua.check_integer(1);
+
+    lua.check_table(2);
+    lua.get_field(2, "x"); int32_t x = (int32_t)lua.to_integer(-1); lua.pop();
+    lua.get_field(2, "y"); int32_t y = (int32_t)lua.to_integer(-1); lua.pop();
+
+    lua.check_table(3);
+    lua.get_field(3, "x"); int w = (int)lua.to_integer(-1); lua.pop();
+    lua.get_field(3, "y"); int h = (int)lua.to_integer(-1); lua.pop();
+
+    uint32_t                   border = lua.arg_count() >= 4 ? (uint32_t)lua.check_integer(4) : 0;
+    if (!loader_core(userdata).lua_place_window(id, { x, y }, { w, h }, border))
+        LOG_WARN("layout.place: called outside of a layout callback");
+    return 0;
+}
+
+// siren.on(event, fn) — register a Lua callback for a named WM event.
+static int lua_siren_on(LuaContext& lua, void* userdata) {
+    std::string    event = lua.check_string(1);
+    lua.check_function(2);
+    LuaHost&       host = loader_config(userdata).lua();
+    LuaRegistryRef ref  = host.ref_function(2);
+    host.on(event, std::move(ref));
     return 0;
 }
 
@@ -275,8 +408,9 @@ static int lua_windows_inc_master(LuaContext& lua, void* userdata) {
 namespace config_loader {
 
 bool load(Config& config, const std::string& path, Core& core, Runtime& runtime, bool reset_lua_vm) {
-    config.bind_runtime_handles(core, runtime);
+    config.bind_runtime_handles(runtime);
     core.set_config_path(path);
+    core.bind_lua_host(config.lua());
 
     auto& lua = config.lua();
     if (reset_lua_vm || !lua.initialized())
@@ -284,12 +418,14 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
     else
         lua.reset_root_table();
 
-    // Built-in declarative runtime settings (behavior/monitors/workspaces/...).
+    // Built-in declarative runtime settings (monitors/workspaces/...).
     config_runtime::register_builtin_runtime_settings(config);
 
+    // Reset the lua_init guard so on_lua_init() runs fresh for this VM epoch.
+    runtime.reset_lua_init();
     // Let modules re-register their Lua namespaces (no-op on first load
     // since modules haven't been loaded yet; essential on hot-reload).
-    runtime.emit_lua_init(core);
+    runtime.emit_lua_init();
     auto ctx = lua.context();
 
     auto register_root_fn = [&](const char* name, LuaNativeFnWithContext fn) {
@@ -318,38 +454,178 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
             ctx.pop();
         };
 
-    register_root_fn("spawn", lua_root_spawn);
-    register_root_fn("reload", lua_root_reload);
-    register_root_fn("restart", lua_root_restart);
-    register_root_fn("exec_restart", lua_root_exec_restart);
+    register_root_fn("spawn",    lua_root_spawn);
+    register_root_fn("reload",   lua_root_reload);
+    register_root_fn("restart",  lua_root_restart);
+    register_root_fn("log_warn", lua_log_warn);
+    register_root_fn("on",      lua_siren_on);
 
-    register_ns_fn("workspace", "switch", lua_workspace_switch);
-    register_ns_fn("sys",     "kbd_layout", lua_sys_kbd_layout);
+    register_ns_fn("ws",      "switch",  lua_workspace_switch);
     register_ns_fn("monitor", "focused", lua_monitor_focused);
     register_ns_fn("monitor", "list",    lua_monitor_list);
     register_ns_fn("monitor", "focus",   lua_monitor_focus);
-    register_root_fn("theme_get",              lua_theme_get);
-    register_ns_fn("windows", "close", lua_windows_close);
-    register_ns_fn("windows", "focus_next", lua_windows_focus_next);
-    register_ns_fn("windows", "focus_prev", lua_windows_focus_prev);
-    register_ns_fn("windows", "move_to", lua_windows_move_to);
-    register_ns_fn("windows", "move_to_monitor", lua_windows_move_to_monitor);
-    register_ns_fn("windows", "toggle_floating", lua_windows_toggle_floating);
-    register_ns_fn("windows", "zoom", lua_windows_zoom);
-    register_ns_fn("windows", "set_layout", lua_windows_set_layout);
-    register_ns_fn("windows", "adj_master_factor", lua_windows_adj_master_factor);
-    register_ns_fn("windows", "inc_master", lua_windows_inc_master);
+    register_ns_fn("win", "close",          lua_win_close);
+    register_ns_fn("win", "focus_next",     lua_win_focus_next);
+    register_ns_fn("win", "focus_prev",     lua_win_focus_prev);
+    register_ns_fn("win", "toggle_floating",lua_win_toggle_floating);
+    register_ns_fn("win", "set_floating",   lua_win_set_floating);
+    register_ns_fn("win", "move_to",        lua_win_move_to);
+    register_ns_fn("win", "move_to_monitor",lua_win_move_to_monitor);
+    register_ns_fn("layout", "zoom",       lua_layout_zoom);
+    register_ns_fn("layout", "set",        lua_layout_set);
+    register_ns_fn("layout", "adj_master", lua_layout_adj_master);
+    register_ns_fn("layout", "inc_master", lua_layout_inc_master);
+    register_ns_fn("layout", "register",   lua_layout_register);
+    register_ns_fn("layout", "place",      lua_layout_place);
 
-    // Hook assignment to siren.modules so module Lua APIs can be registered
-    // immediately and used later in the same init.lua.
-    ctx.get_global("siren");
-    ctx.new_table();
-    lua.push_callback(lua_root_newindex, &config);
-    ctx.set_field(-2, "__newindex");
-    lua.push_callback(lua_root_index, &config);
-    ctx.set_field(-2, "__index");
-    ctx.set_metatable(-2);
-    ctx.pop();
+    // Clear old event handlers before reload so callbacks don't accumulate.
+    lua.clear_handlers();
+
+    // Clear all user Lua modules from package.loaded so they re-execute on reload.
+    // Keep standard Lua libraries (single-word names like "string", "table", etc.)
+    // and C++ modules registered via package.preload (identified by the registry).
+    {
+        const auto& cpp_modules = runtime.module_registry().module_names();
+        auto        is_cpp = [&](const std::string& key) {
+                for (const auto& m : cpp_modules)
+                    if (m == key) return true;
+                return false;
+            };
+        // Standard Lua libs — never clear these.
+        static const char* const std_libs[] = {
+            "string", "table", "math", "io", "os", "coroutine",
+            "package", "debug", "utf8", nullptr
+        };
+        auto is_stdlib = [](const std::string& key) {
+                for (const char* const* p = std_libs; *p; ++p)
+                    if (key == *p) return true;
+                return false;
+            };
+
+        ctx.get_global("package");
+        if (ctx.is_table(-1)) {
+            ctx.get_field(-1, "loaded");
+            if (ctx.is_table(-1)) {
+                int                      loaded_idx = ctx.abs_index(-1);
+                std::vector<std::string> to_clear;
+                ctx.push_nil();
+                while (ctx.next(loaded_idx)) {
+                    ctx.pop(); // value
+                    if (ctx.is_string(-1)) {
+                        std::string key = ctx.to_string(-1);
+                        if (!is_cpp(key) && !is_stdlib(key))
+                            to_clear.push_back(key);
+                    }
+                }
+                for (const auto& key : to_clear) {
+                    ctx.push_nil();
+                    ctx.set_field(loaded_idx, key.c_str());
+                }
+            }
+            ctx.pop(); // loaded
+        }
+        ctx.pop(); // package
+    }
+
+    // Configure package.path:
+    //   1. ~/.config/sirenwm/swm/?.lua       — user overrides for stdlib
+    //   2. ~/.config/sirenwm/?.lua           — user modules
+    //   3. SIRENWM_LUA_DIR/swm/?.lua        — stdlib (widgets.*, rules, etc.)
+    //   4. SIRENWM_LUA_DIR/?.lua            — for require("swm.module") etc.
+    {
+        const char* home      = getenv("HOME");
+        std::string user_path = home
+            ? std::string(home) + "/.config/sirenwm/?.lua"
+            : std::string();
+        std::string user_swm_path = home
+            ? std::string(home) + "/.config/sirenwm/swm/?.lua"
+            : std::string();
+        std::string sys_swm_path = SIRENWM_LUA_DIR "/swm/?.lua";
+        std::string sys_root_path = SIRENWM_LUA_DIR "/?.lua";
+
+        ctx.get_global("package");
+        if (ctx.is_table(-1)) {
+            ctx.get_field(-1, "path");
+            std::string existing = ctx.is_string(-1) ? ctx.to_string(-1) : std::string();
+            ctx.pop();
+            // User paths take priority over system paths so user configs
+            // can override bundled Lua modules.
+            std::string extra;
+            if (!user_swm_path.empty())
+                extra = user_swm_path;
+            if (!user_path.empty())
+                extra += (extra.empty() ? "" : ";") + user_path;
+            extra += (extra.empty() ? "" : ";") + sys_swm_path;
+            extra += ";" + sys_root_path;
+            if (!existing.empty())
+                extra += ";" + existing;
+            ctx.push_string(extra);
+            ctx.set_field(-2, "path");
+        }
+        ctx.pop();
+    }
+
+    // Register all known C++ modules into package.preload so require("bar") etc. work.
+    // The loader calls Runtime::use(core, name) and emit_lua_init, then returns true.
+    {
+        ctx.get_global("package");
+        if (ctx.is_table(-1)) {
+            ctx.get_field(-1, "preload");
+            if (ctx.is_table(-1)) {
+                for (const auto& name : runtime.module_registry().module_names()) {
+                    lua.push_callback(lua_module_preload, &config);
+                    ctx.set_field(-2, name.c_str());
+                }
+            }
+            ctx.pop(); // preload
+        }
+        ctx.pop(); // package
+    }
+
+    // siren.load(name) — safe require that returns a null-object on failure.
+    // The null-object silently absorbs any field access, method call, or
+    // assignment, so user config code works without nil-checks.
+    lua.exec_string(R"lua(
+local function make_null_object(mod_name)
+    local null
+    local mt = {
+        __index    = function() return null end,
+        __newindex = function() end,
+        __call     = function() return null end,
+        __tostring = function() return "<unavailable:" .. mod_name .. ">" end,
+    }
+    null = setmetatable({}, mt)
+    return null
+end
+
+function siren.load(name)
+    local ok, mod = pcall(require, name)
+    if ok and mod ~= nil then return mod end
+    if not ok then
+        siren.log_warn("siren.load('" .. name .. "'): " .. tostring(mod))
+    end
+    return make_null_object(name)
+end
+)lua", "=siren_load_prelude");
+
+    // Vec2 type: Lua table with arithmetic metamethods.
+    // Available before init.lua so configs can use Vec2(x, y) everywhere.
+    lua.exec_string(R"lua(
+Vec2 = {}
+Vec2.__index = Vec2
+function Vec2.new(x, y) return setmetatable({x=x, y=y}, Vec2) end
+function Vec2.__add(a, b) return Vec2.new(a.x+b.x, a.y+b.y) end
+function Vec2.__sub(a, b) return Vec2.new(a.x-b.x, a.y-b.y) end
+function Vec2.__mul(a, b)
+    if type(a)=="number" then return Vec2.new(a*b.x, a*b.y) end
+    return Vec2.new(a.x*b, a.y*b)
+end
+function Vec2.__div(a, b) return Vec2.new(a.x/b, a.y/b) end
+function Vec2.__unm(a) return Vec2.new(-a.x, -a.y) end
+function Vec2.__eq(a, b) return a.x==b.x and a.y==b.y end
+function Vec2.__tostring(v) return string.format("Vec2(%g, %g)", v.x, v.y) end
+setmetatable(Vec2, {__call = function(_, x, y) return Vec2.new(x, y) end})
+)lua", "=vec2_prelude");
 
     if (!lua.exec_file(path))
         return false;
@@ -361,19 +637,6 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
     // -----------------------------------------------------------------------
 
     ctx.get_global("siren");
-
-    // siren.modules = { "bar", "randr", ... }  — load modules in order
-    ctx.get_field(-1, "modules");
-    if (ctx.is_table(-1)) {
-        int n = ctx.raw_len(-1);
-        for (int i = 1; i <= n; i++) {
-            ctx.raw_geti(-1, i);
-            if (ctx.is_string(-1))
-                runtime.use(core, ctx.to_string(-1));
-            ctx.pop();
-        }
-    }
-    ctx.pop();
 
     // siren.theme = { dpi=, cursor_size=, cursor_theme=, bg=, fg=, alt_bg=, accent= }
     ctx.get_field(-1, "theme");
@@ -461,25 +724,8 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
         ctx.pop();
     }
 
-    // Declarative assignment handlers (registered by modules), e.g.
-    // siren.binds = {...}, siren.keys = {...}
-    bool assignment_ok = true;
-    for (const auto& key : config.lua_assignment_handler_keys()) {
-        ctx.get_field(-1, key.c_str());
-        if (ctx.is_table(-1)) {
-            std::string err;
-            if (!config.dispatch_lua_assignment_handler(key, ctx, ctx.abs_index(-1), err)) {
-                if (err.empty())
-                    err = "handler failed";
-                LOG_ERR("Config: assignment '%s' is invalid: %s", key.c_str(), err.c_str());
-                assignment_ok = false;
-            }
-        }
-        ctx.pop();
-    }
-
     ctx.pop();
-    return assignment_ok && runtime_ok;
+    return runtime_ok;
 }
 
 } // namespace config_loader

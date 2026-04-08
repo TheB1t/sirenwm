@@ -13,21 +13,93 @@
 #include <unistd.h>
 #include <sys/timerfd.h>
 
-// Parse a zone list: array of strings referencing widget names or built-ins.
-static bool parse_zone(LuaContext& lua,
+// Parse a slot value (a table) into a BarSlot.
+// Accepts:
+//   { __builtin = "tags"|"title"|"tray" }
+//   { fn = function [, interval = N] }
+static bool parse_slot(LuaContext& lua, Config& config, int val_idx,
+    BarSlot& out, const std::string& ctx, std::string* err_out) {
+    val_idx = lua.abs_index(val_idx);
+    if (!lua.is_table(val_idx)) {
+        if (err_out)
+            *err_out = ctx + ": expected Widget object or builtin";
+        return false;
+    }
+
+    lua.get_field(val_idx, "__builtin");
+    if (!lua.is_nil(-1)) {
+        if (!lua.is_string(-1)) {
+            lua.pop();
+            if (err_out)
+                *err_out = ctx + ".__builtin: must be a string";
+            return false;
+        }
+        std::string name = lua.to_string(-1);
+        lua.pop();
+        if (name == "tags") {
+            out.kind = BarSlotKind::Tags;  return true;
+        }
+        if (name == "title") {
+            out.kind = BarSlotKind::Title; return true;
+        }
+        if (name == "tray") {
+            out.kind = BarSlotKind::Tray;  return true;
+        }
+        if (err_out)
+            *err_out = ctx + ".__builtin: unknown builtin '" + name + "'";
+        return false;
+    }
+    lua.pop();
+
+    lua.get_field(val_idx, "render");
+    bool has_render = lua.is_function(-1);
+    lua.pop();
+    if (!has_render) {
+        if (err_out)
+            *err_out = ctx + ": expected Widget object with render() method";
+        return false;
+    }
+
+    auto widget_ref = config.lua().ref_value(val_idx);
+    if (!widget_ref.valid()) {
+        if (err_out)
+            *err_out = ctx + ": failed to ref Widget object";
+        return false;
+    }
+
+    int interval = 0;
+    lua.get_field(val_idx, "interval");
+    if (lua.is_integer(-1))
+        interval = (int)lua.to_integer(-1);
+    lua.pop();
+    if (interval < 0)
+        interval = 0;
+
+    out.kind     = BarSlotKind::Lua;
+    out.widget   = std::move(widget_ref);
+    out.interval = interval;
+    out.ticks    = interval;  // first refresh_slot() renders immediately
+    return true;
+}
+
+// Parse a zone list: array of slot tables.
+static bool parse_zone(LuaContext& lua, Config& config,
     int table_idx, std::vector<BarSlot>& out,
     const std::string& ctx, std::string* err_out) {
     table_idx = lua.abs_index(table_idx);
     int n = lua.raw_len(table_idx);
     for (int i = 1; i <= n; i++) {
         lua.raw_geti(table_idx, i);
-        if (!lua.is_string(-1)) {
-            if (err_out)
-                *err_out = ctx + "[" + std::to_string(i) + "]: expected string (widget name)";
+        BarSlot     slot;
+        std::string slot_ctx = ctx + "[" + std::to_string(i) + "]";
+        if (!parse_slot(lua, config, lua.abs_index(-1), slot, slot_ctx, err_out)) {
+            LOG_WARN("bar: skipping %s: %s", slot_ctx.c_str(),
+                err_out ? err_out->c_str() : "invalid widget");
+            if (err_out) err_out->clear();
             lua.pop();
-            return false;
+            continue;
         }
-        out.push_back({ lua.to_string(-1) });
+        out.push_back(std::move(slot));
         lua.pop();
     }
     return true;
@@ -116,7 +188,7 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
                 return false;
             }
             std::string ctx = std::string(bar_name) + "." + zone_keys[z];
-            if (!parse_zone(lua, lua.abs_index(-1), *zones[z], ctx, err_out)) {
+            if (!parse_zone(lua, config, lua.abs_index(-1), *zones[z], ctx, err_out)) {
                 lua.pop();
                 return false;
             }
@@ -124,77 +196,6 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
         lua.pop();
     }
 
-    return true;
-}
-
-// Parse widgets table:
-//   { name = function, ... }                     -- interval defaults to 1s
-//   { name = { fn = function, interval = N }, ... }  -- explicit interval in seconds
-static bool parse_bar_widgets_from_lua(LuaContext& lua,
-    Config& config,
-    int table_idx,
-    std::string& err) {
-    table_idx = lua.abs_index(table_idx);
-    if (!lua.is_table(table_idx)) {
-        err = "siren.bar.widgets: expected table";
-        return false;
-    }
-
-    lua.push_nil();
-    while (lua.next(table_idx)) {
-        if (!lua.is_string(-2)) {
-            err = "siren.bar.widgets: keys must be strings";
-            lua.pop(); // value
-            lua.pop(); // key
-            return false;
-        }
-        std::string name     = lua.to_string(-2);
-        int         interval = 1;
-
-        if (lua.is_function(-1)) {
-            // short form: name = function
-            auto cb = config.lua().ref_function(lua.abs_index(-1));
-            if (!cb.valid()) {
-                err = "siren.bar.widgets." + name + ": invalid function";
-                lua.pop();
-                lua.pop();
-                return false;
-            }
-            config.add_bar_widget(name, cb, interval);
-        } else if (lua.is_table(-1)) {
-            // long form: name = { fn = function, interval = N }
-            int val_idx = lua.abs_index(-1);
-            lua.get_field(val_idx, "fn");
-            if (!lua.is_function(-1)) {
-                lua.pop();
-                err = "siren.bar.widgets." + name + ".fn: must be a function";
-                lua.pop();
-                lua.pop();
-                return false;
-            }
-            auto cb = config.lua().ref_function(lua.abs_index(-1));
-            lua.pop();
-            if (!cb.valid()) {
-                err = "siren.bar.widgets." + name + ".fn: invalid function";
-                lua.pop();
-                lua.pop();
-                return false;
-            }
-            lua.get_field(val_idx, "interval");
-            if (lua.is_integer(-1))
-                interval = (int)lua.to_integer(-1);
-            lua.pop();
-            if (interval < 0)
-                interval = 0;
-            config.add_bar_widget(name, cb, interval);
-        } else {
-            err = "siren.bar.widgets." + name + ": value must be a function or { fn, interval }";
-            lua.pop();
-            lua.pop();
-            return false;
-        }
-        lua.pop(); // keep key for next()
-    }
     return true;
 }
 
@@ -241,99 +242,108 @@ static bool load_bar_assignment(Config& config, LuaContext& lua, int table_idx, 
     }
     lua.pop();
 
-    lua.get_field(table_idx, "widgets");
-    if (!lua.is_nil(-1)) {
-        if (!lua.is_table(-1)) {
-            lua.pop();
-            err = "siren.bar.widgets: must be a table";
-            return false;
-        }
-        bool ok = parse_bar_widgets_from_lua(lua, config, lua.abs_index(-1), err);
-        lua.pop();
-        if (!ok)
-            return false;
-    } else {
-        lua.pop();
-    }
-
     return true;
 }
 
-void BarModule::rebuild_bars(Core& core) {
+void BarModule::rebuild_bars() {
     bars.clear();
     bottom_bars.clear();
 
     // monitor_states() returns coordinates offset by the currently applied inset.
     // Bar windows must be placed at the physical monitor top (before inset),
     // so subtract the current inset to recover the original y origin.
-    const auto&          monitors   = core.monitor_states();
-    const int            cur_top    = core.monitor_top_inset();
-    const int            cur_bottom = core.monitor_bottom_inset();
+    const auto&          monitors   = core().monitor_states();
+    const int            cur_top    = core().monitor_top_inset();
+    const int            cur_bottom = core().monitor_bottom_inset();
     std::vector<MonRect> top_rects;
     std::vector<MonRect> bottom_rects;
     top_rects.reserve(monitors.size());
     bottom_rects.reserve(monitors.size());
     for (int i = 0; i < (int)monitors.size(); i++) {
-        int phys_y = monitors[i].y - cur_top;
-        int phys_h = monitors[i].height + cur_top + cur_bottom;
-        top_rects.push_back({ i, monitors[i].x, phys_y, monitors[i].width });
-        bottom_rects.push_back({ i, monitors[i].x,
-                                 phys_y + phys_h - bottom_cfg.height, monitors[i].width });
+        int phys_y = monitors[i].y() - cur_top;
+        int phys_h = monitors[i].height() + cur_top + cur_bottom;
+        top_rects.push_back({ i, { monitors[i].x(), phys_y }, monitors[i].size() });
+        bottom_rects.push_back({ i, { monitors[i].x(), phys_y + phys_h - bottom_cfg.height },
+                                 monitors[i].size() });
     }
 
     if (top_cfg.height > 0) {
         create_bars(top_cfg.height, top_rects);
-        (void)core.dispatch(command::ApplyMonitorTopInset{ top_cfg.height });
+        (void)core().dispatch(command::ApplyMonitorTopInset{ top_cfg.height });
     }
     if (bottom_cfg.height > 0) {
         create_bottom_bars(bottom_cfg.height, bottom_rects);
-        (void)core.dispatch(command::ApplyMonitorBottomInset{ bottom_cfg.height });
+        (void)core().dispatch(command::ApplyMonitorBottomInset{ bottom_cfg.height });
     }
 }
 
-void BarModule::on_init(Core& core) {
-    core_ref = &core;
-    config().register_lua_assignment_handler("bar",
-        [this](LuaContext& lua, int table_idx, std::string& err) -> bool {
-            return load_bar_assignment(config(), lua, table_idx, err);
-        });
-    state_provider = [this, &core](int mon_idx) -> BarState {
+bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {
+    return load_bar_assignment(config(), lua, table_idx, err);
+}
+
+void BarModule::on_init() {
+    state_provider = [this](int mon_idx) -> BarState {
             BarState    s;
-            const auto& monitors = core.monitor_states();
+            const auto& monitors = core().monitor_states();
             if (monitors.empty()) return s;
 
             int mon_ws = (mon_idx >= 0 && mon_idx < (int)monitors.size())
                      ? monitors[mon_idx].active_ws
-                     : monitors[core.focused_monitor_index()].active_ws;
+                     : monitors[core().focused_monitor_index()].active_ws;
 
             const int safe_mon_idx = (mon_idx >= 0 && mon_idx < (int)monitors.size())
-            ? mon_idx : core.focused_monitor_index();
+            ? mon_idx : core().focused_monitor_index();
 
-            const auto& ws_ids = core.monitor_workspace_ids(safe_mon_idx);
+            const auto& ws_ids = core().monitor_workspace_ids(safe_mon_idx);
             for (int ws_id : ws_ids) {
-                auto ws = core.workspace_state(ws_id);
+                auto ws = core().workspace_state(ws_id);
                 if (!ws)
                     continue;
                 bool focused     = (ws_id == mon_ws);
                 bool has_windows = !ws->windows.empty();
-                s.tags.push_back({ ws_id, ws->name, focused, has_windows, false });
+                bool urgent      = false;
+                for (const auto& w : ws->windows)
+                    if (w->urgent) { urgent = true; break; }
+                s.tags.push_back({ ws_id, ws->name, focused, has_windows, urgent });
             }
 
             if (mon_ws >= 0) {
-                WindowId w = core.ws().last_focused_window(safe_mon_idx, mon_ws);
-                if (w == NO_WINDOW && safe_mon_idx == core.focused_monitor_index())
-                    if (auto focused = core.focused_window_state())
+                WindowId w = core().ws().last_focused_window(safe_mon_idx, mon_ws);
+                if (w == NO_WINDOW && safe_mon_idx == core().focused_monitor_index())
+                    if (auto focused = core().focused_window_state())
                         w = focused->id;
                 if (w != NO_WINDOW)
-                    s.title = runtime().backend().window_title(w);
+                    s.title = backend().window_title(w);
             }
             return s;
         };
 }
 
-void BarModule::on_lua_init(Core&) {}
+void BarModule::on_lua_init() {
+    auto& lua = config().lua();
+    auto  ctx = lua.context();
 
-void BarModule::on(Core&, event::ExposeWindow ev) {
+    // Proxy table: bar.settings = {...} triggers parse_setup immediately.
+    ctx.new_table();   // proxy
+    ctx.new_table();   // metatable
+    lua.push_callback([](LuaContext& lctx, void* ud) -> int {
+            // __newindex(proxy, key, value)
+            std::string key = lctx.is_string(2) ? lctx.to_string(2) : "";
+            if (key == "settings") {
+                auto*       mod = static_cast<BarModule*>(ud);
+                std::string err;
+                    if (!mod->parse_setup(lctx, 3, err))
+                    LOG_ERR("bar.settings: %s", err.c_str());
+            }
+            return 0;
+        }, this);
+    ctx.set_field(-2, "__newindex");
+    ctx.set_metatable(-2);
+
+    lua.set_module_table("bar");
+}
+
+void BarModule::on(event::ExposeWindow ev) {
     for (auto& b : bars)
         if (b->id() == ev.window) {
             redraw();
@@ -341,14 +351,14 @@ void BarModule::on(Core&, event::ExposeWindow ev) {
         }
 }
 
-void BarModule::on(Core&, event::WindowUnmapped ev) {
+void BarModule::on(event::WindowUnmapped ev) {
     for (auto& slot : trays)
         if (slot.tray && slot.tray->handle_unmap_notify(ev.window))
             break;
     redraw();
 }
 
-bool BarModule::on(Core&, event::ClientMessageEv ev) {
+bool BarModule::on(event::ClientMessageEv ev) {
     // Only the owner tray handles REQUEST_DOCK client messages.
     backend::TrayHost* t = owner_tray();
     if (!t)
@@ -376,28 +386,28 @@ bool BarModule::on(Core&, event::ClientMessageEv ev) {
     return handled;
 }
 
-void BarModule::on(Core&, event::DestroyNotify ev) {
+void BarModule::on(event::DestroyNotify ev) {
     for (auto& slot : trays)
         if (slot.tray && slot.tray->handle_destroy_notify(ev.window))
             break;
     redraw();
 }
 
-void BarModule::on(Core&, event::ConfigureNotify ev) {
+void BarModule::on(event::ConfigureNotify ev) {
     for (auto& slot : trays)
         if (slot.tray && slot.tray->handle_configure_notify(ev.window))
             break;
     redraw();
 }
 
-void BarModule::on(Core&, event::PropertyNotify ev) {
+void BarModule::on(event::PropertyNotify ev) {
     for (auto& slot : trays)
         if (slot.tray && slot.tray->handle_property_notify(ev.window, ev.atom))
             break;
     redraw();
 }
 
-void BarModule::on(Core& core, event::ButtonEv ev) {
+void BarModule::on(event::ButtonEv ev) {
     if (ev.release) {
         for (auto& slot : trays)
             if (slot.tray && slot.tray->handle_button_event(ev))
@@ -412,33 +422,47 @@ void BarModule::on(Core& core, event::ButtonEv ev) {
     for (auto& b : bars) {
         if (b->id() != ev.window)
             continue;
-        int ws = tag_at(ev.window, ev.event_x);
+        int ws = tag_at(ev.window, ev.event_pos.x());
         if (ws >= 0) {
-            (void)core.dispatch(command::SwitchWorkspace{ ws, b->monitor_index() });
+            (void)core().dispatch(command::SwitchWorkspace{ ws, b->monitor_index() });
             redraw();
         }
         return;
     }
 }
 
-void BarModule::on_reload(Core& core) {
+void BarModule::on_reload() {
     if (auto& bc = config().get_bar_config(); bc.has_value())
         top_cfg = *bc;
     if (auto& bc = config().get_bottom_bar_config(); bc.has_value())
         bottom_cfg = *bc;
+
+    const ThemeConfig& th = config().get_theme();
+    auto apply_theme = [&](BarConfig& cfg) {
+        if (cfg.font.empty())              cfg.font              = th.font;
+        if (cfg.colors.bar_bg.empty())     cfg.colors.bar_bg     = th.bg;
+        if (cfg.colors.normal_fg.empty())  cfg.colors.normal_fg  = th.fg;
+        if (cfg.colors.normal_bg.empty())  cfg.colors.normal_bg  = th.alt_bg;
+        if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
+        if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
+        if (cfg.colors.status_fg.empty())  cfg.colors.status_fg  = th.fg;
+    };
+    apply_theme(top_cfg);
+    apply_theme(bottom_cfg);
+
     if (top_cfg.height <= 0)
         top_cfg.height = 18;
     // Recreate bar windows and re-apply monitor top inset so tiling
     // geometry matches the bar height after reload.
-    rebuild_bars(core);
-    (void)core.dispatch(command::ReconcileNow{});
-    rebuild_trays(core);
+    rebuild_bars();
+    (void)core().dispatch(command::ReconcileNow{});
+    rebuild_trays();
     rebalance_tray_icons();
     raise_all();
     redraw();
 }
 
-void BarModule::rebuild_trays(Core& core) {
+void BarModule::rebuild_trays() {
     if (bars.empty())
         return;
 
@@ -454,7 +478,7 @@ void BarModule::rebuild_trays(Core& core) {
     }
     if (owner_mon < 0) {
         // First run: pick focused monitor, fallback to first bar.
-        int focused_mon = core.focused_monitor_index();
+        int focused_mon = core().focused_monitor_index();
         for (auto& b : bars) {
             if (b && b->monitor_index() == focused_mon) {
                 owner_mon = focused_mon;
@@ -491,7 +515,7 @@ void BarModule::rebuild_trays(Core& core) {
 
         // New monitor — create a passive tray (owner never changes after first run).
         bool own_selection = (mon_idx == owner_mon) && !owner_tray();
-        auto tray          = runtime().backend().create_tray_host(
+        auto tray          = backend().create_tray_host(
             b->id(), b->x(), b->y(),
             top_cfg.height, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
@@ -508,7 +532,7 @@ void BarModule::rebuild_trays(Core& core) {
     LOG_INFO("Bar: rebuild_trays done, %d tray(s), owner_mon=%d", (int)trays.size(), owner_mon);
 }
 
-void BarModule::on(Core&, event::TrayIconDocked ev) {
+void BarModule::on(event::TrayIconDocked ev) {
     // Icon returned to root (ReparentNotify to root) — re-adopt into owner tray.
     backend::TrayHost* t = owner_tray();
     if (t && !t->contains_icon(ev.icon))
@@ -519,19 +543,18 @@ void BarModule::on(Core&, event::TrayIconDocked ev) {
     redraw();
 }
 
-void BarModule::on(Core& core, event::DisplayTopologyChanged) {
-    rebuild_bars(core);
-    (void)core.dispatch(command::ReconcileNow{});
-    rebuild_trays(core);
+void BarModule::on(event::DisplayTopologyChanged) {
+    rebuild_bars();
+    (void)core().dispatch(command::ReconcileNow{});
+    rebuild_trays();
     rebalance_tray_icons();
     raise_all();
     redraw();
 }
 
-void BarModule::on_start(Core& core) {
-    core_ref    = &core;
-    render_port = runtime().backend().render_port();
-    if (!render_port) {
+void BarModule::on_start() {
+    render_port_ = backend().render_port();
+    if (!render_port_) {
         LOG_ERR("Bar: backend render port is unavailable");
         return;
     }
@@ -539,6 +562,21 @@ void BarModule::on_start(Core& core) {
         top_cfg = *bc;
     if (auto& bc = config().get_bottom_bar_config(); bc.has_value())
         bottom_cfg = *bc;
+
+    // Theme is parsed after bar.settings in post-exec — patch colors/font now.
+    const ThemeConfig& th = config().get_theme();
+    auto apply_theme = [&](BarConfig& cfg) {
+        if (cfg.font.empty())
+            cfg.font = th.font;
+        if (cfg.colors.bar_bg.empty())    cfg.colors.bar_bg     = th.bg;
+        if (cfg.colors.normal_fg.empty()) cfg.colors.normal_fg  = th.fg;
+        if (cfg.colors.normal_bg.empty()) cfg.colors.normal_bg  = th.alt_bg;
+        if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
+        if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
+        if (cfg.colors.status_fg.empty()) cfg.colors.status_fg  = th.fg;
+    };
+    apply_theme(top_cfg);
+    apply_theme(bottom_cfg);
 
     if (top_cfg.height <= 0 && !config().get_bar_config().has_value())
         top_cfg.height = 0;
@@ -548,10 +586,10 @@ void BarModule::on_start(Core& core) {
     if (bottom_cfg.height <= 0 && config().get_bottom_bar_config().has_value())
         bottom_cfg.height = 18;
 
-    rebuild_bars(core);
-    (void)core.dispatch(command::ReconcileNow{});
+    rebuild_bars();
+    (void)core().dispatch(command::ReconcileNow{});
 
-    rebuild_trays(core);
+    rebuild_trays();
 
     if (pipe(wakeup_pipe) == 0) {
         fcntl(wakeup_pipe[0], F_SETFL, O_NONBLOCK);
@@ -565,8 +603,20 @@ void BarModule::on_start(Core& core) {
             });
     }
 
-    // If Lua widgets are registered, set up a 1-second timerfd for refresh.
-    if (!config().get_bar_widgets().empty()) {
+    // Collect all Lua slots across both bar configs for timer and init.
+    auto lua_slots = [](BarConfig& cfg) -> std::vector<BarSlot*> {
+            std::vector<BarSlot*> out;
+            for (auto& s : cfg.left)   if (s.kind == BarSlotKind::Lua) out.push_back(&s);
+            for (auto& s : cfg.center) if (s.kind == BarSlotKind::Lua) out.push_back(&s);
+            for (auto& s : cfg.right)  if (s.kind == BarSlotKind::Lua) out.push_back(&s);
+            return out;
+        };
+    auto top_lua    = lua_slots(top_cfg);
+    auto bottom_lua = lua_slots(bottom_cfg);
+    bool has_lua    = !top_lua.empty() || !bottom_lua.empty();
+
+    // If any Lua widgets exist, set up a 1-second timerfd for refresh.
+    if (has_lua) {
         timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
         if (timer_fd >= 0) {
             struct itimerspec ts = {};
@@ -581,13 +631,6 @@ void BarModule::on_start(Core& core) {
                     }
                 });
             LOG_INFO("Bar: widget timer started (1s base tick)");
-        }
-        // Populate cache immediately so first draw has values.
-        for (const auto& w : config().get_bar_widgets()) {
-            std::string result;
-            config().lua().call_ref_string(w.callback, result,
-                ("bar.widget '" + w.name + "'").c_str());
-            widget_cache[w.name] = std::move(result);
         }
     }
 

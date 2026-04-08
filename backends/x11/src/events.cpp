@@ -2,6 +2,7 @@
 
 #include <core.hpp>
 #include <log.hpp>
+#include <lua_events.hpp>
 #include <runtime.hpp>
 #include <xconn.hpp>
 
@@ -40,37 +41,16 @@ static ConfigureRequestPatch pack_configure_request(const xcb_configure_request_
     return patch;
 }
 
-static void send_synthetic_configure_notify(XConnection& xconn,
-    xcb_window_t win,
-    int32_t x, int32_t y,
-    uint32_t w, uint32_t h,
-    uint32_t border_width) {
-    xcb_configure_notify_event_t ce = {};
-    ce.response_type     = XCB_CONFIGURE_NOTIFY;
-    ce.event             = win;
-    ce.window            = win;
-    ce.x                 = (int16_t)x;
-    ce.y                 = (int16_t)y;
-    ce.width             = (uint16_t)w;
-    ce.height            = (uint16_t)h;
-    ce.border_width      = (uint16_t)border_width;
-    ce.above_sibling     = XCB_WINDOW_NONE;
-    ce.override_redirect = 0;
-    xconn.send_event(win, XCB_EVENT_MASK_STRUCTURE_NOTIFY, (char*)&ce);
-}
-
 static event::ButtonEv make_button_ev(xcb_button_press_event_t* ev, bool release) {
     return {
-        .window  = ev->event,
-        .root    = ev->root,
-        .root_x  = ev->root_x,
-        .root_y  = ev->root_y,
-        .event_x = ev->event_x,
-        .event_y = ev->event_y,
-        .time    = ev->time,
-        .button  = ev->detail,
-        .state   = ev->state,
-        .release = release,
+        .window    = ev->event,
+        .root      = ev->root,
+        .root_pos  = { ev->root_x, ev->root_y },
+        .event_pos = { ev->event_x, ev->event_y },
+        .time      = ev->time,
+        .button    = ev->detail,
+        .state     = ev->state,
+        .release   = release,
     };
 }
 
@@ -114,19 +94,21 @@ static const WindowTypeAtoms& window_type_atoms(XConnection& xconn) {
 }
 
 struct WindowMetadata {
-    std::string  wm_instance;
-    std::string  wm_class;
-    WindowType   type              = WindowType::Normal;
-    bool         wm_fixed_size     = false;
-    bool         wm_never_focus    = false;
-    bool         wm_static_gravity = false;
-    bool         wm_no_decorations = false;
+    std::string wm_instance;
+    std::string wm_class;
+    WindowType  type              = WindowType::Normal;
+    bool  wm_fixed_size     = false;
+    bool  wm_never_focus    = false;
+    bool  wm_urgent         = false;
+    bool  wm_static_gravity = false;
+    Vec2i size_min, size_max, size_inc, size_base;
+    bool        wm_no_decorations = false;
     // Geometry facts for intent classification in core.
-    bool         covers_monitor       = false;
-    bool         pre_fullscreen_state = false;
-    bool         is_xembed            = false;
+    bool        covers_monitor       = false;
+    bool        pre_fullscreen_state = false;
+    bool        is_xembed            = false;
     // Relationship facts.
-    WindowId     transient_for        = NO_WINDOW;
+    WindowId    transient_for = NO_WINDOW;
 };
 
 static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
@@ -141,8 +123,15 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
     else if (has_atom(types, atoms.dialog))  out.type = WindowType::Dialog;
     else if (has_atom(types, atoms.utility)) out.type = WindowType::Utility;
     else if (has_atom(types, atoms.splash))  out.type = WindowType::Splash;
-    out.wm_fixed_size     = xconn.has_fixed_size_hints(window);
-    out.wm_never_focus    = xconn.get_wm_hints_no_input(window);
+    auto sz_hints         = xconn.get_size_hints(window);
+    out.wm_fixed_size     = sz_hints.fixed;
+    out.size_min          = { sz_hints.min_w, sz_hints.min_h };
+    out.size_max          = { sz_hints.max_w, sz_hints.max_h };
+    out.size_inc          = { sz_hints.inc_w, sz_hints.inc_h };
+    out.size_base         = { sz_hints.base_w, sz_hints.base_h };
+    auto wm_hints         = xconn.get_wm_hints(window);
+    out.wm_never_focus    = wm_hints.no_input;
+    out.wm_urgent         = wm_hints.urgent;
     out.wm_static_gravity = xconn.has_static_gravity(window);
     out.wm_no_decorations = xconn.motif_no_decorations(window);
     return out;
@@ -150,23 +139,27 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
 
 static void apply_window_metadata(Core& core, WindowId window, WindowMetadata meta) {
     (void)core.dispatch(command::SetWindowMetadata{
-            .window        = window,
-            .wm_instance   = std::move(meta.wm_instance),
-            .wm_class      = std::move(meta.wm_class),
-            .type          = meta.type,
-            .hints = {
+            .window             = window,
+            .wm_instance        = std::move(meta.wm_instance),
+            .wm_class           = std::move(meta.wm_class),
+            .type               = meta.type,
+            .hints              = {
                 .no_decorations = meta.wm_no_decorations,
                 .fixed_size     = meta.wm_fixed_size,
                 .never_focus    = meta.wm_never_focus,
+                .urgent         = meta.wm_urgent,
                 .static_gravity = meta.wm_static_gravity,
                 .covers_monitor = meta.covers_monitor,
                 .pre_fullscreen = meta.pre_fullscreen_state,
                 .is_xembed      = meta.is_xembed,
+                .size_min       = meta.size_min,
+                .size_max       = meta.size_max,
+                .size_inc       = meta.size_inc,
+                .size_base      = meta.size_base,
             },
             .transient_for = meta.transient_for,
         });
 }
-
 
 static int monitor_for_visible_workspace(const Core& core, int ws_id) {
     if (ws_id < 0)
@@ -183,7 +176,7 @@ static void place_window_on_monitor(Core& core,
     WindowId window,
     const Monitor& mon,
     bool prefer_center) {
-    if (window == NO_WINDOW || mon.width <= 0 || mon.height <= 0)
+    if (window == NO_WINDOW || mon.width() <= 0 || mon.height() <= 0)
         return;
 
     auto geo = xconn.get_window_geometry(window);
@@ -195,28 +188,28 @@ static void place_window_on_monitor(Core& core,
     int gw = std::max<int>(1, geo->width);
     int gh = std::max<int>(1, geo->height);
 
-    int nw = std::min(gw, mon.width);
-    int nh = std::min(gh, mon.height);
+    int nw = std::min(gw, mon.width());
+    int nh = std::min(gh, mon.height());
 
     int nx = gx;
     int ny = gy;
     if (prefer_center) {
-        nx = mon.x + (mon.width - nw) / 2;
-        ny = mon.y + (mon.height - nh) / 2;
+        nx = mon.x() + (mon.width() - nw) / 2;
+        ny = mon.y() + (mon.height() - nh) / 2;
     } else {
-        nx = std::clamp(nx, mon.x, mon.x + mon.width - nw);
-        ny = std::clamp(ny, mon.y, mon.y + mon.height - nh);
+        nx = std::clamp(nx, mon.x(), mon.x() + mon.width() - nw);
+        ny = std::clamp(ny, mon.y(), mon.y() + mon.height() - nh);
     }
 
-    bool crosses = (gx < mon.x) || (gy < mon.y) ||
-        (gx + gw > mon.x + mon.width) ||
-        (gy + gh > mon.y + mon.height);
+    bool crosses = (gx < mon.x()) || (gy < mon.y()) ||
+        (gx + gw > mon.x() + mon.width()) ||
+        (gy + gh > mon.y() + mon.height());
     bool resized = (nw != gw) || (nh != gh);
     bool moved   = (nx != gx) || (ny != gy);
     if (!crosses && !resized && !moved)
         return;
 
-    (void)core.dispatch(command::SetWindowGeometry{ window, nx, ny, (uint32_t)nw, (uint32_t)nh });
+    (void)core.dispatch(command::SetWindowGeometry{ window, { nx, ny }, { nw, nh } });
     core.update_window(window);
 }
 
@@ -232,7 +225,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     event::ManageWindowQuery map_q{ ev->window, true };
     handle(map_q);
     if (map_q.manage)
-        runtime.query(core, map_q, [](const event::ManageWindowQuery& s) {
+        runtime.query(map_q, [](const event::ManageWindowQuery& s) {
                 return !s.manage;
             });
     if (!map_q.manage) {
@@ -253,17 +246,21 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             int         outer_w = (int)(geo->width  + 2 * geo->border_width);
             int         outer_h = (int)(geo->height + 2 * geo->border_width);
             for (const auto& mon : mons) {
-                if (outer_w >= mon.width && outer_h >= mon.height - top - bottom) {
+                if (outer_w >= mon.width() && outer_h >= mon.height() - top - bottom) {
                     meta.covers_monitor = true;
                     break;
                 }
             }
         }
-        if (ewmh_has_fullscreen_state(ev->window)) {
-            meta.pre_fullscreen_state = true;
-            xcb_atom_t xembed_atom = xconn.intern_atom_reply(
-                xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
-            meta.is_xembed = xconn.has_property_32(ev->window, xembed_atom, 2);
+        // Pre-manage: no X11Window exists yet, query X properties directly.
+        {
+            auto states = xconn.get_atom_list_property(ev->window, NET_WM_STATE);
+            if (std::find(states.begin(), states.end(), NET_WM_STATE_FULLSCREEN) != states.end()) {
+                meta.pre_fullscreen_state = true;
+                xcb_atom_t xembed_atom = xconn.intern_atom_reply(
+                    xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
+                meta.is_xembed = xconn.has_property_32(ev->window, xembed_atom, 2);
+            }
         }
 
         meta.transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
@@ -278,7 +275,16 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         if (meta.pre_fullscreen_state || meta.covers_monitor) {
             auto it = first_configure_pos_.find(ev->window);
             if (it != first_configure_pos_.end()) {
-                int x = it->second.first, y = it->second.second;
+                int x = it->second.x(), y = it->second.y();
+                // Use the window center for workspace lookup instead of
+                // the top-left corner.  Wine/Proton subtract border_width
+                // from the origin (NorthWest gravity), which can push the
+                // corner 1px into an adjacent monitor.  The center of a
+                // fullscreen window always lands inside the correct monitor.
+                if (geo) {
+                    x += (int)(geo->width  / 2);
+                    y += (int)(geo->height / 2);
+                }
                 if (!(x == -32000 && y == -32000))
                     ws_id_hint = core.active_workspace_at_point(x, y);
                 LOG_DEBUG("MapRequest(%d): first_cfg_pos=%d,%d ws_hint=%d", ev->window, x, y, ws_id_hint);
@@ -301,16 +307,16 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
 
     {
         uint32_t mask = XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_ENTER_WINDOW
-                      | XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_PROPERTY_CHANGE;
+            | XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_PROPERTY_CHANGE;
         xconn.change_window_attributes(ev->window, XCB_CW_EVENT_MASK, &mask);
     }
 
     // Rules apply only to non-transient windows; transients are routed in SetWindowMetadata.
-    xcb_window_t transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
-    bool managed_transient = (transient_for != XCB_WINDOW_NONE) &&
-                             (core.workspace_of_window(transient_for) >= 0);
+    xcb_window_t transient_for     = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+    bool         managed_transient = (transient_for != XCB_WINDOW_NONE) &&
+        (core.workspace_of_window(transient_for) >= 0);
     if (!managed_transient)
-        runtime.emit(core, event::ApplyWindowRules{ ev->window });
+        runtime.emit(event::ApplyWindowRules{ ev->window });
 
     auto mapped_window = core.window_state_any(ev->window);
     int  ws_id         = core.workspace_of_window(ev->window);
@@ -319,56 +325,62 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     // Core classified this window as needing borderless treatment at map time.
     if (mapped_window && mapped_window->promote_to_borderless &&
         !mapped_window->borderless && !mapped_window->floating) {
-        int         mon_idx   = core.monitor_of_workspace(ws_id);
-        const auto& mons      = core.monitor_states();
+        int         mon_idx = core.monitor_of_workspace(ws_id);
+        const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            const auto& mon       = mons[(size_t)mon_idx];
-            int         top       = std::max(0, core.monitor_top_inset());
-            int         bottom    = std::max(0, core.monitor_bottom_inset());
-            int         phy_y     = mon.y - top;
-            int         phy_h     = mon.height + top + bottom;
+            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
+                core.monitor_top_inset(), core.monitor_bottom_inset());
             LOG_INFO("MapRequest(%d): %s, promoting to borderless at %d,%d %dx%d",
                 ev->window,
                 mapped_window->self_managed ? "self-managed (Wine/Proton)" : "borderless",
-                mon.x, phy_y, mon.width, phy_h);
+                phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
             (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
-            (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
-            // Self-managed: client controls its own geometry, do not override.
             if (!mapped_window->self_managed) {
+                // Non-self-managed: WM controls geometry — zero the border and
+                // pin to physical monitor bounds.
+                (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
+                if (auto* xw_bw = x11_window(ev->window)) {
+                    uint32_t zero_bw = 0;
+                    xw_bw->configure(XCB_CONFIG_WINDOW_BORDER_WIDTH, &zero_bw);
+                }
                 (void)core.dispatch(command::SetWindowGeometry{
-                    ev->window, mon.x, phy_y, (uint32_t)mon.width, (uint32_t)phy_h });
+                    ev->window, phy_pos, phy_size });
             }
-            runtime.emit(core, event::RaiseDocks{});
+            // Self-managed (Wine/Proton): do NOT touch the X border.  Wine
+            // positions its render child at (outer + border_width); zeroing the
+            // border shifts the inner origin and causes a 1px render offset.
             mapped_window = core.window_state_any(ev->window);
         }
     } else if (mapped_window && mapped_window->borderless &&
-               !mapped_window->self_managed) {
+        !mapped_window->self_managed) {
         // Re-map of an already-borderless window: repin geometry to prevent drift.
         int         mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            const auto& mon    = mons[(size_t)mon_idx];
-            int         top    = std::max(0, core.monitor_top_inset());
-            int         bottom = std::max(0, core.monitor_bottom_inset());
-            int         phy_y  = mon.y - top;
-            int         phy_h  = mon.height + top + bottom;
+            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
+                core.monitor_top_inset(), core.monitor_bottom_inset());
             LOG_DEBUG("MapRequest(%d): re-map of borderless, repinning geometry at %d,%d %dx%d",
-                ev->window, mon.x, phy_y, mon.width, phy_h);
+                ev->window, phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
             (void)core.dispatch(command::SetWindowGeometry{
-                ev->window, mon.x, phy_y, (uint32_t)mon.width, (uint32_t)phy_h });
+                ev->window, phy_pos, phy_size });
             mapped_window = core.window_state_any(ev->window);
         }
     }
 
-    if (mapped_window && ws_visible && mapped_window->floating) {
+    if (mapped_window && mapped_window->floating) {
         int target_mon = -1;
 
         // Use transient parent's monitor for placement if available.
         xcb_window_t transient_for = xconn.get_transient_for_window(ev->window)
-            .value_or(XCB_WINDOW_NONE);
+                .value_or(XCB_WINDOW_NONE);
         if (transient_for != XCB_WINDOW_NONE) {
             int parent_ws = core.workspace_of_window(transient_for);
             target_mon = monitor_for_visible_workspace(core, parent_ws);
+        }
+
+        // For windows on invisible workspaces, use the owning monitor.
+        if (target_mon < 0 && !ws_visible) {
+            target_mon = core.monitor_of_workspace(ws_id);
         }
 
         if (target_mon < 0)
@@ -388,11 +400,23 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
         (void)core.dispatch(command::MapWindow{ ev->window });
     } else {
+        // Map briefly so the client receives MapNotify and initialises its
+        // renderer, then set IconicState and unmap.  Without the initial map,
+        // GPU clients (Steam, Electron) never start and appear frozen.
+        // Move off-screen first to avoid a visible flash on the current workspace.
+        if (auto* xw = x11_window(ev->window)) {
+            uint32_t off[1] = { (uint32_t)-32000 };
+            xw->configure(XCB_CONFIG_WINDOW_X, off);
+            xw->map();
+            notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false }); // WM_STATE → IconicState
+            xw->note_wm_unmap();
+            xw->unmap();
+        }
         (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, true });
-        (void)core.dispatch(command::UnmapWindow{ ev->window });
+        (void)core.dispatch(command::SetWindowMapped{ ev->window, false });
     }
 
-    runtime.emit(core, event::WindowMapped{ ev->window });
+    runtime.emit(event::WindowMapped{ ev->window });
     notify(event::WindowMapped{ ev->window });
 
     (void)core.dispatch(command::ReconcileNow{});
@@ -419,16 +443,16 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
     // A pending WM unmap means the MapNotify is from our own map_window call
     // immediately before an unmap (workspace visibility sync race). Do not clear
     // hidden_by_workspace — the window is about to be unmapped again.
-    bool pending_wm_unmap = pending_wm_unmaps_.count(ev->window) > 0 &&
-                            pending_wm_unmaps_.at(ev->window) > 0;
+    auto* xw               = x11_window(ev->window);
+    bool  pending_wm_unmap = xw && xw->pending_wm_unmaps > 0;
 
-(void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
+    (void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
     if (!pending_wm_unmap) {
         // Only clear hidden_by_workspace if the window's workspace is currently active.
         // If the window mapped on an inactive workspace (e.g. rule-routed), the WM will
         // immediately unmap it again; clearing here would leave mapped=true,
         // hidden_by_workspace=false with no xcb_map_window pending for the next switch.
-        int ws_id  = core.workspace_of_window(ev->window);
+        int  ws_id     = core.workspace_of_window(ev->window);
         bool ws_active = ws_id >= 0 && core.is_workspace_visible(ws_id);
         if (ws_active)
             (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
@@ -436,7 +460,7 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
 
     // Override-redirect windows (menus, tooltips) must appear above bars, not below.
     if (!ev->override_redirect)
-        runtime.emit(core, event::RaiseDocks{});
+        runtime.emit(event::RaiseDocks{});
 
     LOG_DEBUG("MapNotify(%d): parent %d%s", ev->window, ev->event,
         pending_wm_unmap ? " [pending unmap, keeping hidden]" : "");
@@ -449,12 +473,12 @@ void X11Backend::handle_reparent_notify(xcb_reparent_notify_event_t* ev) {
     if (!core.window_state_any(ev->window)) {
         xcb_atom_t xembed_info_atom = xconn.intern_atom_reply(
             xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
-        bool       has_xembed       = xconn.has_property_32(ev->window, xembed_info_atom, 2);
+        bool       has_xembed = xconn.has_property_32(ev->window, xembed_info_atom, 2);
         // Emit TrayIconDocked only when reparented to root (MANAGER broadcast).
         // Reparents to non-root are either our own transfers or initial docks.
         if (has_xembed && ev->parent == root_window) {
             LOG_DEBUG("ReparentNotify(%u): xembed icon returned to root, re-adopting", ev->window);
-            runtime.emit(core, event::TrayIconDocked{ ev->window });
+            runtime.emit(event::TrayIconDocked{ ev->window });
         } else {
             LOG_DEBUG("ReparentNotify(%u): parent %u (unmanaged, xembed=%d)", ev->window, ev->parent,
                 has_xembed ? 1 : 0);
@@ -478,13 +502,14 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     bool ws_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
 
     if (!core.window_state_any(ev->window)) {
-        runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         return;
     }
 
     // WM-initiated unmap (workspace visibility sync): not a client withdrawal.
-    if (consume_wm_unmap(ev->window)) {
+    auto* xw_unmap = x11_window(ev->window);
+    if (xw_unmap && xw_unmap->consume_wm_unmap()) {
         LOG_DEBUG("UnmapNotify(%d): WM-initiated, ignoring", ev->window);
         notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
         return;
@@ -493,15 +518,17 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     bool ws_hidden_unmap = core.is_window_hidden_by_workspace(ev->window);
     auto win_state       = core.window_state_any(ev->window);
     bool was_borderless  = win_state && win_state->borderless;
+    bool was_fullscreen  = win_state && win_state->fullscreen;
     (void)core.dispatch(command::SetWindowMapped{ ev->window, false });
 
-    // Borderless windows (fullscreen games, media viewers) that unmap themselves
+    // Borderless/fullscreen windows (games, media viewers) that unmap themselves
     // are fully withdrawn from WM management. On the next MapRequest the WM will
     // re-adopt them cleanly, preventing stale workspace state from remapping a
     // client-closed overlay on the next workspace switch.
-    if (was_borderless) {
+    if (was_borderless || was_fullscreen) {
+        first_configure_pos_.erase(ev->window);
         (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
-        runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         if (ws_visible) {
             (void)core.dispatch(command::ReconcileNow{});
@@ -512,25 +539,33 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     }
 
     if (ws_hidden_unmap) {
-        runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
+        runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
         notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
         return;
     }
 
-    runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+    // Client-initiated unmap on a visible workspace — full withdrawal.
+    first_configure_pos_.erase(ev->window);
+    (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
+    runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     if (ws_visible) {
         (void)core.dispatch(command::ReconcileNow{});
         restore_visible_focus();
     }
 
-    LOG_DEBUG("UnmapNotify(%d): parent %d", ev->window, ev->event);
+    LOG_DEBUG("UnmapNotify(%d): client withdrawal, unmanaging", ev->window);
 }
 
 void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
     first_configure_pos_.erase(ev->window);
+
+    // Clear border cache so update_focus won't paint a dead window.
+    if (border_painted_focused_ == ev->window)
+        border_painted_focused_ = NO_WINDOW;
+
     if (!core.window_state_any(ev->window)) {
-        runtime.emit(core, event::DestroyNotify{ ev->window });
+        runtime.emit(event::DestroyNotify{ ev->window });
         LOG_DEBUG("DestroyNotify(%d): unmanaged", ev->window);
         return;
     }
@@ -538,10 +573,15 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
     int  ws_id      = core.workspace_of_window(ev->window);
     bool ws_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
 
-    runtime.emit(core, event::DestroyNotify{ ev->window });
+    runtime.emit(event::DestroyNotify{ ev->window });
+    // Remove from core FIRST — this destroys the X11Window object,
+    // so no further backend operations can target this window.
     (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
-    runtime.emit(core, event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
-    notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+
+    // Skip EWMH property updates on the destroyed window — any ChangeProperty
+    // would produce a BadWindow error. Only update the client list on root.
+    runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+    ewmh_update_client_list();
 
     if (ws_visible) {
         (void)core.dispatch(command::ReconcileNow{});
@@ -560,6 +600,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
             ev->atom == XCB_ATOM_WM_CLASS ||
             ev->atom == atoms.net_wm_window_type ||
             ev->atom == XCB_ATOM_WM_NORMAL_HINTS ||
+            ev->atom == XCB_ATOM_WM_HINTS ||
             ev->atom == motif_atom;
         if (refresh_meta) {
             auto meta = read_window_metadata(xconn, ev->window);
@@ -579,26 +620,22 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                             ev->window);
                         (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
                         (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
-                        runtime.emit(core, event::RaiseDocks{});
+                        runtime.emit(event::RaiseDocks{});
                         (void)core.dispatch(command::ReconcileNow{});
                     } else {
                         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
                         const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-                            const auto& mon    = mons[(size_t)mon_idx];
-                            // mon.y/height are inset-adjusted; recover physical extents.
-                            int         top    = std::max(0, core.monitor_top_inset());
-                            int         bottom = std::max(0, core.monitor_bottom_inset());
-                            int         phy_y  = mon.y - top;
-                            int         phy_h  = mon.height + top + bottom;
+                            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
+                                core.monitor_top_inset(), core.monitor_bottom_inset());
                             LOG_INFO("PropertyNotify(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
-                                ev->window, mon.x, phy_y, mon.width, phy_h);
+                                ev->window, phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
                             (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
                             (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
                             (void)core.dispatch(command::SetWindowGeometry{
-                                ev->window, mon.x, phy_y,
-                                (uint32_t)mon.width, (uint32_t)phy_h });
-                            runtime.emit(core, event::RaiseDocks{});
+                                ev->window, phy_pos,
+                                phy_size });
+                            runtime.emit(event::RaiseDocks{});
                             (void)core.dispatch(command::ReconcileNow{});
                         }
                     }
@@ -635,7 +672,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
         }
 
     }
-    runtime.emit(core, event::PropertyNotify{ ev->window, ev->atom });
+    runtime.emit(event::PropertyNotify{ ev->window, ev->atom });
 }
 
 void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
@@ -645,33 +682,48 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         int16_t cfg_x = ev->x;
         int16_t cfg_y = ev->y;
 
-        // If the window requests a position, steer it toward the monitor where the
-        // cursor currently is. Wine/Proton games always request primary-monitor coords
-        // regardless of where the user expects the game to appear. By responding with
-        // the cursor's monitor geometry the client initializes its renderer there.
-        if (ev->value_mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y)) {
-            const auto& mons = core.monitor_states();
-            int ptr_mon_idx  = -1;
+        // Steer unknown windows toward the cursor's monitor so Wine/Proton
+        // service windows appear on the right screen.  Only steer when the
+        // request includes a size component (width or height); position-only
+        // requests (mask 0x3) come from fullscreen Wine windows that already
+        // embed the correct border-compensated origin — overwriting it with
+        // the raw monitor origin causes a 1px render offset.
+        bool has_size = ev->value_mask & (XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT);
+        if (has_size && (ev->value_mask & (XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y))) {
+            const auto& mons        = core.monitor_states();
+            int         ptr_mon_idx = -1;
             for (int i = 0; i < (int)mons.size(); i++) {
-                if (last_pointer_x_ >= mons[i].x && last_pointer_x_ < mons[i].x + mons[i].width &&
-                    last_pointer_y_ >= mons[i].y && last_pointer_y_ < mons[i].y + mons[i].height) {
+                if (mons[i].contains(last_pointer_)) {
                     ptr_mon_idx = i;
                     break;
                 }
             }
             if (ptr_mon_idx >= 0) {
-                const auto& m    = mons[ptr_mon_idx];
-                int top_inset    = std::max(0, core.monitor_top_inset());
-                int bottom_inset = std::max(0, core.monitor_bottom_inset());
-                cfg_x = (int16_t)m.x;
-                cfg_y = (int16_t)(m.y - top_inset);
-                int full_h = m.height + top_inset + bottom_inset;
-                LOG_DEBUG("ConfigureRequest(%d): steering pos %d,%d -> %d,%d size %dx%d (cursor monitor %d)",
-                    ev->window, ev->x, ev->y, cfg_x, cfg_y, m.width, full_h, ptr_mon_idx);
-                // Override width/height too so the client uses this monitor's full resolution.
-                ev->value_mask |= XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-                ev->width  = (uint16_t)m.width;
-                ev->height = (uint16_t)full_h;
+                const auto& m = mons[ptr_mon_idx];
+                auto [tgt_pos, tgt_size] = m.physical(core.monitor_top_inset(), core.monitor_bottom_inset());
+                cfg_x                    = (int16_t)tgt_pos.x();
+                cfg_y                    = (int16_t)tgt_pos.y();
+
+                // If the requested size covers the source monitor (fullscreen
+                // game requesting primary resolution), scale to the target
+                // monitor so covers_monitor stays true after steering.
+                if (ev->value_mask & (XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT)) {
+                    int rw = (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)  ? ev->width  : 0;
+                    int rh = (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT) ? ev->height : 0;
+                    for (int i = 0; i < (int)mons.size(); i++) {
+                        auto [src_pos, src_size] = mons[i].physical(core.monitor_top_inset(), core.monitor_bottom_inset());
+                        if (rw == src_size.x() && rh == src_size.y()) {
+                            ev->width       = (uint16_t)tgt_size.x();
+                            ev->height      = (uint16_t)tgt_size.y();
+                            ev->value_mask |= XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+                            LOG_DEBUG("ConfigureRequest(%d): scaling size %dx%d -> %dx%d (source mon %d)",
+                                ev->window, rw, rh, tgt_size.x(), tgt_size.y(), i);
+                            break;
+                        }
+                    }
+                }
+                LOG_DEBUG("ConfigureRequest(%d): steering pos %d,%d -> %d,%d (cursor monitor %d)",
+                    ev->window, ev->x, ev->y, cfg_x, cfg_y, ptr_mon_idx);
             }
 
             if (first_configure_pos_.find(ev->window) == first_configure_pos_.end())
@@ -680,12 +732,12 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
 
         // Build the patch with potentially overridden x/y.
         ConfigureRequestPatch msg;
-        uint16_t m = ev->value_mask;
-        auto put = [&](uint16_t flag, uint32_t value) {
-            if (!(m & flag)) return;
-            msg.mask |= flag;
-            msg.values.push_back(value);
-        };
+        uint16_t              m = ev->value_mask;
+        auto                  put = [&](uint16_t flag, uint32_t value) {
+                if (!(m & flag)) return;
+                msg.mask |= flag;
+                msg.values.push_back(value);
+            };
         put(XCB_CONFIG_WINDOW_X,            static_cast<uint32_t>(cfg_x));
         put(XCB_CONFIG_WINDOW_Y,            static_cast<uint32_t>(cfg_y));
         put(XCB_CONFIG_WINDOW_WIDTH,        static_cast<uint32_t>(ev->width));
@@ -709,23 +761,23 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     bool borderless     = window->borderless;
     bool static_gravity = window->preserve_position;
 
-    if (m & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+    if ((m & XCB_CONFIG_WINDOW_BORDER_WIDTH) && !borderless && !window->is_self_managed())
         (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, ev->border_width });
     // Reject restack requests from fullscreen windows — raise docks instead.
     // Restack (sibling/stack_mode) is X11-specific and applied directly without routing through core.
     if (m & XCB_CONFIG_WINDOW_STACK_MODE) {
         if (window->fullscreen) {
-            runtime.emit(core, event::RaiseDocks{});
-        } else {
-            uint16_t restack_mask = XCB_CONFIG_WINDOW_STACK_MODE;
+            runtime.emit(event::RaiseDocks{});
+        } else if (auto* xw = x11_window(ev->window)) {
+            uint16_t restack_mask    = XCB_CONFIG_WINDOW_STACK_MODE;
             uint32_t restack_vals[2] = {};
-            int      ri = 0;
+            int      ri              = 0;
             if (m & XCB_CONFIG_WINDOW_SIBLING) {
-                restack_mask    |= XCB_CONFIG_WINDOW_SIBLING;
+                restack_mask      |= XCB_CONFIG_WINDOW_SIBLING;
                 restack_vals[ri++] = ev->sibling;
             }
             restack_vals[ri] = ev->stack_mode;
-            xconn.configure_window(ev->window, restack_mask, restack_vals);
+            xw->configure(restack_mask, restack_vals);
         }
     }
 
@@ -737,26 +789,26 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            const auto& mon      = mons[(size_t)mon_idx];
+            const auto& mon = mons[(size_t)mon_idx];
             // SDL2 subtracts bar insets from its requested size; compare against usable area.
-            int         usable_h = mon.height
+            int         usable_h = mon.height()
                 - std::max(0, core.monitor_top_inset())
                 - std::max(0, core.monitor_bottom_inset());
-            if ((int)ev->width >= mon.width && (int)ev->height >= usable_h) {
+            if ((int)ev->width >= mon.width() && (int)ev->height >= usable_h) {
                 LOG_INFO(
                     "ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
-                    ev->window, ev->width, ev->height, mon.width, usable_h);
+                    ev->window, ev->width, ev->height, mon.width(), usable_h);
                 (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
                 borderless    = true;
                 borderless_fs = true;
                 // Override to full monitor area (client requested reduced size due to _NET_WM_STRUT).
-                ev->x         = (int16_t)mon.x;
-                ev->y         = (int16_t)mon.y;
-                ev->width     = (uint16_t)mon.width;
-                ev->height    = (uint16_t)mon.height;
-                m            |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
+                ev->x      = (int16_t)mon.x();
+                ev->y      = (int16_t)mon.y();
+                ev->width  = (uint16_t)mon.width();
+                ev->height = (uint16_t)mon.height();
+                m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
                     | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-                runtime.emit(core, event::RaiseDocks{});
+                runtime.emit(event::RaiseDocks{});
             }
         }
     }
@@ -766,17 +818,16 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         bool pinned = (window->fullscreen && !borderless_fs) ||
             (window->borderless && !borderless_fs && !window->self_managed);
         if (pinned) {
-            send_synthetic_configure_notify(xconn, ev->window,
-                window->x, window->y,
-                window->width, window->height,
-                window->border_width);
+            if (auto* xw = x11_window(ev->window))
+                xw->send_configure_notify(window->x(), window->y(),
+                    window->width(), window->height(), window->border_width);
             return;
         }
 
-        int32_t  nx = window->x;
-        int32_t  ny = window->y;
-        uint32_t nw = window->width;
-        uint32_t nh = window->height;
+        int nx = window->x();
+        int ny = window->y();
+        int nw = window->width();
+        int nh = window->height();
 
         if (m & XCB_CONFIG_WINDOW_X)      nx = ev->x;
         if (m & XCB_CONFIG_WINDOW_Y)      ny = ev->y;
@@ -786,11 +837,11 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         // ICCCM §4.1.2.3 StaticGravity: client provides inner-origin coords
         // (content position), but the WM stores outer-corner coords.
         // Subtract border_width to convert to outer-corner.
-        uint32_t out_bw = (m & XCB_CONFIG_WINDOW_BORDER_WIDTH)
-            ? (uint32_t)ev->border_width : window->border_width;
+        int out_bw = (m & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+            ? (int)ev->border_width : (int)window->border_width;
         if (static_gravity && out_bw > 0) {
-            nx -= (int32_t)out_bw;
-            ny -= (int32_t)out_bw;
+            nx -= out_bw;
+            ny -= out_bw;
         }
 
         // Fixed-size windows: clamp position to keep them on their monitor.
@@ -800,33 +851,32 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
             const auto& mons    = core.monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
                 const auto& mon   = mons[(size_t)mon_idx];
-                int         max_x = mon.x + mon.width  - (int)nw;
-                int         max_y = mon.y + mon.height - (int)nh;
-                nx = std::clamp(nx, mon.x, std::max(mon.x, max_x));
-                ny = std::clamp(ny, mon.y, std::max(mon.y, max_y));
+                int         max_x = mon.x() + mon.width()  - nw;
+                int         max_y = mon.y() + mon.height() - nh;
+                nx = std::clamp(nx, mon.x(), std::max(mon.x(), max_x));
+                ny = std::clamp(ny, mon.y(), std::max(mon.y(), max_y));
             }
         }
 
-        (void)core.dispatch(command::SetWindowGeometry{ ev->window, nx, ny, nw, nh });
+        (void)core.dispatch(command::SetWindowGeometry{ ev->window, { nx, ny }, { nw, nh } });
         if (borderless_fs)
             (void)core.dispatch(command::ReconcileNow{});
 
         // ICCCM §4.1.5: send synthetic ConfigureNotify after accepting a request.
         // For StaticGravity, report inner-origin coords (outer + bw) back to client.
-        {
+        if (auto* xw = x11_window(ev->window)) {
             int32_t rx = nx;
             int32_t ry = ny;
             if (static_gravity && out_bw > 0) {
                 rx += (int32_t)out_bw;
                 ry += (int32_t)out_bw;
             }
-            send_synthetic_configure_notify(xconn, ev->window, rx, ry, nw, nh, out_bw);
+            xw->send_configure_notify(rx, ry, nw, nh, out_bw);
         }
     } else {
-        send_synthetic_configure_notify(xconn, ev->window,
-            window->x, window->y,
-            window->width, window->height,
-            window->border_width);
+        if (auto* xw = x11_window(ev->window))
+            xw->send_configure_notify(window->x(), window->y(),
+                window->width(), window->height(), window->border_width);
     }
 
     LOG_DEBUG("ConfigureRequest(%d): x:%d y:%d w:%d h:%d bw:%d",
@@ -835,7 +885,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
 
 void X11Backend::handle_configure_notify(xcb_configure_notify_event_t* ev) {
     // Always emit — tray needs ConfigureNotify to track icon resize.
-    runtime.emit(core, event::ConfigureNotify{ ev->window, ev->x, ev->y, ev->width, ev->height });
+    runtime.emit(event::ConfigureNotify{ ev->window, { ev->x, ev->y }, { ev->width, ev->height } });
 
     auto window = core.window_state_any(ev->window);
     if (!window || ev->override_redirect)
@@ -843,8 +893,8 @@ void X11Backend::handle_configure_notify(xcb_configure_notify_event_t* ev) {
 
     (void)core.dispatch(command::SyncWindowFromConfigureNotify{
         ev->window,
-        ev->x, ev->y,
-        ev->width, ev->height,
+        { ev->x, ev->y },
+        { ev->width, ev->height },
         ev->border_width
     });
 
@@ -888,7 +938,7 @@ void X11Backend::handle_key_event(xcb_key_press_event_t* ev) {
     uint32_t keysym = 0;
     if (auto* syms = key_symbols())
         keysym = xcb_key_symbols_get_keysym(syms, ev->detail, 0);
-    runtime.emit(core, event::KeyPressEv{ ev->state, ev->detail, keysym });
+    runtime.emit(event::KeyPressEv{ ev->state, ev->detail, keysym });
 }
 
 void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
@@ -938,22 +988,20 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
 
 void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
     last_event_time_ = ev->time;
-    last_pointer_x_  = ev->root_x;
-    last_pointer_y_  = ev->root_y;
+    last_pointer_    = { ev->root_x, ev->root_y };
 
     if ((ev->response_type & ~0x80) == XCB_BUTTON_RELEASE) {
-        runtime.emit(core, make_button_ev(ev, true));
+        runtime.emit(make_button_ev(ev, true));
         return;
     }
 
     core.focus_monitor_at_point(ev->root_x, ev->root_y);
-    runtime.emit(core, make_button_ev(ev, false));
+    runtime.emit(make_button_ev(ev, false));
 }
 
 void X11Backend::handle_motion_notify(xcb_motion_notify_event_t* ev) {
-    last_pointer_x_ = ev->root_x;
-    last_pointer_y_ = ev->root_y;
-    runtime.emit(core, event::MotionEv{ ev->event, ev->root_x, ev->root_y, ev->state });
+    last_pointer_ = { ev->root_x, ev->root_y };
+    runtime.emit(event::MotionEv{ ev->event, { ev->root_x, ev->root_y }, ev->state });
 }
 
 void X11Backend::handle_client_message(xcb_client_message_event_t* ev) {
@@ -968,13 +1016,13 @@ void X11Backend::handle_client_message(xcb_client_message_event_t* ev) {
     };
     if (handle(msg))
         return;
-    bool handled = runtime.emit_until_handled(core, msg);
+    bool handled = runtime.emit_until_handled(msg);
     if (!handled)
         LOG_DEBUG("ClientMessage(%d): unhandled type=%u", ev->window, ev->type);
 }
 
 void X11Backend::handle_expose(xcb_expose_event_t* ev) {
-    runtime.emit(core, event::ExposeWindow{ ev->window });
+    runtime.emit(event::ExposeWindow{ ev->window });
 }
 
 void X11Backend::handle_no_exposure(xcb_no_exposure_event_t*) {}
@@ -1012,8 +1060,7 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
         return;
 
     last_event_time_ = ev->time;
-    last_pointer_x_  = ev->root_x;
-    last_pointer_y_  = ev->root_y;
+    last_pointer_    = { ev->root_x, ev->root_y };
 
     // Use window_state_any so that windows on the second monitor's active
     // workspace are found even when focused_monitor hasn't been updated yet
@@ -1037,6 +1084,13 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
 
     if (type == 0) {
         auto* err = reinterpret_cast<xcb_generic_error_t*>(ev);
+        // BadWindow (code=3) errors are expected when async XCB requests
+        // race with client-initiated window destruction. Log at debug level.
+        if (err->error_code == 3) {
+            LOG_DEBUG("X11 BadWindow: major=%u minor=%u resource=%u seq=%u",
+                err->major_code, err->minor_code, err->resource_id, err->sequence);
+            return;
+        }
         LOG_WARN("X11 error: code=%u major=%u minor=%u resource=%u seq=%u",
             err->error_code, err->major_code, err->minor_code,
             err->resource_id, err->sequence);
@@ -1081,7 +1135,7 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
                 auto* kp = keyboard_port_impl.get();
                 if (kp) {
                     std::string layout = kp->current_layout();
-                    runtime.emit(core, event::KeyboardLayoutChanged{ layout });
+                    runtime.emit(event::KeyboardLayoutChanged{ layout });
                 }
                 break;
             }

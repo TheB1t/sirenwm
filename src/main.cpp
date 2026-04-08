@@ -7,13 +7,8 @@
 #include <sys/stat.h>
 #include <string>
 #include <log.hpp>
-#include <backend/backend.hpp>
 
-// Defined in src/backend/backend.cpp — one per build, selected by SWM_BACKEND.
-std::unique_ptr<Backend> create_backend(Core& core, Runtime& runtime);
-#include <backend/monitor_port.hpp>
-#include <config.hpp>
-#include <core.hpp>
+#include <x11_backend.hpp>
 #include <module_registry.hpp>
 #include <runtime.hpp>
 
@@ -33,13 +28,44 @@ void signal_handler(int signum) {
     }
 }
 
-CoreSettings make_core_settings_from_config(const Config& cfg) {
-    CoreSettings out;
-    out.monitor_aliases     = cfg.get_monitor_aliases();
-    out.monitor_compose     = cfg.get_monitor_compose();
-    out.workspace_defs      = cfg.get_workspace_defs();
-    out.theme               = cfg.get_theme();
-    return out;
+std::string resolve_default_config_path() {
+    auto try_default = [](const std::string& dir) -> std::string {
+        std::string p = dir + "/sirenwm/init.lua.default";
+        struct stat s {};
+        return (stat(p.c_str(), &s) == 0) ? p : "";
+    };
+
+    std::string result;
+    if (const char* xdg = std::getenv("XDG_DATA_DIRS")) {
+        std::string dirs(xdg);
+        for (std::string::size_type pos = 0, end; result.empty();) {
+            end    = dirs.find(':', pos);
+            result = try_default(dirs.substr(pos, end == std::string::npos ? end : end - pos));
+            if (end == std::string::npos) break;
+            pos = end + 1;
+        }
+    }
+    if (result.empty()) result = try_default("/usr/local/share");
+    if (result.empty()) result = try_default("/usr/share");
+    return result;
+}
+
+std::string resolve_user_config_path() {
+    const char* home = std::getenv("HOME");
+    std::string cfg_path = "init.lua";
+    if (home)
+        cfg_path = std::string(home) + "/.config/sirenwm/init.lua";
+    return cfg_path;
+}
+
+std::string resolve_exec_path(int argc, char** argv) {
+    char resolved[PATH_MAX] = {};
+    if (argc > 0 && argv && argv[0]) {
+        if (realpath(argv[0], resolved))
+            return resolved;
+        return argv[0];
+    }
+    return "sirenwm";
 }
 
 } // namespace
@@ -51,121 +77,19 @@ int main(int argc, char** argv) {
         log_path = std::string(home) + "/runtime.log";
     log_init(log_path);
 
-    Config         config;
     ModuleRegistry module_registry;
     module_registry_static::apply_static_registrations(module_registry);
-    Runtime        runtime(config, module_registry);
-    Core           core;
+    RuntimeOf<X11Backend> runtime(module_registry);
     g_signal_runtime = &runtime;
     signal(SIGINT, signal_handler);
 
-    // Resolve the binary path for exec-restart.
-    // Use argv[0] resolved to an absolute path so that when the binary on disk
-    // is replaced (cmake does an atomic rename), execv picks up the new file.
-    // /proc/self/exe is intentionally avoided: it follows the old inode after
-    // a rename, so it would re-exec the pre-build binary.
-    std::string exec_path;
-    {
-        char resolved[PATH_MAX] = {};
-        if (argc > 0 && argv && argv[0]) {
-            if (realpath(argv[0], resolved))
-                exec_path = resolved;
-            else
-                exec_path = argv[0];
-        }
-        if (exec_path.empty())
-            exec_path = "sirenwm";
-    }
+    std::string exec_path    = resolve_exec_path(argc, argv);
+    std::string cfg_path     = resolve_user_config_path();
+    std::string default_path = resolve_default_config_path();
 
-    std::string cfg_path = "init.lua";
-    if (home)
-        cfg_path = std::string(home) + "/.config/sirenwm/init.lua";
+    runtime.run(cfg_path, default_path);
 
-    // If user config doesn't exist, fall back to the installed default.
-    {
-        struct stat st {};
-        if (stat(cfg_path.c_str(), &st) != 0) {
-            auto try_default = [](const std::string& dir) -> std::string {
-                std::string p = dir + "/sirenwm/init.lua.default";
-                struct stat s {};
-                return (stat(p.c_str(), &s) == 0) ? p : "";
-            };
-            std::string fallback;
-            if (const char* xdg = std::getenv("XDG_DATA_DIRS")) {
-                std::string dirs(xdg);
-                for (std::string::size_type pos = 0, end; fallback.empty();) {
-                    end      = dirs.find(':', pos);
-                    fallback = try_default(dirs.substr(pos, end == std::string::npos ? end : end - pos));
-                    if (end == std::string::npos) break;
-                    pos = end + 1;
-                }
-            }
-            if (fallback.empty()) fallback = try_default("/usr/local/share");
-            if (fallback.empty()) fallback = try_default("/usr/share");
-
-            if (!fallback.empty()) {
-                LOG_INFO("No user config found — using default from %s", fallback.c_str());
-                cfg_path = fallback;
-            }
-        }
-    }
-
-    // 1. Load config — runs Lua config declarations and module registrations.
-    if (!config.load(cfg_path, core, runtime)) {
-        LOG_ERR("Aborting — failed to load config %s", cfg_path.c_str());
-        return 1;
-    }
-
-    // 2. Validate — abort on missing required settings
-    {
-        auto errs = config.validate();
-        if (!errs.empty()) {
-            for (auto& e : errs)
-                LOG_ERR("Config: %s", e.c_str());
-            LOG_ERR("Aborting — fix your config at %s", cfg_path.c_str());
-            return 1;
-        }
-    }
-    core.apply_settings(make_core_settings_from_config(config));
-
-    // 3. Init backend and bind it before core.init().
-    // Some providers (e.g. monitor topology) query backend during core.init().
-    auto wm = create_backend(core, runtime);
-    if (!wm) {
-        LOG_ERR("Aborting — backend creation failed");
-        return 1;
-    }
-    runtime.bind_backend(*wm);
-
-    // 4. Query initial monitor list from backend and pass to core.
-    //    Feature modules may later apply topology config (rotation, compose) via ApplyMonitorTopology.
-    std::vector<Monitor> initial_monitors;
-    {
-        auto* mp = wm->monitor_port();
-        if (mp)
-            initial_monitors = mp->get_monitors();
-        else
-            LOG_WARN("backend has no monitor_port — starting with empty monitor list");
-    }
-
-    core.init(std::move(initial_monitors));
-
-    // 5. Start runtime/modules after root is ready.
-    runtime.start(core, *wm);
-
-    LOG_INFO("Siren Window Manager started.");
-    runtime.run_loop(*wm, core);
-
-    bool do_exec_restart = runtime.consume_exec_restart_request();
-    if (do_exec_restart) {
-        // Stop modules with is_exec_restart=true so that ONCE processes (e.g. picom)
-        // are left alive and other processes are terminated cleanly. runtime.stop()
-        // does NOT call XCloseDisplay — it only calls on_stop() on modules and nulls
-        // the backend pointer. The X fd is FD_CLOEXEC (set in XConnection ctor), so
-        // it closes automatically after execv. An explicit XCloseDisplay would
-        // disconnect the X server immediately and cause picom to drop Damage redirects
-        // on transparent windows (render freeze in the replacement process).
-        runtime.stop(core, /*is_exec_restart=*/ true);
+    if (runtime.consume_exec_restart_request()) {
         LOG_INFO("restart: replacing process via %s", exec_path.c_str());
         spdlog::shutdown();
         char* exec_argv[] = { (char*)exec_path.c_str(), nullptr };

@@ -3,60 +3,23 @@
 #include <backend/input_port.hpp>
 #include <core.hpp>
 #include <config.hpp>
+#include <lua_events.hpp>
 #include <runtime.hpp>
 #include <module_registry.hpp>
 #include <log.hpp>
 
+#include <string_utils.hpp>
 #include <algorithm>
 #include <string>
 #include <sstream>
-#include <unordered_map>
 #include <type_traits>
 #include <cstdlib>
 #include <optional>
 #include <cstdint>
 #include <vector>
 
-#include <xkbcommon/xkbcommon.h>
-
-// X11 modifier constants used for physical_mod_map and event stripping.
-// These are X11 protocol constants, not backend-specific types.
-static constexpr uint16_t MOD_MASK_SHIFT   = 1;
-static constexpr uint16_t MOD_MASK_CONTROL = 4;
-static constexpr uint16_t MOD_MASK_1       = 8;   // Alt
-static constexpr uint16_t MOD_MASK_2       = 16;  // Numlock
-static constexpr uint16_t MOD_MASK_3       = 32;
-static constexpr uint16_t MOD_MASK_4       = 64;  // Super
-static constexpr uint16_t MOD_MASK_5       = 128;
-static constexpr uint16_t MOD_MASK_LOCK    = 2;   // CapsLock
-
-// Mask to strip numlock and capslock from event modifier state.
-static constexpr uint16_t STRIP_MODS_MASK = MOD_MASK_2 | MOD_MASK_LOCK;
-
-static const std::unordered_map<std::string, uint16_t> physical_mod_map = {
-    { "shift", MOD_MASK_SHIFT   },
-    { "ctrl",  MOD_MASK_CONTROL },
-    { "control", MOD_MASK_CONTROL },
-    { "alt",   MOD_MASK_1       },
-    { "mod1",  MOD_MASK_1       },
-    { "mod2",  MOD_MASK_2       },
-    { "mod3",  MOD_MASK_3       },
-    { "mod4",  MOD_MASK_4       },
-    { "mod5",  MOD_MASK_5       },
-    { "super", MOD_MASK_4       },
-    { "win",   MOD_MASK_4       },
-};
-
-static std::string lower_ascii(std::string s) {
-    for (char& c : s)
-        if (c >= 'A' && c <= 'Z')
-            c = (char)(c - 'A' + 'a');
-    return s;
-}
-
 static uint16_t parse_physical_modifier(const std::string& name) {
-    auto it = physical_mod_map.find(lower_ascii(name));
-    return (it != physical_mod_map.end()) ? it->second : 0;
+    return backend::parse_modifier_name(lower_ascii(name));
 }
 
 static std::optional<std::string> validate_modifier_value(const RuntimeValue& value) {
@@ -120,10 +83,10 @@ static bool parse_key(const std::string& spec,
             return false;
         }
 
-        keysym_out = xkb_keysym_from_name(token.c_str(), XKB_KEYSYM_NO_FLAGS);
-        if (keysym_out == XKB_KEY_NoSymbol)
-            keysym_out = xkb_keysym_from_name(token_lower.c_str(), XKB_KEYSYM_NO_FLAGS);
-        if (keysym_out == XKB_KEY_NoSymbol) {
+        keysym_out = backend::keysym_from_name(token);
+        if (!keysym_out)
+            keysym_out = backend::keysym_from_name(token_lower);
+        if (!keysym_out) {
             if (err_out)
                 *err_out = "unknown keysym '" + token + "'";
             return false;
@@ -434,8 +397,8 @@ static bool load_mouse_bind_list(Config& config,
 static void install_mouse_grabs_for_window(backend::InputPort& input,
     WindowId win,
     const Config& config) {
-    std::vector<std::pair<uint8_t, uint16_t> > grabs;
-    auto push_unique = [&](uint32_t button, uint16_t mods) {
+    std::vector<std::pair<uint8_t, uint16_t>> grabs;
+    auto                                      push_unique = [&](uint32_t button, uint16_t mods) {
             uint8_t b = (uint8_t)button;
             for (auto& g : grabs)
                 if (g.first == b && g.second == mods) return;
@@ -459,15 +422,7 @@ static void reinstall_mouse_grabs_for_all_windows(backend::InputPort& input,
     input.flush();
 }
 
-void KeybindingsModule::on_init(Core& core) {
-    config().register_lua_assignment_handler("binds",
-        [this, &core](LuaContext& lua, int table_idx, std::string& err) -> bool {
-            return load_bind_list(core, config(), lua, table_idx, "siren.binds", err);
-        });
-    // siren.mouse = { { "mod+Button1", "move" }, { "mod+Button3", "resize" }, ... }
-    config().register_lua_assignment_handler("mouse", [this](LuaContext& lua, int table_idx, std::string& err) -> bool {
-            return load_mouse_bind_list(config(), lua, table_idx, "siren.mouse", err);
-        });
+void KeybindingsModule::on_init() {
     config().register_runtime_setting("modifier", RuntimeSettingSpec{
         .expected_type = RuntimeValueType::String,
         .validate      = validate_modifier_value,
@@ -483,7 +438,58 @@ void KeybindingsModule::on_init(Core& core) {
     });
 }
 
-void KeybindingsModule::on_lua_init(Core&) {}
+void KeybindingsModule::on_lua_init() {
+    // Reset pending refs — new Lua VM epoch on reload.
+    pending_binds_ = {};
+    pending_mouse_ = {};
+
+    auto& lua = config().lua();
+    auto  ctx = lua.context();
+
+    // Module table: __newindex stores refs, applied after siren.modifier is set.
+    ctx.new_table(); // module table (proxy)
+    ctx.new_table(); // metatable
+
+    lua.push_callback([](LuaContext& lctx, void* ud) -> int {
+            if (!lctx.is_string(2) || !lctx.is_table(3))
+                return 0;
+            auto*       mod = static_cast<KeybindingsModule*>(ud);
+            std::string key = lctx.to_string(2);
+            if (key == "binds")
+                mod->pending_binds_ = mod->config().lua().ref_value(3);
+            else if (key == "mouse")
+                mod->pending_mouse_ = mod->config().lua().ref_value(3);
+            return 0;
+        }, this);
+    ctx.set_field(-2, "__newindex");
+
+    ctx.set_metatable(-2);
+    lua.set_module_table("keybindings");
+}
+
+void KeybindingsModule::apply_pending() {
+    auto& lua = config().lua();
+    if (pending_binds_.valid()) {
+        if (lua.push_ref(pending_binds_)) {
+            auto  ctx = lua.context();
+            std::string err;
+            if (!load_bind_list(core(), config(), ctx, -1, "kb.binds", err))
+                LOG_ERR("keybindings: kb.binds: %s", err.c_str());
+            ctx.pop();
+        }
+        pending_binds_ = {};
+    }
+    if (pending_mouse_.valid()) {
+        if (lua.push_ref(pending_mouse_)) {
+            auto  ctx = lua.context();
+            std::string err;
+            if (!load_mouse_bind_list(config(), ctx, -1, "kb.mouse", err))
+                LOG_ERR("keybindings: kb.mouse: %s", err.c_str());
+            ctx.pop();
+        }
+        pending_mouse_ = {};
+    }
+}
 
 void KeybindingsModule::stop_drag() {
     if (!drag_active())
@@ -501,13 +507,13 @@ void KeybindingsModule::maybe_cancel_drag_for_window(WindowId window) {
     stop_drag();
 }
 
-void KeybindingsModule::on(Core& core, event::KeyPressEv ev) {
+void KeybindingsModule::on(event::KeyPressEv ev) {
     uint32_t keysym = ev.keysym;
-    uint16_t mods   = ev.mods & ~STRIP_MODS_MASK;
+    uint16_t mods   = ev.mods & ~backend::MOD_STRIP_MASK;
 
     // Copy-out handler before execution: callbacks like siren.reload() mutate
     // keybinding storage and would invalidate references during iteration.
-    auto keybindings = core.get_keybindings();
+    auto keybindings = core().get_keybindings();
     for (auto& kb : keybindings) {
         if (kb.keysym == keysym && kb.mods == mods) {
             auto handler = kb.handler;
@@ -517,44 +523,53 @@ void KeybindingsModule::on(Core& core, event::KeyPressEv ev) {
     }
 }
 
-void KeybindingsModule::on_start(Core& core) {
-    input_ = runtime().backend().input_port();
+void KeybindingsModule::on_start() {
+    apply_pending();
+
+    input_ = backend().input_port();
     if (!input_) {
         LOG_ERR("Keybindings: backend does not provide InputPort");
         return;
     }
 
-    for (auto& kb : core.get_keybindings())
+    for (auto& kb : core().get_keybindings())
         input_->grab_key(kb.keysym, kb.mods);
 
     input_->flush();
 }
 
-void KeybindingsModule::on_stop(Core&, bool) {
+void KeybindingsModule::on_stop(bool) {
     stop_drag();
 }
 
-void KeybindingsModule::on_reload(Core& core) {
+void KeybindingsModule::on_reload() {
     if (!input_)
         return;
     stop_drag();
     input_->ungrab_all_keys();
-    on_start(core);
-    reinstall_mouse_grabs_for_all_windows(*input_, core, config());
+    on_start();
+    reinstall_mouse_grabs_for_all_windows(*input_, core(), config());
 }
 
 static void call_mouse_ref(Config& config, const LuaRegistryRef& callback, const event::ButtonEv& ev) {
     auto& lua = config.lua();
     lua.call_ref_with_int_fields(callback, {
         { "window", ev.window },
-        { "root_x", ev.root_x },
-        { "root_y", ev.root_y },
+        { "root_x", ev.root_pos.x() },
+        { "root_y", ev.root_pos.y() },
         { "button", ev.button },
     }, "mouse.bind callback error");
 }
 
-void KeybindingsModule::on(Core& core, event::ButtonEv ev) {
-    uint16_t mods = ev.state & ~STRIP_MODS_MASK;
+void KeybindingsModule::on(event::ButtonEv ev) {
+    uint16_t mods = ev.state & ~backend::MOD_STRIP_MASK;
+
+    // If this press arrived via the click-to-focus grab (grab_button_any, GrabModeSync),
+    // replay it so the target window also receives the click. This must happen before
+    // any WM processing so the X server unfreezes the pointer regardless of outcome.
+    if (!ev.release && ev.window != focused_window_ && input_)
+        input_->allow_events(true);
+
     for (auto& mb : config().get_mouse_bindings()) {
         if (mb.button != ev.button || mb.mods != mods)
             continue;
@@ -568,19 +583,17 @@ void KeybindingsModule::on(Core& core, event::ButtonEv ev) {
         if (drag_active() && drag.op == DragOp::Move) {
             // After a move drag, reassign the window to the active workspace of
             // whichever monitor its center now overlaps.
-            auto window = core.window_state(drag.window);
+            auto window = core().window_state(drag.window);
             if (window) {
-                int         cx   = window->x + (int)window->width  / 2;
-                int         cy   = window->y + (int)window->height / 2;
-                const auto& mons = core.monitor_states();
+                auto        c    = window->center();
+                const auto& mons = core().monitor_states();
                 for (int i = 0; i < (int)mons.size(); i++) {
                     const auto& mon = mons[(size_t)i];
-                    if (cx >= mon.x && cx < mon.x + mon.width &&
-                        cy >= mon.y && cy < mon.y + mon.height) {
-                        int cur_ws  = core.workspace_of_window(drag.window);
+                    if (mon.contains(c)) {
+                        int cur_ws  = core().workspace_of_window(drag.window);
                         int dest_ws = mon.active_ws;
                         if (dest_ws >= 0 && dest_ws != cur_ws)
-                            (void)core.dispatch(command::MoveWindowToWorkspace{ drag.window, dest_ws });
+                            (void)core().dispatch(command::MoveWindowToWorkspace{ drag.window, dest_ws });
                         break;
                     }
                 }
@@ -602,91 +615,110 @@ void KeybindingsModule::on(Core& core, event::ButtonEv ev) {
     if (builtin == Config::MouseAction::None)
         return;
 
-    auto window = core.window_state(ev.window);
+    auto window = core().window_state(ev.window);
     if (!window)
         return;
 
+    // Fullscreen and borderless windows are pinned to the monitor — do not drag/resize.
+    if (window->fullscreen || window->borderless)
+        return;
+
     if (builtin == Config::MouseAction::Float) {
-        (void)core.dispatch(command::ToggleWindowFloating{ ev.window });
-        (void)core.dispatch(command::ReconcileNow{});
+        (void)core().dispatch(command::ToggleWindowFloating{ ev.window });
+        (void)core().dispatch(command::ReconcileNow{});
         return;
     }
 
-    drag.window   = ev.window;
-    drag.start_rx = ev.root_x;
-    drag.start_ry = ev.root_y;
-    drag.start_wx = window->x;
-    drag.start_wy = window->y;
-    drag.start_ww = window->width;
-    drag.start_wh = window->height;
-    drag.op       = (builtin == Config::MouseAction::Move) ? DragOp::Move : DragOp::Resize;
+    drag.window         = ev.window;
+    drag.start_root     = { (int)ev.root_pos.x(), (int)ev.root_pos.y() };
+    drag.start_win_pos  = window->pos();
+    drag.start_win_size = window->size();
+    drag.op             = (builtin == Config::MouseAction::Move) ? DragOp::Move : DragOp::Resize;
 
-    if (!core.is_window_floating(ev.window)) {
-        (void)core.dispatch(command::SetWindowFloating{ ev.window, true });
-        (void)core.dispatch(command::ReconcileNow{});
+    if (!core().is_window_floating(ev.window)) {
+        (void)core().dispatch(command::SetWindowFloating{ ev.window, true });
+        (void)core().dispatch(command::ReconcileNow{});
     }
 
     if (input_) {
         input_->grab_pointer();
         if (drag.op == DragOp::Resize) {
             // Re-read geometry after potential ReconcileNow (tiled→float promotes window).
-            auto cur = core.window_state(drag.window);
+            auto cur = core().window_state(drag.window);
             if (cur) {
-                drag.start_wx = cur->x;
-                drag.start_wy = cur->y;
-                drag.start_ww = cur->width;
-                drag.start_wh = cur->height;
+                drag.start_win_pos  = cur->pos();
+                drag.start_win_size = cur->size();
             }
-            // Warp to bottom-right corner in root coordinates and sync start_rx/ry
+            // Warp to bottom-right corner in root coordinates and sync start_root
             // so the first MotionEv produces zero delta.
-            int16_t warp_x = (int16_t)(drag.start_wx + (int)drag.start_ww - 1);
-            int16_t warp_y = (int16_t)(drag.start_wy + (int)drag.start_wh - 1);
-            input_->warp_pointer_abs(warp_x, warp_y);
-            drag.start_rx = warp_x;
-            drag.start_ry = warp_y;
+            Vec2i16 warp = {
+                (int16_t)(drag.start_win_pos.x() + drag.start_win_size.x() - 1),
+                (int16_t)(drag.start_win_pos.y() + drag.start_win_size.y() - 1)
+            };
+            input_->warp_pointer_abs(warp);
+            drag.start_root = { warp.x(), warp.y() };
         }
 
-        (void)core.dispatch(command::FocusWindow{ ev.window });
-        input_->focus_window(ev.window);
-        runtime().emit(core, event::FocusChanged{ ev.window });
+        (void)core().dispatch(command::FocusWindow{ ev.window });
+        runtime().emit(event::FocusChanged{ ev.window });
     }
 }
 
-void KeybindingsModule::on(Core& core, event::MotionEv ev) {
+void KeybindingsModule::on(event::MotionEv ev) {
     if (!drag_active())
         return;
 
-    int dx = ev.root_x - drag.start_rx;
-    int dy = ev.root_y - drag.start_ry;
+    int dx = ev.root_pos.x() - drag.start_root.x();
+    int dy = ev.root_pos.y() - drag.start_root.y();
 
     if (drag.op == DragOp::Move) {
-        (void)core.dispatch(command::SetWindowPosition{
-            drag.window, drag.start_wx + dx, drag.start_wy + dy
+        (void)core().dispatch(command::SetWindowPosition{
+            drag.window, { drag.start_win_pos.x() + dx, drag.start_win_pos.y() + dy }
         });
         return;
     }
 
-    auto window = core.window_state(drag.window);
+    auto window = core().window_state(drag.window);
     if (!window)
         return;
     static constexpr int MIN_WIN_SIZE = 32;
-    int                  nw           = std::max(MIN_WIN_SIZE, ev.root_x - window->x);
-    int                  nh           = std::max(MIN_WIN_SIZE, ev.root_y - window->y);
-    (void)core.dispatch(command::SetWindowSize{ drag.window, (uint32_t)nw, (uint32_t)nh });
+    int                  nw           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.x() - window->x());
+    int                  nh           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.y() - window->y());
+    (void)core().dispatch(command::SetWindowSize{ drag.window, { nw, nh } });
 }
 
-void KeybindingsModule::on(Core&, event::WindowMapped ev) {
+void KeybindingsModule::on(event::FocusChanged ev) {
+    if (!input_)
+        return;
+    // Restore click-to-focus grab on the previously focused window.
+    if (focused_window_ != NO_WINDOW && focused_window_ != ev.window)
+        input_->grab_button_any(focused_window_);
+    focused_window_ = ev.window;
+    // Remove click-to-focus grab from the newly focused window —
+    // WM action grabs (mod+button) remain in place.
+    if (ev.window != NO_WINDOW) {
+        input_->ungrab_all_buttons(ev.window);
+        install_mouse_grabs_for_window(*input_, ev.window, config());
+    }
+    input_->flush();
+}
+
+void KeybindingsModule::on(event::WindowMapped ev) {
     if (!input_)
         return;
     input_->ungrab_all_buttons(ev.window);
     install_mouse_grabs_for_window(*input_, ev.window, config());
+    // Newly mapped windows are unfocused — add click-to-focus grab.
+    if (ev.window != focused_window_)
+        input_->grab_button_any(ev.window);
+    input_->flush();
 }
 
-void KeybindingsModule::on(Core&, event::WindowUnmapped ev) {
+void KeybindingsModule::on(event::WindowUnmapped ev) {
     maybe_cancel_drag_for_window(ev.window);
 }
 
-void KeybindingsModule::on(Core&, event::DestroyNotify ev) {
+void KeybindingsModule::on(event::DestroyNotify ev) {
     maybe_cancel_drag_for_window(ev.window);
 }
 
@@ -694,10 +726,4 @@ KeybindingsModule::~KeybindingsModule() {
     stop_drag();
 }
 
-static bool _swm_registered_lua_symbols_keybindings = []() {
-        module_registry_static::add_lua_symbol_registration("mouse", "keybindings");
-        module_registry_static::add_lua_symbol_registration("binds", "keybindings");
-        return true;
-    }();
-
-SWM_REGISTER_MODULE("keybindings", KeybindingsModule)
+SIRENWM_REGISTER_MODULE("keybindings", KeybindingsModule)

@@ -5,12 +5,13 @@
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_keysyms.h>
+#include <xkbcommon/xkbcommon.h>
 #include <cstdlib>
 
 namespace {
 
 class X11InputPort final : public backend::InputPort {
-    XConnection& xconn;
+    XConnection&        xconn;
     xcb_key_symbols_t*& key_syms; // reference to X11Backend-owned pointer
 
     xcb_key_symbols_t* ensure_key_syms() {
@@ -53,7 +54,7 @@ class X11InputPort final : public backend::InputPort {
         }
 
         void grab_button(WindowId window, uint8_t button, uint16_t mods) override {
-            constexpr uint32_t evmask     =
+            constexpr uint32_t evmask =
                 XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION;
             const uint16_t     variants[] = {
                 mods,
@@ -72,6 +73,24 @@ class X11InputPort final : public backend::InputPort {
             xconn.call(xcb_ungrab_button, XCB_BUTTON_INDEX_ANY, (xcb_window_t)window, XCB_MOD_MASK_ANY);
         }
 
+        void grab_button_any(WindowId window) override {
+            constexpr uint32_t evmask =
+                XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE;
+            // GrabModeSync freezes pointer on ButtonPress until xcb_allow_events().
+            // The WM focuses the window then calls allow_events(replay=true) so
+            // the click is re-delivered to the client — exact dwm click-to-focus model.
+            xconn.call(xcb_grab_button, 0, (xcb_window_t)window, evmask,
+                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
+                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+                XCB_BUTTON_INDEX_ANY, XCB_MOD_MASK_ANY);
+        }
+
+        void allow_events(bool replay) override {
+            uint8_t mode = replay ? XCB_ALLOW_REPLAY_POINTER : XCB_ALLOW_ASYNC_POINTER;
+            xconn.call(xcb_allow_events, mode, XCB_CURRENT_TIME);
+            xconn.flush();
+        }
+
         void grab_pointer() override {
             constexpr uint32_t mask =
                 XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION;
@@ -82,22 +101,18 @@ class X11InputPort final : public backend::InputPort {
             xconn.ungrab_pointer();
         }
 
-        void warp_pointer(WindowId window, int16_t x, int16_t y) override {
+        void warp_pointer(WindowId window, Vec2i16 pos) override {
             xconn.call(xcb_warp_pointer,
                 XCB_WINDOW_NONE, (xcb_window_t)window,
                 (int16_t)0, (int16_t)0, (uint16_t)0, (uint16_t)0,
-                x, y);
+                pos.x(), pos.y());
         }
 
-        void warp_pointer_abs(int16_t x, int16_t y) override {
+        void warp_pointer_abs(Vec2i16 pos) override {
             xconn.call(xcb_warp_pointer,
                 XCB_WINDOW_NONE, xconn.root_window(),
                 (int16_t)0, (int16_t)0, (uint16_t)0, (uint16_t)0,
-                x, y);
-        }
-
-        void focus_window(WindowId window) override {
-            xconn.focus_window((xcb_window_t)window);
+                pos.x(), pos.y());
         }
 
         void flush() override {
@@ -124,3 +139,8 @@ std::unique_ptr<backend::InputPort> create_input_port(XConnection& xconn, xcb_ke
 }
 
 } // namespace backend::x11
+
+uint32_t backend::keysym_from_name(const std::string& name) {
+    xkb_keysym_t sym = xkb_keysym_from_name(name.c_str(), XKB_KEYSYM_NO_FLAGS);
+    return (sym == XKB_KEY_NoSymbol) ? 0 : sym;
+}

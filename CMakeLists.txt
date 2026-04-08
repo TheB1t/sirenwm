@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(sirenwm LANGUAGES C CXX)
 
 find_package(Lua REQUIRED)
@@ -19,41 +19,50 @@ set(CMAKE_C_FLAGS_DEBUG     "-g3 -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}")
 
-include(cmake/SwmModule.cmake)
+include(cmake/SirenwmModule.cmake)
 
 # ---------------------------------------------------------------------------
 # Modules — auto-discovered from modules/*/module.cmake
 # ---------------------------------------------------------------------------
-set(SWM_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/core/include)
-set(SWM_MODULES_DIR ${CMAKE_SOURCE_DIR}/modules)
+set(SIRENWM_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/core/include)
+set(SIRENWM_MODULES_DIR ${CMAKE_SOURCE_DIR}/modules)
 
 add_subdirectory(modules)
 
-get_property(SWM_MODULE_TARGETS GLOBAL PROPERTY SWM_MODULE_TARGETS)
-if(NOT SWM_MODULE_TARGETS)
+get_property(SIRENWM_MODULE_TARGETS GLOBAL PROPERTY SIRENWM_MODULE_TARGETS)
+if(NOT SIRENWM_MODULE_TARGETS)
     message(FATAL_ERROR "No modules found. Add modules/<name>/module.cmake under modules/.")
 endif()
 
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-add_library(swm_core STATIC
+include(GNUInstallDirs)
+set(SIRENWM_LUA_DIR "${CMAKE_INSTALL_FULL_DATADIR}/sirenwm/lua")
+
+add_library(sirenwm_core STATIC
     core/src/config.cpp
     core/src/config_loader.cpp
     core/src/lua_host.cpp
+    core/src/module.cpp
     core/src/core/core_dispatch.cpp
     core/src/core/workspace_manager.cpp
+    core/src/monitor_layout.cpp
     core/src/runtime/config_runtime.cpp
     core/src/runtime/runtime_config.cpp
     core/src/runtime/runtime.cpp
 )
 
-target_include_directories(swm_core PUBLIC
+target_include_directories(sirenwm_core PUBLIC
     core/include
     ${LUA_INCLUDE_DIR}
 )
 
-target_link_libraries(swm_core PUBLIC
+target_compile_definitions(sirenwm_core PRIVATE
+    SIRENWM_LUA_DIR="${SIRENWM_LUA_DIR}"
+)
+
+target_link_libraries(sirenwm_core PUBLIC
     spdlog::spdlog
     ${LUA_LIBRARIES}
 )
@@ -61,26 +70,26 @@ target_link_libraries(swm_core PUBLIC
 # ---------------------------------------------------------------------------
 # Backend
 # ---------------------------------------------------------------------------
-set(SWM_BACKEND "x11" CACHE STRING "Backend to build (currently only x11)")
+set(SIRENWM_BACKEND "x11" CACHE STRING "Backend to build (currently only x11)")
 
-set(SWM_BACKEND_SOURCES)
-set(SWM_BACKEND_INCLUDE_DIRS)
-set(SWM_BACKEND_LINK_LIBS spdlog::spdlog)
+set(SIRENWM_BACKEND_SOURCES)
+set(SIRENWM_BACKEND_INCLUDE_DIRS)
+set(SIRENWM_BACKEND_LINK_LIBS spdlog::spdlog)
 
-if(SWM_BACKEND STREQUAL "x11")
+if(SIRENWM_BACKEND STREQUAL "x11")
     include(backends/x11/backend.cmake)
 else()
-    message(FATAL_ERROR "Unknown SWM_BACKEND: ${SWM_BACKEND}")
+    message(FATAL_ERROR "Unknown SIRENWM_BACKEND: ${SIRENWM_BACKEND}")
 endif()
 
-add_library(swm_backend STATIC ${SWM_BACKEND_SOURCES})
-target_include_directories(swm_backend PRIVATE
+add_library(sirenwm_backend STATIC ${SIRENWM_BACKEND_SOURCES})
+target_include_directories(sirenwm_backend PRIVATE
     core/include
-    ${SWM_BACKEND_INCLUDE_DIRS}
+    ${SIRENWM_BACKEND_INCLUDE_DIRS}
 )
-target_link_libraries(swm_backend PUBLIC
-    swm_core
-    ${SWM_BACKEND_LINK_LIBS}
+target_link_libraries(sirenwm_backend PUBLIC
+    sirenwm_core
+    ${SIRENWM_BACKEND_LINK_LIBS}
 )
 
 # ---------------------------------------------------------------------------
@@ -90,12 +99,13 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     modules
+    ${SIRENWM_BACKEND_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    swm_backend
+    sirenwm_backend
     -Wl,--whole-archive
-    ${SWM_MODULE_TARGETS}
+    ${SIRENWM_MODULE_TARGETS}
     -Wl,--no-whole-archive
     dl
 )
@@ -106,27 +116,47 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 if(BUILD_TESTING)
     enable_testing()
 
-    file(GLOB SWM_TEST_SOURCES tests/test_*.cpp)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.15.2
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
 
-    add_executable(sirenwm_tests ${SWM_TEST_SOURCES})
-
-    target_include_directories(sirenwm_tests PRIVATE
-        core/include
-        tests
-        modules
+    set(SIRENWM_TEST_INCLUDE_DIRS
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/tests
+        ${CMAKE_SOURCE_DIR}/modules
         ${LUA_INCLUDE_DIR}
     )
 
-    target_link_libraries(sirenwm_tests PRIVATE
-        swm_core
-        -Wl,--whole-archive
-        mod_rules
-        -Wl,--no-whole-archive
-        dl
+    # --- Core tests ---
+    file(GLOB SIRENWM_CORE_TEST_SOURCES tests/core/test_*.cpp)
+    add_executable(sirenwm_core_tests ${SIRENWM_CORE_TEST_SOURCES})
+    target_include_directories(sirenwm_core_tests PRIVATE ${SIRENWM_TEST_INCLUDE_DIRS})
+    target_link_libraries(sirenwm_core_tests PRIVATE sirenwm_core GTest::gtest dl)
+    add_test(NAME sirenwm_core_tests COMMAND sirenwm_core_tests)
+    set_target_properties(sirenwm_core_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
     )
 
-    add_test(NAME sirenwm_tests COMMAND sirenwm_tests)
-    set_target_properties(sirenwm_tests PROPERTIES
+    # --- Module tests ---
+    file(GLOB SIRENWM_MODULE_TEST_SOURCES tests/modules/test_*.cpp)
+    add_executable(sirenwm_module_tests ${SIRENWM_MODULE_TEST_SOURCES} tests/fake_backend.cpp)
+    target_include_directories(sirenwm_module_tests PRIVATE ${SIRENWM_TEST_INCLUDE_DIRS})
+    target_link_libraries(sirenwm_module_tests PRIVATE
+        GTest::gtest
+        -Wl,--whole-archive
+        ${SIRENWM_MODULE_TARGETS}
+        -Wl,--no-whole-archive
+        sirenwm_core
+        dl
+    )
+    add_test(NAME sirenwm_module_tests COMMAND sirenwm_module_tests)
+    set_target_properties(sirenwm_module_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
     )
 endif()
@@ -134,7 +164,6 @@ endif()
 # ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
-include(GNUInstallDirs)
 
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -144,11 +173,15 @@ install(FILES init.lua.example init.lua.default
     DESTINATION ${CMAKE_INSTALL_DATADIR}/sirenwm
 )
 
+install(DIRECTORY lua/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/sirenwm/lua
+)
+
 configure_file(
     ${CMAKE_SOURCE_DIR}/cmake/sirenwm.desktop.in
     ${CMAKE_BINARY_DIR}/sirenwm.desktop
     @ONLY
 )
 install(FILES ${CMAKE_BINARY_DIR}/sirenwm.desktop
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/xsessions
+    DESTINATION /usr/share/xsessions
 )

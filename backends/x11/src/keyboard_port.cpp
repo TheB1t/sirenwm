@@ -81,7 +81,7 @@ static void apply_snapshot(Display* dpy, const XkbSnapshot& snap) {
     const char*     rules_name = snap.rules.empty() ? "evdev" : snap.rules.c_str();
     std::string     rules_path = std::string("/usr/share/X11/xkb/rules/") + rules_name;
 
-    XkbRF_RulesRec* rules      = XkbRF_Load(const_cast<char*>(rules_path.c_str()), (char*)"C", True, True);
+    XkbRF_RulesRec* rules = XkbRF_Load(const_cast<char*>(rules_path.c_str()), (char*)"C", True, True);
     if (!rules) {
         // Try without locale suffix.
         rules = XkbRF_Load(const_cast<char*>(rules_path.c_str()), nullptr, True, True);

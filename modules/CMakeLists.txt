@@ -17,22 +17,25 @@ foreach(_dir ${_module_dirs})
 
     # Reset per-module variables before include.
     set(SOURCES)
+    set(EXTRA_SOURCES)
     set(LINK_LIBS)
     set(INCLUDE_DIRS)
 
     include("${_dir}/module.cmake")
 
     if(NOT SOURCES)
-        message(FATAL_ERROR "module '${_mod_name}': module.cmake did not set SOURCES")
+        continue()
     endif()
 
-    # Prefix sources with the module directory.
+    # Prefix relative sources with the module directory.
+    # EXTRA_SOURCES are used as-is (absolute paths, e.g. from FetchContent).
     set(_prefixed_sources)
     foreach(_src ${SOURCES})
         list(APPEND _prefixed_sources "${_dir}/${_src}")
     endforeach()
+    list(APPEND _prefixed_sources ${EXTRA_SOURCES})
 
-    swm_add_module(${_mod_name}
+    sirenwm_add_module(${_mod_name}
         SOURCES       ${_prefixed_sources}
         LINK_LIBS     ${LINK_LIBS}
         INCLUDE_DIRS  ${INCLUDE_DIRS}

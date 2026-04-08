@@ -16,7 +16,7 @@ struct ReplyDeleter {
 };
 
 template<typename T>
-using Reply = std::unique_ptr<T, ReplyDeleter<T> >;
+using Reply = std::unique_ptr<T, ReplyDeleter<T>>;
 
 template<typename T>
 Reply<T> reply(T* raw) {

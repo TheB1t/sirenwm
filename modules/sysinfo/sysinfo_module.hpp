@@ -2,12 +2,16 @@
 
 #include <module.hpp>
 
+namespace backend { class KeyboardPort; }
+
 class SysinfoModule : public Module {
     public:
         explicit SysinfoModule(ModuleDeps deps) : Module(deps) {}
         std::string name() const override { return "sysinfo"; }
-        void on_init(Core&)     override;
-        void on_lua_init(Core&) override;
-        void on_start(Core&)    override;
-        void on_stop(Core&, bool is_exec_restart = false) override;
+        void                   on_init()     override;
+        void                   on_lua_init() override;
+        void                   on_start()    override;
+        void                   on_stop(bool is_exec_restart = false) override;
+
+        backend::KeyboardPort* backend_keyboard_port();
 };

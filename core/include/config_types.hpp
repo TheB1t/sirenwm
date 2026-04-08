@@ -7,9 +7,9 @@
 struct MonitorAlias {
     std::string alias;       // logical name used in workspace defs, e.g. "primary"
     std::string output;      // RandR output name, e.g. "eDP-1", "HDMI-1"
-    int         width   = 0; // native/output mode width
-    int         height  = 0; // native/output mode height
-    int         rate    = 0; // refresh rate Hz, 0 = best available for width/height
+    int         width  = 0;  // native/output mode width
+    int         height = 0;  // native/output mode height
+    int         rate   = 0;  // refresh rate Hz, 0 = best available for width/height
     std::string rotation;    // required: "normal", "left", "right", "inverted"
     bool        enabled = true;
 };
@@ -30,13 +30,6 @@ struct MonitorCompose {
 struct WorkspaceDef {
     std::string name;    // display name, e.g. "[2] Browser"
     std::string monitor; // monitor alias; empty = any available
-};
-
-struct WindowRule {
-    std::string class_name;    // WM_CLASS class
-    std::string instance_name; // WM_CLASS instance
-    int         workspace  = -1; // 0-indexed; -1 = no workspace assignment
-    bool        isfloating = false;
 };
 
 struct ThemeConfig {

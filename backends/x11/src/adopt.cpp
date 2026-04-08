@@ -1,6 +1,7 @@
 #include <x11_backend.hpp>
 
 #include <log.hpp>
+#include <restart_state.hpp>
 #include <xconn.hpp>
 
 #include <algorithm>
@@ -33,14 +34,14 @@ struct RestartWinState {
 struct RestartState {
     std::unordered_map<xcb_window_t, RestartWinState> windows;
     std::unordered_map<int, int>                      monitor_active_ws; // monitor_idx -> ws_id
-    bool                                              had_file = false;
+    bool had_file = false;
 };
 
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
-    WindowType  type             = WindowType::Normal;
-    bool        wm_fixed_size    = false;
+    WindowType  type              = WindowType::Normal;
+    bool        wm_fixed_size     = false;
     bool        wm_no_decorations = false;
 };
 
@@ -48,10 +49,6 @@ bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
     if (needle == XCB_ATOM_NONE)
         return false;
     return std::find(atoms.begin(), atoms.end(), needle) != atoms.end();
-}
-
-std::string restart_state_path() {
-    return "/tmp/sirenwm-restart-state-" + std::to_string((unsigned long)getuid()) + ".txt";
 }
 
 RestartState load_restart_state() {
@@ -74,8 +71,8 @@ RestartState load_restart_state() {
             if (!std::getline(in, line))
                 continue;
             std::istringstream ss(line);
-            xcb_window_t win = 0;
-            int ws = -1, fl = 0, fs = 0, he = 0, bl = 0;
+            xcb_window_t       win = 0;
+            int                ws = -1, fl = 0, fs = 0, he = 0, bl = 0;
             if (!(ss >> win >> ws >> fl))
                 continue;
             ss >> fs; ss >> he; ss >> bl; // ignore failures — fields are optional
@@ -145,7 +142,7 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         XCB_EVENT_MASK_FOCUS_CHANGE;
 
     StartupSnapshot result;
-    auto& out = result.windows;
+    auto&           out = result.windows;
     if (root_window == NO_WINDOW)
         return result;
 
@@ -166,9 +163,9 @@ StartupSnapshot X11Backend::scan_existing_windows() {
     xcb_atom_t NET_WM_WINDOW_TYPE_NOTIFICATION = atoms["_NET_WM_WINDOW_TYPE_NOTIFICATION"];
     xcb_atom_t NET_WM_WINDOW_TYPE_TOOLTIP      = atoms["_NET_WM_WINDOW_TYPE_TOOLTIP"];
     xcb_atom_t NET_WM_WINDOW_TYPE_DND          = atoms["_NET_WM_WINDOW_TYPE_DND"];
-    xcb_atom_t NET_WM_NAME       = atoms["_NET_WM_NAME"];
-    xcb_atom_t UTF8_STRING       = atoms["UTF8_STRING"];
-    xcb_atom_t WM_STATE          = atoms["WM_STATE"];
+    xcb_atom_t NET_WM_NAME                     = atoms["_NET_WM_NAME"];
+    xcb_atom_t UTF8_STRING                     = atoms["UTF8_STRING"];
+    xcb_atom_t WM_STATE                        = atoms["WM_STATE"];
 
     auto       children          = xconn.query_tree_children(root_window);
     auto       rstate            = load_restart_state();
@@ -205,8 +202,8 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         }
 
         auto [instance, cls] = xconn.get_wm_class(win);
-        auto title            = read_window_title(xconn, win, NET_WM_NAME, UTF8_STRING);
-        bool identifiable     = !instance.empty() || !cls.empty() || !title.empty();
+        auto title        = read_window_title(xconn, win, NET_WM_NAME, UTF8_STRING);
+        bool identifiable = !instance.empty() || !cls.empty() || !title.empty();
 
         int  wm_state         = xconn.get_wm_state_value(win, WM_STATE);
         bool iconic           = (wm_state == ICCCM_ICONIC_STATE);
@@ -224,15 +221,15 @@ StartupSnapshot X11Backend::scan_existing_windows() {
                 !unsupported_type &&
                 identifiable;
 
-        auto meta = read_window_metadata(xconn, win);
+        auto                   meta = read_window_metadata(xconn, win);
         ExistingWindowSnapshot snap{};
-        snap.window             = win;
-        snap.currently_viewable = (attrs.map_state == XCB_MAP_STATE_VIEWABLE);
-        snap.default_manage     = default_manage;
-        snap.from_restart       = from_restart;
-        snap.wm_instance        = std::move(meta.wm_instance);
-        snap.wm_class           = std::move(meta.wm_class);
-        snap.type               = meta.type;
+        snap.window               = win;
+        snap.currently_viewable   = (attrs.map_state == XCB_MAP_STATE_VIEWABLE);
+        snap.default_manage       = default_manage;
+        snap.from_restart         = from_restart;
+        snap.wm_instance          = std::move(meta.wm_instance);
+        snap.wm_class             = std::move(meta.wm_class);
+        snap.type                 = meta.type;
         snap.hints.fixed_size     = meta.wm_fixed_size;
         snap.hints.no_decorations = meta.wm_no_decorations;
         if (from_restart) {
@@ -248,10 +245,8 @@ StartupSnapshot X11Backend::scan_existing_windows() {
 
         if (auto geo = xconn.get_window_geometry(win)) {
             snap.has_geometry = true;
-            snap.geo_x        = geo->x;
-            snap.geo_y        = geo->y;
-            snap.geo_w        = geo->width;
-            snap.geo_h        = geo->height;
+            snap.geo_pos      = { geo->x, geo->y };
+            snap.geo_size     = { geo->width, geo->height };
         }
 
         LOG_DEBUG(

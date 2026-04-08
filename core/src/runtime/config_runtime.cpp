@@ -2,6 +2,7 @@
 
 #include <config.hpp>
 #include <log.hpp>
+#include <string_utils.hpp>
 
 #include <limits>
 #include <optional>
@@ -10,18 +11,6 @@
 #include <vector>
 
 namespace {
-
-std::string lower_ascii(std::string s) {
-    for (char& c : s)
-        if (c >= 'A' && c <= 'Z')
-            c = (char)(c - 'A' + 'a');
-    return s;
-}
-
-bool is_valid_rotation(const std::string& rot) {
-    auto r = lower_ascii(rot);
-    return r == "normal" || r == "left" || r == "right" || r == "inverted";
-}
 
 bool to_int32_checked(const RuntimeValue& value, int& out) {
     const auto* iv = value.as_int();
@@ -48,7 +37,6 @@ std::optional<std::string> check_known_fields(
     }
     return std::nullopt;
 }
-
 
 std::optional<std::string> parse_monitors_runtime(
     const RuntimeValue& value,

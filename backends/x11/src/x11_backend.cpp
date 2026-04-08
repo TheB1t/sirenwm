@@ -18,10 +18,11 @@ X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     input_port_impl    = backend::x11::create_input_port(xconn, key_syms);
     monitor_port_impl  = backend::x11::create_monitor_port(xconn, runtime_ref);
     keyboard_port_impl = backend::x11::create_keyboard_port(xconn);
+    gl_port_impl       = backend::x11::create_gl_port();
     auto atoms = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
-    net_wm_name        = atoms["_NET_WM_NAME"];
-    utf8_string        = atoms["UTF8_STRING"];
-    net_wm_pid         = atoms["_NET_WM_PID"];
+    net_wm_name = atoms["_NET_WM_NAME"];
+    utf8_string = atoms["UTF8_STRING"];
+    net_wm_pid  = atoms["_NET_WM_PID"];
     uint32_t root_event_mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
         | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_POINTER_MOTION
         | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW
@@ -68,8 +69,8 @@ void X11Backend::on_start(Core& core) {
     // exec-restart the WM doesn't assume monitor 0 when the cursor is elsewhere.
     // Without this, adopt_existing_windows → SwitchWorkspace → sync_current_focus
     // gives X focus to the game on monitor 0 even if the pointer is on monitor 1.
-    auto cookie = xcb_query_pointer(xconn.raw_conn(), root_window);
-    auto* reply = xcb_query_pointer_reply(xconn.raw_conn(), cookie, nullptr);
+    auto  cookie = xcb_query_pointer(xconn.raw_conn(), root_window);
+    auto* reply  = xcb_query_pointer_reply(xconn.raw_conn(), cookie, nullptr);
     if (reply) {
         core.focus_monitor_at_point(reply->root_x, reply->root_y);
         free(reply);
@@ -127,20 +128,19 @@ void X11Backend::on(event::WindowAssignedToWorkspace ev) {
             const auto& mon = mons[(size_t)mon_idx];
             // Skip centering if the window already sits within the target monitor
             // (e.g. exec-restart: geometry was seeded from X at startup).
-            bool already_on_mon = w->width > 0 && w->height > 0 &&
-                w->x >= mon.x && w->x < mon.x + mon.width &&
-                w->y >= mon.y && w->y < mon.y + mon.height;
+            bool already_on_mon = w->width() > 0 && w->height() > 0 &&
+                mon.contains(w->pos());
             if (!already_on_mon) {
                 int nx, ny;
-                if ((int)w->width >= mon.width || (int)w->height >= mon.height) {
-                    nx = mon.x;
-                    ny = mon.y;
+                if (w->width() >= mon.width() || w->height() >= mon.height()) {
+                    nx = mon.x();
+                    ny = mon.y();
                 } else {
-                    nx = mon.x + (mon.width  - (int)w->width)  / 2;
-                    ny = mon.y + (mon.height - (int)w->height) / 2;
+                    nx = mon.x() + (mon.width()  - w->width())  / 2;
+                    ny = mon.y() + (mon.height() - w->height()) / 2;
                 }
                 (void)core.dispatch(command::SetWindowGeometry{
-                    ev.window, nx, ny, w->width, w->height });
+                    ev.window, { nx, ny }, w->size() });
             }
         }
     }
@@ -154,13 +154,11 @@ void X11Backend::on(event::WindowAdopted ev) {
         notify(event::WindowUnmapped{ ev.window, false });
 }
 
-bool X11Backend::consume_wm_unmap(WindowId win) {
-    auto it = pending_wm_unmaps_.find(win);
-    if (it == pending_wm_unmaps_.end() || it->second <= 0)
-        return false;
-    if (--it->second == 0)
-        pending_wm_unmaps_.erase(it);
-    return true;
+X11Window* X11Backend::x11_window(WindowId win) {
+    if (win == NO_WINDOW) return nullptr;
+    auto w = core.window_mut(win);
+    if (!w) return nullptr;
+    return static_cast<X11Window*>(w.get());
 }
 
 void X11Backend::on(event::BorderlessActivated) {
@@ -196,13 +194,11 @@ void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
     if (mon_idx < 0 || mon_idx >= (int)mons.size())
         return;
 
-    const auto& mon = mons[(size_t)mon_idx];
-    int top    = std::max(0, core.monitor_top_inset());
-    int bottom = std::max(0, core.monitor_bottom_inset());
-    int x1 = mon.x;
-    int y1 = mon.y - top;
-    int x2 = mon.x + mon.width;
-    int y2 = mon.y + mon.height + bottom;
+    auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(core.monitor_top_inset(), core.monitor_bottom_inset());
+    int      x1 = phy_pos.x();
+    int      y1 = phy_pos.y();
+    int      x2 = phy_pos.x() + phy_size.x();
+    int      y2 = phy_pos.y() + phy_size.y();
 
     Display* dpy  = xconn.xlib_display();
     Window   root = (Window)root_window;
@@ -235,6 +231,16 @@ backend::KeyboardPort* X11Backend::keyboard_port() {
 
 backend::RenderPort* X11Backend::render_port() {
     return render_port_impl.get();
+}
+
+backend::GLPort* X11Backend::gl_port() {
+    return gl_port_impl.get();
+}
+
+std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {
+    auto w = std::make_shared<X11Window>(xconn, atoms_);
+    w->id = id;
+    return w;
 }
 
 std::unique_ptr<backend::TrayHost>

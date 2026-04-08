@@ -20,15 +20,13 @@ class X11TrayHost final : public backend::TrayHost {
             : conn_(xconn.raw_conn()),
               screen_(xconn.raw_screen()),
               bar_win_(bar_win),
-              bar_x_(bar_x),
-              bar_y_(bar_y),
+              bar_pos_{ bar_x, bar_y },
               bar_h_(bar_h),
               bg_pixel_(bg_pixel) {
             if (!conn_ || !screen_)
                 return;
 
-            tray_x_ = bar_x_;
-            tray_y_ = bar_y_;
+            tray_pos_ = bar_pos_;
             intern_atoms();
 
             tray_win_ = xcb_generate_id(conn_);
@@ -40,7 +38,7 @@ class X11TrayHost final : public backend::TrayHost {
                 XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_EXPOSURE,
             };
             xcb_create_window(conn_, XCB_COPY_FROM_PARENT, tray_win_, screen_->root,
-                (int16_t)bar_x_, (int16_t)bar_y_, 1, (uint16_t)bar_h_, 0,
+                (int16_t)bar_pos_.x(), (int16_t)bar_pos_.y(), 1, (uint16_t)bar_h_, 0,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, XCB_COPY_FROM_PARENT,
                 mask, vals);
 
@@ -102,12 +100,12 @@ class X11TrayHost final : public backend::TrayHost {
         void reposition(WindowId owner_bar_window, int bar_right_x, int bar_y) override {
             if (!conn_ || tray_win_ == XCB_WINDOW_NONE || tray_w_ == 0)
                 return;
-            bar_win_ = owner_bar_window;
-            tray_x_  = bar_right_x - tray_w_;
-            tray_y_  = bar_y;
+            bar_win_      = owner_bar_window;
+            tray_pos_.x() = bar_right_x - tray_w_;
+            tray_pos_.y() = bar_y;
             uint32_t vals[] = {
-                static_cast<uint32_t>(tray_x_),
-                static_cast<uint32_t>(tray_y_),
+                static_cast<uint32_t>(tray_pos_.x()),
+                static_cast<uint32_t>(tray_pos_.y()),
             };
             xcb_configure_window(conn_, tray_win_,
                 XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, vals);
@@ -118,19 +116,18 @@ class X11TrayHost final : public backend::TrayHost {
             if (!conn_ || tray_win_ == XCB_WINDOW_NONE)
                 return;
             bar_win_ = new_bar_win;
-            bar_x_   = bar_x;
-            bar_y_   = bar_y;
+            bar_pos_ = { bar_x, bar_y };
             // Place tray at right edge of bar; relayout will fine-tune x when icons arrive.
-            tray_x_  = bar_x + bar_w - std::max(tray_w_, 1);
-            tray_y_  = bar_y;
+            tray_pos_.x() = bar_x + bar_w - std::max(tray_w_, 1);
+            tray_pos_.y() = bar_y;
             uint32_t vals[] = {
-                static_cast<uint32_t>(tray_x_),
-                static_cast<uint32_t>(tray_y_),
+                static_cast<uint32_t>(tray_pos_.x()),
+                static_cast<uint32_t>(tray_pos_.y()),
             };
             xcb_configure_window(conn_, tray_win_,
                 XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, vals);
             xcb_flush(conn_);
-            LOG_DEBUG("TrayHost 0x%x: attached to bar 0x%x at %d+%d", tray_win_, new_bar_win, tray_x_, tray_y_);
+            LOG_DEBUG("TrayHost 0x%x: attached to bar 0x%x at %d+%d", tray_win_, new_bar_win, tray_pos_.x(), tray_pos_.y());
         }
 
         void raise(WindowId bar_sibling) override {
@@ -170,12 +167,12 @@ class X11TrayHost final : public backend::TrayHost {
                 return {};
             auto cookie = xcb_get_property(conn_, 0, win, XCB_ATOM_WM_CLASS,
                     XCB_ATOM_STRING, 0, 256);
-            auto reply  = xcb_get_property_reply(conn_, cookie, nullptr);
+            auto reply = xcb_get_property_reply(conn_, cookie, nullptr);
             if (!reply)
                 return {};
             // WM_CLASS is "instance\0class\0" — we want the class (second string)
-            int         len       = xcb_get_property_value_length(reply);
-            auto*       data      = static_cast<const char*>(xcb_get_property_value(reply));
+            int         len  = xcb_get_property_value_length(reply);
+            auto*       data = static_cast<const char*>(xcb_get_property_value(reply));
             std::string result;
             int         first_len = 0;
             while (first_len < len && data[first_len] != '\0')
@@ -278,10 +275,10 @@ class X11TrayHost final : public backend::TrayHost {
             int new_w = std::max<int>(reply->width, 1);
             int new_h = std::max<int>(reply->height, 1);
             free(reply);
-            if (new_w == ic->w && new_h == ic->h)
+            if (new_w == ic->size.x() && new_h == ic->size.y())
                 return true;
-            ic->w = new_w;
-            ic->h = new_h;
+            ic->size.x() = new_w;
+            ic->size.y() = new_h;
             relayout();
             return true;
         }
@@ -310,11 +307,11 @@ class X11TrayHost final : public backend::TrayHost {
             if (tray_win_ == XCB_WINDOW_NONE || tray_w_ <= 0)
                 return false;
 
-            int local_x = ev.event_x;
-            int local_y = ev.event_y;
+            int local_x = ev.event_pos.x();
+            int local_y = ev.event_pos.y();
             if (ev.window == bar_win_) {
-                local_x = static_cast<int>(ev.root_x) - tray_x_;
-                local_y = static_cast<int>(ev.root_y) - tray_y_;
+                local_x = static_cast<int>(ev.root_pos.x()) - tray_pos_.x();
+                local_y = static_cast<int>(ev.root_pos.y()) - tray_pos_.y();
             } else if (ev.window == tray_win_) {
             } else if (find_icon(ev.window)) {
                 return true;
@@ -329,8 +326,8 @@ class X11TrayHost final : public backend::TrayHost {
             if (!ic || !ic->mapped)
                 return false;
 
-            int16_t icon_x               = (int16_t)std::max(0, local_x - ic->x);
-            int16_t icon_y               = (int16_t)std::max(0, local_y - ic->y);
+            int16_t                  icon_x = (int16_t)std::max(0, local_x - ic->pos.x());
+            int16_t                  icon_y = (int16_t)std::max(0, local_y - ic->pos.y());
 
             xcb_button_press_event_t bev = {};
             bev.response_type = ev.release ? XCB_BUTTON_RELEASE : XCB_BUTTON_PRESS;
@@ -339,8 +336,8 @@ class X11TrayHost final : public backend::TrayHost {
             bev.root          = screen_->root;
             bev.event         = ic->win;
             bev.child         = XCB_WINDOW_NONE;
-            bev.root_x        = ev.root_x;
-            bev.root_y        = ev.root_y;
+            bev.root_x        = ev.root_pos.x();
+            bev.root_y        = ev.root_pos.y();
             bev.event_x       = icon_x;
             bev.event_y       = icon_y;
             bev.state         = ev.state;
@@ -353,15 +350,13 @@ class X11TrayHost final : public backend::TrayHost {
 
     private:
         struct Icon {
-            WindowId win    = NO_WINDOW;
-            int      x      = 0;
-            int      y      = 0;
-            int      w      = 1;
-            int      h      = 1;
+            WindowId win = NO_WINDOW;
+            Vec2i    pos;
+            Vec2i    size   = { 1, 1 };
             bool     mapped = false;
         };
 
-        static constexpr int ICON_SPACING                = 2;
+        static constexpr int      ICON_SPACING           = 2;
         static constexpr uint32_t XEMBED_EMBEDDED_NOTIFY = 0;
         static constexpr uint32_t XEMBED_MAPPED          = (1u << 0);
         static constexpr uint32_t XEMBED_VERSION         = 0;
@@ -453,17 +448,17 @@ class X11TrayHost final : public backend::TrayHost {
             xcb_reparent_window(conn_, win, tray_win_, 0, 0);
 
             Icon ic;
-            ic.win = win;
-            ic.w   = bar_h_;
-            ic.h   = bar_h_;
+            ic.win      = win;
+            ic.size.x() = bar_h_;
+            ic.size.y() = bar_h_;
             // If _XEMBED_INFO is present, respect the MAPPED flag.
             // If absent, default to mapped (same as dwm behaviour).
             ic.mapped = !has_xembed_info(win) || xembed_info_mapped(win);
 
             auto geo2 = xcb_get_geometry_reply(conn_, xcb_get_geometry(conn_, win), nullptr);
             if (geo2) {
-                if (geo2->width > 1) ic.w = geo2->width;
-                if (geo2->height > 1) ic.h = geo2->height;
+                if (geo2->width > 1) ic.size.x() = geo2->width;
+                if (geo2->height > 1) ic.size.y() = geo2->height;
                 free(geo2);
             }
 
@@ -527,13 +522,13 @@ class X11TrayHost final : public backend::TrayHost {
             for (auto& ic : icons_) {
                 if (!ic.mapped)
                     continue;
-                int icon_h = std::min(ic.h, bar_h_);
-                int icon_w = ic.w * icon_h / std::max(ic.h, 1);
+                int icon_h = std::min(ic.size.y(), bar_h_);
+                int icon_w = ic.size.x() * icon_h / std::max(ic.size.y(), 1);
                 int icon_y = (bar_h_ - icon_h) / 2;
-                ic.x = x;
-                ic.y = icon_y;
-                ic.w = icon_w;
-                ic.h = icon_h;
+                ic.pos.x()  = x;
+                ic.pos.y()  = icon_y;
+                ic.size.x() = icon_w;
+                ic.size.y() = icon_h;
 
                 uint32_t vals[] = {
                     static_cast<uint32_t>(x),
@@ -598,8 +593,8 @@ class X11TrayHost final : public backend::TrayHost {
             for (auto& ic : icons_) {
                 if (!ic.mapped)
                     continue;
-                if (x >= ic.x && x < ic.x + ic.w &&
-                    y >= ic.y && y < ic.y + ic.h)
+                if (x >= ic.pos.x() && x < ic.pos.x() + ic.size.x() &&
+                    y >= ic.pos.y() && y < ic.pos.y() + ic.size.y())
                     return &ic;
             }
             return nullptr;
@@ -629,21 +624,20 @@ class X11TrayHost final : public backend::TrayHost {
             return ok;
         }
 
-        xcb_connection_t* conn_ = nullptr;
-        xcb_screen_t* screen_   = nullptr;
+        xcb_connection_t* conn_   = nullptr;
+        xcb_screen_t*     screen_ = nullptr;
 
-        WindowId bar_win_       = NO_WINDOW;
-        int bar_x_              = 0;
-        int bar_y_              = 0;
-        int bar_h_              = 0;
-        int tray_x_             = 0;
-        int tray_y_             = 0;
-        uint32_t bg_pixel_      = 0;
+        WindowId bar_win_ = NO_WINDOW;
+        Vec2i    bar_pos_;
+        int      bar_h_ = 0;
+        Vec2i    tray_pos_;
 
-        WindowId tray_win_      = NO_WINDOW;
-        int tray_w_             = 0;
-        bool selection_owner_   = false;
-        bool visible_           = false;
+        uint32_t bg_pixel_ = 0;
+
+        WindowId tray_win_        = NO_WINDOW;
+        int      tray_w_          = 0;
+        bool     selection_owner_ = false;
+        bool     visible_         = false;
 
         std::vector<Icon> icons_;
 

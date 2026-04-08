@@ -1,5 +1,34 @@
 #include <core.hpp>
+#include <layout.hpp>
 #include <log.hpp>
+#include <lua_helpers.hpp>
+
+// Apply WM_NORMAL_HINTS size constraints to a requested size.
+// Clamps to [min, max] then snaps to the nearest increment grid.
+static Vec2i apply_size_hints(const WindowState& w, Vec2i req) {
+    // Clamp to min/max.
+    if (w.size_min.x() > 0) req.x() = std::max(req.x(), w.size_min.x());
+    if (w.size_min.y() > 0) req.y() = std::max(req.y(), w.size_min.y());
+    if (w.size_max.x() > 0) req.x() = std::min(req.x(), w.size_max.x());
+    if (w.size_max.y() > 0) req.y() = std::min(req.y(), w.size_max.y());
+
+    // Snap to increment grid (base + N*inc).
+    if (w.size_inc.x() > 1) {
+        int base = (w.size_base.x() > 0) ? w.size_base.x()
+                 : (w.size_min.x() > 0)  ? w.size_min.x() : 0;
+        int n = (req.x() - base) / w.size_inc.x();
+        req.x() = base + n * w.size_inc.x();
+        if (w.size_min.x() > 0) req.x() = std::max(req.x(), w.size_min.x());
+    }
+    if (w.size_inc.y() > 1) {
+        int base = (w.size_base.y() > 0) ? w.size_base.y()
+                 : (w.size_min.y() > 0)  ? w.size_min.y() : 0;
+        int n = (req.y() - base) / w.size_inc.y();
+        req.y() = base + n * w.size_inc.y();
+        if (w.size_min.y() > 0) req.y() = std::max(req.y(), w.size_min.y());
+    }
+    return req;
+}
 
 std::optional<WindowFlush> Core::take_window_flush(WindowId win) {
     auto it = pending_window_flushes.find(win);
@@ -19,11 +48,10 @@ void Core::emit_backend_effect(BackendEffectKind kind, WindowId window) {
     pending_backend_effects.push_back(BackendEffect{ kind, window });
 }
 
-void Core::emit_warp_pointer(int16_t x, int16_t y) {
+void Core::emit_warp_pointer(Vec2i16 pos) {
     BackendEffect e;
     e.kind = BackendEffectKind::WarpPointer;
-    e.x    = x;
-    e.y    = y;
+    e.pos  = pos;
     pending_backend_effects.push_back(e);
 }
 
@@ -33,16 +61,14 @@ WindowFlush& Core::ensure_window_flush(WindowId win) {
     return flush;
 }
 
-
 void Core::mark_window_dirty(WindowId win, uint8_t bits) {
     auto& flush = ensure_window_flush(win);
     flush.dirty |= bits;
     emit_backend_effect(BackendEffectKind::UpdateWindow, win);
 }
 
-
 void Core::sync_workspace_visibility() {
-    auto n = (int)wsman.all().size();
+    auto n = (int)wsman.all_workspace_states().size();
     if (n <= 0)
         return;
 
@@ -58,9 +84,9 @@ void Core::sync_workspace_visibility() {
         for (auto& w : ws.windows) {
             if (!w) continue;
             if (!v) {
-                bool emit_unmap = !w->hidden_by_workspace && !w->hidden_explicitly && w->mapped;
+                bool was_visible = !w->hidden_by_workspace && !w->hidden_explicitly && w->mapped;
                 w->hidden_by_workspace = true;
-                if (emit_unmap)
+                if (was_visible)
                     emit_backend_effect(BackendEffectKind::UnmapWindow, w->id);
                 continue;
             }
@@ -90,6 +116,66 @@ void Core::sync_current_focus() {
 
 void Core::emit_focus_changed(WindowId window) {
     pending_core_events.push_back(event::FocusChanged{ window });
+    if (window != NO_WINDOW) {
+        int ws_id = wsman.workspace_of_window(window);
+        if (ws_id >= 0)
+            evaluate_workspace_fullscreen(ws_id);
+    }
+}
+
+void Core::pin_fullscreen_to_monitor(swm::Window& w, int ws_id) {
+    int         mon_idx = wsman.monitor_of_workspace(ws_id);
+    if (mon_idx < 0) return;
+    const auto& mons = wsman.all_monitor_states();
+    if (mon_idx >= (int)mons.size()) return;
+    const auto& mon = mons[(size_t)mon_idx];
+    auto [phy_pos, phy_size] = mon.physical(monitor_top_inset_applied, monitor_bottom_inset_applied);
+    // Self-managed clients control their own geometry — only pin non-self-managed.
+    if (!w.is_self_managed()) {
+        w.pos()  = phy_pos;
+        w.size() = phy_size;
+        mark_window_dirty(w.id, WindowFlush::Geometry);
+    }
+}
+
+void Core::evaluate_workspace_fullscreen(int ws_id) {
+    if (ws_id < 0 || ws_id >= workspace_count()) return;
+    auto& ws = wsman.workspace(ws_id);
+
+    bool  has_fs = ws.has_fullscreen_window();
+
+    if (has_fs && ws.mode != WorkspaceMode::Fullscreen) {
+        LOG_DEBUG("ws[%d]: entering Fullscreen mode", ws_id);
+        ws.mode = WorkspaceMode::Fullscreen;
+        emit_raise_docks();
+    } else if (!has_fs && ws.mode == WorkspaceMode::Fullscreen) {
+        LOG_DEBUG("ws[%d]: leaving Fullscreen mode", ws_id);
+        ws.mode = WorkspaceMode::Normal;
+        emit_raise_docks();
+    }
+
+    if (ws.mode != WorkspaceMode::Fullscreen) return;
+
+    auto focused = ws.focused();
+    if (!focused || !focused->is_visible()) return;
+
+    bool focused_is_fs = focused->fullscreen || focused->borderless;
+    LOG_DEBUG("ws[%d]: evaluate stacking, focused=%d is_fs=%d",
+        ws_id, focused->id, (int)focused_is_fs);
+
+    if (focused_is_fs) {
+        // Focused window is fullscreen/borderless — pin and raise it.
+        pin_fullscreen_to_monitor(*focused, ws_id);
+        emit_backend_effect(BackendEffectKind::RaiseWindow, focused->id);
+    } else {
+        // Focused window is normal — raise it above fullscreen windows.
+        emit_backend_effect(BackendEffectKind::RaiseWindow, focused->id);
+        // Lower all fullscreen/borderless windows so focused is visible.
+        for (auto& w : ws.windows) {
+            if (w && w->is_visible() && (w->fullscreen || w->borderless) && w->id != focused->id)
+                emit_backend_effect(BackendEffectKind::LowerWindow, w->id);
+        }
+    }
 }
 
 bool Core::focus_monitor_at_point(int x, int y) {
@@ -133,12 +219,18 @@ void Core::emit_borderless_deactivated() {
     pending_core_events.push_back(event::BorderlessDeactivated{});
 }
 
-
 void Core::emit_window_assigned_to_workspace(WindowId window, int workspace_id) {
     pending_core_events.push_back(event::WindowAssignedToWorkspace{ window, workspace_id });
 }
 
 void Core::init(std::vector<Monitor> initial_monitors) {
+    register_layout("tile",      layout::tile);
+    register_layout("monocle",   layout::monocle);
+    // "unmanaged": no tiling — windows keep their own geometry (pure floating behaviour).
+    register_layout("unmanaged", [](const std::vector<WindowId>&, const Monitor&,
+        const layout::Config&, const layout::PlacementSink&) {
+        });
+
     if (!initial_monitors.empty()) {
         wsman.set_monitors(std::move(initial_monitors));
     } else {
@@ -156,26 +248,26 @@ void Core::reconcile() {
 }
 
 void Core::arrange() {
-    if (!layouts.count(active_layout)) return;
+    bool is_cpp_layout = layouts.count(active_layout) > 0;
+    bool is_lua_layout = !is_cpp_layout && lua_layouts.count(active_layout) > 0;
+    if (!is_cpp_layout && !is_lua_layout) return;
+
     for (auto& mon : wsman.get_monitors()) {
         if (mon.active_ws < 0) continue;
-        auto& ws = wsman.workspace(mon.active_ws);
+        auto&                 ws = wsman.workspace(mon.active_ws);
         std::vector<WindowId> tiled;
         for (auto& w : ws.windows)
-            if (w && w->is_visible() && !w->floating && !w->borderless && !w->is_self_managed())
+            if (w && w->is_visible() && !w->floating && !w->fullscreen && !w->borderless && !w->is_self_managed())
                 tiled.push_back(w->id);
 
-        layout::PlacementSink place = [this](WindowId win, int32_t x, int32_t y,
-            uint32_t width, uint32_t height,
+        layout::PlacementSink place = [this](WindowId win, Vec2i pos, Vec2i size,
             uint32_t border_width) {
                 // Fixed-size windows (min==max hints): honour their own size,
                 // only let the layout set the position.
                 auto w = wsman.find_window_in_all(win);
-                if (w && w->size_locked && w->width > 0 && w->height > 0) {
-                    width  = w->width;
-                    height = w->height;
-                }
-                (void)dispatch(command::SetWindowGeometry{ win, x, y, width, height });
+                if (w && w->size_locked && w->width() > 0 && w->height() > 0)
+                    size = w->size();
+                (void)dispatch(command::SetWindowGeometry{ win, pos, size });
                 (void)dispatch(command::SetWindowBorderWidth{ win, border_width });
                 emit_backend_effect(BackendEffectKind::UpdateWindow, win);
             };
@@ -183,7 +275,53 @@ void Core::arrange() {
         layout::Config cfg_from_theme = layout_cfg;
         cfg_from_theme.border = settings.theme.border_thickness;
         cfg_from_theme.gap    = settings.theme.gap;
-        layouts[active_layout](tiled, mon, cfg_from_theme, place);
+
+        if (is_cpp_layout) {
+            layouts[active_layout](tiled, mon, cfg_from_theme, place);
+        } else {
+            // Lua layout: call fn({ windows={...}, monitor={x,y,width,height},
+            //                       gap, master_factor, nmaster })
+            // During the call, siren.layout.place() is routed through active_lua_sink_.
+            if (!has_lua_host()) {
+                LOG_ERR("arrange: Lua layout '%s' requested but no Lua host bound", active_layout.c_str());
+                continue;
+            }
+            active_lua_sink_ = &place;
+            const auto& ref = lua_layouts.at(active_layout);
+            LuaContext  ctx = lua_host().context();
+
+            lua_host().push_ref(ref);
+
+            // Build the context table argument.
+            ctx.new_table();
+
+            // windows = { id, id, ... }
+            ctx.new_table();
+            for (int i = 0; i < (int)tiled.size(); ++i) {
+                ctx.push_integer((int64_t)tiled[i]);
+                ctx.raw_seti(-2, i + 1);
+            }
+            ctx.set_field(-2, "windows");
+
+            // monitor = { pos = Vec2, size = Vec2 }
+            ctx.new_table();
+
+            push_vec2(ctx, mon.pos());
+            ctx.set_field(-2, "pos");
+
+            push_vec2(ctx, mon.size());
+            ctx.set_field(-2, "size");
+
+            ctx.set_field(-2, "monitor");
+
+            ctx.push_number(cfg_from_theme.master_factor); ctx.set_field(-2, "master_factor");
+            ctx.push_integer(cfg_from_theme.nmaster);      ctx.set_field(-2, "nmaster");
+            ctx.push_integer(cfg_from_theme.gap);          ctx.set_field(-2, "gap");
+            ctx.push_integer(cfg_from_theme.border);       ctx.set_field(-2, "border");
+
+            lua_host().pcall(1, 0, active_layout.c_str());
+            active_lua_sink_ = nullptr;
+        }
 
         // Apply theme border to floating windows — layout skips them, so their
         // border_width would otherwise stay at 0 (no border drawn by X).
@@ -229,6 +367,7 @@ bool Core::dispatch(const command::SwitchWorkspace& cmd) {
     if (target_mon == wsman.get_focused_monitor())
         sync_current_focus();
 
+    evaluate_workspace_fullscreen(cmd.workspace_id);
     emit_workspace_switched(cmd.workspace_id);
     return true;
 }
@@ -307,7 +446,7 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
 
     int            ws_id = wsman.workspace_of_window(cmd.window);
 
-    const Monitor* mon   = nullptr;
+    const Monitor* mon = nullptr;
     for (auto& m : wsman.get_monitors()) {
         if (m.active_ws == ws_id) {
             mon = &m;
@@ -316,7 +455,7 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
     }
 
     if (!mon) {
-        const auto& mons  = wsman.get_monitors();
+        const auto& mons = wsman.get_monitors();
         // Prefer the monitor that owns the workspace (may be inactive).
         int         owner = wsman.monitor_of_workspace(ws_id);
         if (owner >= 0 && owner < (int)mons.size())
@@ -327,20 +466,17 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
 
     if (cmd.enabled) {
         if (!w->fullscreen) {
-            w->floating_before_fullscreen = w->floating;
-            w->border_before_fullscreen   = w->border_width;
+            w->border_before_fullscreen = w->border_width;
+            w->pos_before_fullscreen    = w->pos();
+            w->size_before_fullscreen   = w->size();
         }
         w->fullscreen   = true;
-        w->floating     = true;
         w->border_width = 0;
         mark_window_dirty(cmd.window, WindowFlush::BorderWidth);
         if (!cmd.preserve_geometry && mon) {
-            int top_inset    = std::max(0, monitor_top_inset_applied);
-            int bottom_inset = std::max(0, monitor_bottom_inset_applied);
-            w->x      = std::max(0, mon->x);
-            w->y      = std::max(0, mon->y - top_inset);
-            w->width  = (uint32_t)std::max(1, mon->width);
-            w->height = (uint32_t)std::max(1, mon->height + top_inset + bottom_inset);
+            auto [phy_pos, phy_size] = mon->physical(monitor_top_inset_applied, monitor_bottom_inset_applied);
+            w->pos()                 = phy_pos;
+            w->size()                = phy_size;
             mark_window_dirty(cmd.window, WindowFlush::Geometry);
         }
         arrange();
@@ -357,10 +493,16 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
         return true;
 
     w->fullscreen   = false;
-    w->floating     = w->floating_before_fullscreen;
     w->border_width = w->border_before_fullscreen;
     mark_window_dirty(cmd.window, WindowFlush::BorderWidth);
+    if (w->floating) {
+        w->pos()  = w->pos_before_fullscreen;
+        w->size() = w->size_before_fullscreen;
+        mark_window_dirty(cmd.window, WindowFlush::Geometry);
+    }
     arrange();
+    if (ws_id >= 0)
+        evaluate_workspace_fullscreen(ws_id);
     emit_raise_docks();
     return true;
 }
@@ -393,22 +535,30 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->wm_instance       = cmd.wm_instance;
-    w->wm_class          = cmd.wm_class;
-    w->type              = cmd.type;
+    w->wm_instance = cmd.wm_instance;
+    w->wm_class    = cmd.wm_class;
+    w->type        = cmd.type;
 
     // Classify from geometry hints supplied by the backend.
     // Self-managed: client had _NET_WM_STATE_FULLSCREEN before MapRequest and
     //   covers the monitor (not XEMBED) — client controls its own geometry.
-    // WM-borderless: WM pins geometry to monitor (MOTIF no-decos or fixed-size covers monitor).
-    const auto& h = cmd.hints;
-    bool self_managed      = h.pre_fullscreen && !h.is_xembed && h.covers_monitor;
-    bool wm_borderless     = !self_managed && h.covers_monitor && (h.no_decorations || h.fixed_size);
-    bool will_be_borderless = self_managed || wm_borderless;
+    // WM-borderless: fixed-size window that covers the entire monitor — the WM
+    //   pins it to physical monitor bounds (no bar inset, no border).
+    //   no_decorations is NOT required: Java/LibGDX games (Slay the Spire) use
+    //   fixed-size fullscreen without MOTIF hints.
+    const auto& h                  = cmd.hints;
+    bool        self_managed       = h.pre_fullscreen && !h.is_xembed && h.covers_monitor;
+    bool        wm_borderless      = !self_managed && h.covers_monitor && h.fixed_size;
+    bool        will_be_borderless = self_managed || wm_borderless;
 
     w->size_locked       = h.fixed_size;
     w->no_input_focus    = h.never_focus;
+    w->urgent            = h.urgent;
     w->preserve_position = h.static_gravity;
+    w->size_min          = h.size_min;
+    w->size_max          = h.size_max;
+    w->size_inc          = h.size_inc;
+    w->size_base         = h.size_base;
 
     w->self_managed          = self_managed;
     w->promote_to_borderless = will_be_borderless;
@@ -425,7 +575,8 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     }
 
     // Dialog/utility/splash windows float by default.
-    if (!w->floating && (w->is_dialog() || cmd.transient_for != NO_WINDOW))
+    if (!w->floating && (w->is_dialog() || w->type == WindowType::Utility
+        || w->type == WindowType::Splash || cmd.transient_for != NO_WINDOW))
         dispatch(command::SetWindowFloating{ cmd.window, true });
 
     // Fixed-size non-borderless windows float.
@@ -434,7 +585,6 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
 
     return true;
 }
-
 
 bool Core::dispatch(const command::SetWindowMapped& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
@@ -472,11 +622,19 @@ bool Core::dispatch(const command::SetWindowBorderless& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->borderless          = cmd.borderless;
+    w->borderless            = cmd.borderless;
     w->promote_to_borderless = false; // consumed
-    if (cmd.borderless && w->border_width != 0) {
+    // Self-managed clients (Wine/Proton) position render children relative to
+    // inner origin (outer + border_width).  Zeroing the X border shifts the
+    // inner origin and causes a 1px render offset — leave their border alone.
+    if (cmd.borderless && w->border_width != 0 && !w->is_self_managed()) {
         w->border_width = 0;
         emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);
+    }
+    {
+        int ws_id = wsman.workspace_of_window(cmd.window);
+        if (ws_id >= 0)
+            evaluate_workspace_fullscreen(ws_id);
     }
     if (cmd.borderless) {
         int ws_id   = wsman.workspace_of_window(cmd.window);
@@ -486,7 +644,7 @@ bool Core::dispatch(const command::SetWindowBorderless& cmd) {
     } else {
         // Check if any borderless window remains on any monitor.
         const auto& mons = wsman.all_monitor_states();
-        bool any = false;
+        bool        any  = false;
         for (int i = 0; i < (int)mons.size() && !any; ++i)
             any = monitor_has_visible_borderless(i);
         if (!any)
@@ -550,9 +708,7 @@ bool Core::dispatch(const command::FocusMonitor& cmd) {
         }
     }
 
-    emit_warp_pointer(
-        (int16_t)(mon->x + mon->width  / 2),
-        (int16_t)(mon->y + mon->height / 2));
+    emit_warp_pointer(mon->center());
     return true;
 }
 
@@ -617,10 +773,7 @@ bool Core::dispatch(const command::ApplyMonitorTopInset& cmd) {
     if (delta == 0)
         return true;
 
-    for (auto& mon : wsman.get_monitors()) {
-        mon.y     += delta;
-        mon.height = std::max(0, mon.height - delta);
-    }
+    wsman.adjust_monitor_insets(delta, 0);
     monitor_top_inset_applied = cmd.inset_px;
     return true;
 }
@@ -630,21 +783,14 @@ bool Core::dispatch(const command::ApplyMonitorBottomInset& cmd) {
     if (delta == 0)
         return true;
 
-    for (auto& mon : wsman.get_monitors())
-        mon.height = std::max(0, mon.height - delta);
+    wsman.adjust_monitor_insets(0, delta);
     monitor_bottom_inset_applied = cmd.inset_px;
     return true;
 }
 
 bool Core::dispatch(const command::SetLayout& cmd) {
     if (!layouts.count(cmd.name)) {
-        if (runtime_started)
-            LOG_ERR("set_layout: unknown layout '%s'", cmd.name.c_str());
-        else {
-            // Deferred: layout module not loaded yet; store name and arrange later.
-            active_layout = cmd.name;
-            LOG_DEBUG("set_layout: deferred '%s' (layout not registered yet)", cmd.name.c_str());
-        }
+        LOG_ERR("set_layout: unknown layout '%s'", cmd.name.c_str());
         return false;
     }
     active_layout = cmd.name;
@@ -683,8 +829,11 @@ bool Core::dispatch(const command::ReconcileNow&) {
 }
 
 bool Core::dispatch(const command::RemoveWindowFromAllWorkspaces& cmd) {
+    int ws_id = wsman.workspace_of_window(cmd.window);
     wsman.remove_window_from_all(cmd.window);
     pending_window_flushes.erase(cmd.window);
+    if (ws_id >= 0)
+        evaluate_workspace_fullscreen(ws_id);
     return true;
 }
 
@@ -692,10 +841,8 @@ bool Core::dispatch(const command::SetWindowGeometry& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->x      = cmd.x;
-    w->y      = cmd.y;
-    w->width  = cmd.width;
-    w->height = cmd.height;
+    w->pos()  = cmd.pos;
+    w->size() = w->floating ? apply_size_hints(*w, cmd.size) : cmd.size;
     mark_window_dirty(cmd.window, WindowFlush::Geometry);
     return true;
 }
@@ -704,8 +851,7 @@ bool Core::dispatch(const command::SetWindowPosition& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->x = cmd.x;
-    w->y = cmd.y;
+    w->pos() = cmd.pos;
     mark_window_dirty(cmd.window, WindowFlush::Position);
     return true;
 }
@@ -714,8 +860,9 @@ bool Core::dispatch(const command::SetWindowSize& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
-    w->width  = cmd.width;
-    w->height = cmd.height;
+    // Apply WM_NORMAL_HINTS constraints only for floating/borderless windows.
+    // Tiled windows are sized by the layout engine which already respects borders.
+    w->size() = (w->floating || w->borderless) ? apply_size_hints(*w, cmd.size) : cmd.size;
     mark_window_dirty(cmd.window, WindowFlush::Size);
     return true;
 }
@@ -729,7 +876,6 @@ bool Core::dispatch(const command::SetWindowBorderWidth& cmd) {
     return true;
 }
 
-
 bool Core::dispatch(const command::SyncWindowFromConfigureNotify& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
@@ -737,15 +883,15 @@ bool Core::dispatch(const command::SyncWindowFromConfigureNotify& cmd) {
 
     auto               it      = pending_window_flushes.find(cmd.window);
     const WindowFlush* pending = (it == pending_window_flushes.end()) ? nullptr : &it->second;
-    if (!pending || !(pending->dirty & WindowFlush::X))           w->x = cmd.x;
-    if (!pending || !(pending->dirty & WindowFlush::Y))           w->y = cmd.y;
-    if (!pending || !(pending->dirty & WindowFlush::Width))       w->width = cmd.width;
-    if (!pending || !(pending->dirty & WindowFlush::Height))      w->height = cmd.height;
+
+    if (!pending || !(pending->dirty & WindowFlush::X))           w->x() = cmd.pos.x();
+    if (!pending || !(pending->dirty & WindowFlush::Y))           w->y() = cmd.pos.y();
+    if (!pending || !(pending->dirty & WindowFlush::Width))       w->width() = cmd.size.x();
+    if (!pending || !(pending->dirty & WindowFlush::Height))      w->height() = cmd.size.y();
     if (!pending || !(pending->dirty & WindowFlush::BorderWidth)) w->border_width = cmd.border_width;
 
     return true;
 }
-
 
 CoreReloadState Core::snapshot_reload_state() const {
     return CoreReloadState{
@@ -785,7 +931,6 @@ std::vector<WindowId> Core::visible_window_ids() const {
     }
     return out;
 }
-
 
 bool Core::consume_window_suppress_focus_once(WindowId win) {
     auto w = wsman.find_window_in_all(win);

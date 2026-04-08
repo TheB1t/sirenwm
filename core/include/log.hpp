@@ -18,11 +18,11 @@ inline void log_init(const std::string& log_path = "runtime.log",
     if (spdlog::get("swm"))
         return;
 
-    auto file_sink   = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
         log_path, /*truncate=*/ false);
     auto stderr_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
 
-    auto logger      = std::make_shared<spdlog::logger>("swm",
+    auto logger = std::make_shared<spdlog::logger>("swm",
             spdlog::sinks_init_list{ file_sink, stderr_sink });
 
     logger->set_level(level);

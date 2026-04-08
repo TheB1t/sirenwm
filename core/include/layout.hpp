@@ -7,8 +7,7 @@
 
 #include <backend/events.hpp>
 #include <monitor.hpp>
-
-enum class Layout { TILE, MONOCLE, FLOAT };
+#include <vec.hpp>
 
 namespace layout {
 
@@ -19,7 +18,7 @@ struct Config {
     int   border        = 0; // set from theme at reconcile time
 };
 
-using PlacementSink = std::function<void (WindowId, int32_t, int32_t, uint32_t, uint32_t, uint32_t)>;
+using PlacementSink = std::function<void (WindowId, Vec2i pos, Vec2i size, uint32_t border)>;
 
 inline void tile(const std::vector<WindowId>& windows, const Monitor& mon, const Config& cfg,
     const PlacementSink& place) {
@@ -29,10 +28,10 @@ inline void tile(const std::vector<WindowId>& windows, const Monitor& mon, const
 
     int b  = cfg.border;
     int g  = cfg.gap;
-    int mx = mon.x + g;
-    int my = mon.y + g;
-    int mw = mon.width  - g * 2;
-    int mh = mon.height - g * 2;
+    int mx = mon.x() + g;
+    int my = mon.y() + g;
+    int mw = mon.width()  - g * 2;
+    int mh = mon.height() - g * 2;
 
     int nm = std::min(cfg.nmaster, n);      // actual master count
 
@@ -43,10 +42,8 @@ inline void tile(const std::vector<WindowId>& windows, const Monitor& mon, const
             // Last window absorbs rounding remainder
             int h = (i == n - 1) ? mh - i * (unit + g) : unit;
             place(windows[i],
-                mx,
-                my + i * (unit + g),
-                (uint32_t)std::max(1, mw - b * 2),
-                (uint32_t)std::max(1, h - b * 2),
+                { mx, my + i * (unit + g) },
+                { std::max(1, mw - b * 2), std::max(1, h - b * 2) },
                 (uint32_t)std::max(0, b));
         }
         return;
@@ -61,10 +58,8 @@ inline void tile(const std::vector<WindowId>& windows, const Monitor& mon, const
     for (int i = 0; i < nm; i++) {
         int h = (i == nm - 1) ? mh - i * (munit + g) : munit;
         place(windows[i],
-            mx,
-            my + i * (munit + g),
-            (uint32_t)std::max(1, master_w - b * 2),
-            (uint32_t)std::max(1, h - b * 2),
+            { mx, my + i * (munit + g) },
+            { std::max(1, master_w - b * 2), std::max(1, h - b * 2) },
             (uint32_t)std::max(0, b));
     }
 
@@ -75,10 +70,8 @@ inline void tile(const std::vector<WindowId>& windows, const Monitor& mon, const
         int si = i - nm;
         int h  = (si == sn - 1) ? mh - si * (sunit + g) : sunit;
         place(windows[i],
-            stack_x,
-            my + si * (sunit + g),
-            (uint32_t)std::max(1, stack_w - b * 2),
-            (uint32_t)std::max(1, h - b * 2),
+            { stack_x, my + si * (sunit + g) },
+            { std::max(1, stack_w - b * 2), std::max(1, h - b * 2) },
             (uint32_t)std::max(0, b));
     }
 }
@@ -88,20 +81,9 @@ inline void monocle(const std::vector<WindowId>& windows, const Monitor& mon, co
     int b = cfg.border;
     for (auto w : windows)
         place(w,
-            mon.x + b,
-            mon.y + b,
-            (uint32_t)std::max(1, mon.width - b * 2),
-            (uint32_t)std::max(1, mon.height - b * 2),
+            { mon.x() + b, mon.y() + b },
+            { std::max(1, mon.width() - b * 2), std::max(1, mon.height() - b * 2) },
             (uint32_t)std::max(0, b));
-}
-
-inline void apply(const std::vector<WindowId>& windows, const Monitor& mon,
-    Layout layout_type, const Config& cfg, const PlacementSink& place) {
-    switch (layout_type) {
-        case Layout::TILE:    tile(windows, mon, cfg, place);    break;
-        case Layout::MONOCLE: monocle(windows, mon, cfg, place); break;
-        case Layout::FLOAT:                               break;
-    }
 }
 
 }

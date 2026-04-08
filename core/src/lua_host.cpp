@@ -22,8 +22,8 @@ inline lua_State* as_state(const void* p) {
 }
 
 class LuaStackGuard {
-    lua_State* L_ = nullptr;
-    int top_      = 0;
+    lua_State* L_   = nullptr;
+    int        top_ = 0;
 
     public:
         explicit LuaStackGuard(lua_State* L) : L_(L), top_(L ? lua_gettop(L) : 0) {}
@@ -96,6 +96,7 @@ void push_root_table(LuaContext& ctx) {
 // ---------------------------------------------------------------------------
 
 int LuaContext::abs_index(int idx) const { return lua_absindex(as_state(state_), idx); }
+int LuaContext::arg_count() const { return lua_gettop(as_state(state_)); }
 bool LuaContext::is_nil(int idx) const { return lua_isnil(as_state(state_), idx); }
 bool LuaContext::is_bool(int idx) const { return lua_isboolean(as_state(state_), idx); }
 bool LuaContext::is_integer(int idx) const { return lua_isinteger(as_state(state_), idx); }
@@ -160,6 +161,11 @@ void LuaContext::new_table() const { lua_newtable(as_state(state_)); }
 void LuaContext::get_global(const char* name) const { lua_getglobal(as_state(state_), name); }
 void LuaContext::set_global(const char* name) const { lua_setglobal(as_state(state_), name); }
 void LuaContext::set_metatable(int idx) const { lua_setmetatable(as_state(state_), idx); }
+bool LuaContext::new_metatable(const char* name) const { return luaL_newmetatable(as_state(state_), name) != 0; }
+void LuaContext::get_metatable_reg(const char* name) const { luaL_getmetatable(as_state(state_), name); }
+void* LuaContext::new_userdata(size_t size) const { return lua_newuserdatauv(as_state(state_), size, 0); }
+void* LuaContext::to_userdata(int idx) const { return lua_touserdata(as_state(state_), idx); }
+bool LuaContext::is_userdata(int idx) const { return lua_isuserdata(as_state(state_), idx) != 0; }
 void LuaContext::pop(int n) const { lua_pop(as_state(state_), n); }
 void LuaContext::remove(int idx) const { lua_remove(as_state(state_), idx); }
 void LuaContext::insert(int idx) const { lua_insert(as_state(state_), idx); }
@@ -183,11 +189,25 @@ LuaHost::~LuaHost() {
         lua_close(as_state(state_));
 }
 
+void LuaHost::set_module_table(const std::string& name) {
+    // Stores the table at the top of the stack, then pops it.
+    module_tables_[name] = ref_value(-1);
+    context().pop();
+}
+
+bool LuaHost::push_module_table(const std::string& name) const {
+    auto it = module_tables_.find(name);
+    if (it == module_tables_.end() || !it->second.valid())
+        return false;
+    return push_ref(it->second);
+}
+
 void LuaHost::init() {
     if (state_) {
         lua_close(as_state(state_));
         state_ = nullptr;
     }
+    module_tables_.clear();
     state_ = luaL_newstate();
     luaL_openlibs(as_state(state_));
     vm_epoch_++;
@@ -281,6 +301,17 @@ bool LuaHost::exec_file(const std::string& path) {
     return true;
 }
 
+bool LuaHost::exec_string(const char* code, const char* name) {
+    auto* L = as_state(state_);
+    if (luaL_loadbuffer(L, code, strlen(code), name) != LUA_OK ||
+        lua_pcall(L, 0, 0, 0) != LUA_OK) {
+        LOG_ERR("Lua error in %s: %s", name, lua_tostring(L, -1));
+        lua_pop(L, 1);
+        return false;
+    }
+    return true;
+}
+
 LuaRegistryRef LuaHost::ref_value(int index) const {
     LuaContext     ctx = context();
     LuaRegistryRef out;
@@ -339,8 +370,29 @@ bool LuaHost::call_ref_string(const LuaRegistryRef& ref, std::string& out, const
     return true;
 }
 
+bool LuaHost::call_ref_method_string(const LuaRegistryRef& obj_ref, const char* method,
+    std::string& out, const char* context_text) const {
+    if (!push_ref(obj_ref))
+        return false;
+    LuaContext ctx = context();
+    // stack: [obj]
+    ctx.get_field(-1, method);          // stack: [obj, fn]
+    if (!ctx.is_function(-1)) {
+        ctx.pop(2);
+        return false;
+    }
+    ctx.push_value(-2);                 // stack: [obj, fn, obj]  (self)
+    ctx.remove(-3);                     // remove original obj copy → [fn, obj]
+    if (!pcall(1, 1, context_text))     // fn(obj) → [result]
+        return false;
+    if (ctx.is_string(-1))
+        out = ctx.to_string(-1);
+    ctx.pop();
+    return true;
+}
+
 bool LuaHost::call_ref_with_int_fields(const LuaRegistryRef& ref,
-    std::initializer_list<std::pair<const char*, int64_t> > fields,
+    std::initializer_list<std::pair<const char*, int64_t>> fields,
     const char* context_text) const {
     if (!push_ref(ref))
         return false;
@@ -351,4 +403,33 @@ bool LuaHost::call_ref_with_int_fields(const LuaRegistryRef& ref,
         ctx.set_field(-2, key);
     }
     return pcall(1, 0, context_text);
+}
+
+// ---------------------------------------------------------------------------
+// sys event bus
+// ---------------------------------------------------------------------------
+
+void LuaHost::on(const std::string& event, LuaRegistryRef handler) {
+    if (handler.valid())
+        event_handlers_[event].push_back(std::move(handler));
+}
+
+void LuaHost::clear_handlers() {
+    event_handlers_.clear();
+}
+
+void LuaHost::emit_to_lua(const std::string& event,
+    int (*push_args)(LuaContext&, const void*, Core&),
+    const void* ev,
+    Core* core) {
+    auto it = event_handlers_.find(event);
+    if (it == event_handlers_.end())
+        return;
+    LuaContext ctx = context();
+    for (const auto& ref : it->second) {
+        if (!push_ref(ref))
+            continue;
+        int nargs = (push_args && core) ? push_args(ctx, ev, *core) : 0;
+        pcall(nargs, 0, ("siren.on(\"" + event + "\")").c_str());
+    }
 }

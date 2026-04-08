@@ -5,6 +5,7 @@
 
 #include <backend/events.hpp>
 #include <cairo/cairo.h>
+#include <vec.hpp>
 
 namespace backend {
 
@@ -16,12 +17,9 @@ struct RenderWindowHints {
 
 struct RenderWindowCreateInfo {
     // Monitor index from Core topology (advisory for backend placement).
-    int               monitor_index       = -1;
-    // Root-space coordinates (global screen space).
-    int               x                   = 0;
-    int               y                   = 0;
-    int               width               = 1;
-    int               height              = 1;
+    int               monitor_index = -1;
+    Vec2i             pos;                          // root-space coordinates (global screen space)
+    Vec2i             size                = { 1, 1 };
     uint32_t          background_pixel    = 0;
     bool              want_expose         = false;
     bool              want_button_press   = false;
@@ -31,7 +29,7 @@ struct RenderWindowCreateInfo {
 
 class RenderWindow {
     public:
-        virtual ~RenderWindow()                = default;
+        virtual ~RenderWindow() = default;
 
         virtual WindowId id() const            = 0;
         virtual int      monitor_index() const = 0;
@@ -44,13 +42,13 @@ class RenderWindow {
         // 1. draw through the returned context
         // 2. call present() exactly once per completed frame
         // Backends keep cairo_t ownership; callers must not destroy it.
-        virtual cairo_t* cairo()                   = 0;
-        virtual void     present()                 = 0;
+        virtual cairo_t* cairo()   = 0;
+        virtual void     present() = 0;
 
-        virtual void     set_visible(bool visible) = 0;
-        virtual void     raise()                   = 0;
-        virtual void     lower()                   = 0;
-        virtual void     move_to(int x, int y)     = 0;
+        virtual void     set_visible(bool visible)                                      = 0;
+        virtual void     raise()                                                        = 0;
+        virtual void     lower()                                                        = 0;
+        virtual void     move_to(int x, int y)                                          = 0;
         virtual void     reserve_top_strut(int strut_height, int x_start, int x_end)    = 0;
         virtual void     reserve_bottom_strut(int strut_height, int x_start, int x_end) = 0;
 };
@@ -63,9 +61,9 @@ class RenderPort {
         // Supported consumers: bar, overlays, prompts, other module UI surfaces.
         // Core must stay backend-agnostic and does not operate on RenderWindow.
         virtual std::unique_ptr<RenderWindow>
-        create_window(const RenderWindowCreateInfo& info) = 0;
+                         create_window(const RenderWindowCreateInfo& info) = 0;
 
-        virtual uint32_t black_pixel() const              = 0;
+        virtual uint32_t black_pixel() const = 0;
 };
 
 } // namespace backend

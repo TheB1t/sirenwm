@@ -61,9 +61,8 @@ void X11Backend::reload_border_colors() {
 }
 
 void X11Backend::set_border_color(WindowId win, uint32_t pixel) {
-    if (win == NO_WINDOW || win == root_window)
-        return;
-    xconn.change_window_attributes(win, XCB_CW_BORDER_PIXEL, &pixel);
+    if (auto* xw = x11_window(win))
+        xw->set_border_color(pixel);
 }
 
 void X11Backend::restore_visible_focus() {
@@ -126,54 +125,41 @@ void X11Backend::ewmh_intern_atoms() {
     WM_PROTOCOLS                     = atoms["WM_PROTOCOLS"];
     WM_DELETE_WINDOW                 = atoms["WM_DELETE_WINDOW"];
     WM_TAKE_FOCUS                    = atoms["WM_TAKE_FOCUS"];
-    WM_STATE = atoms["WM_STATE"];
+    WM_STATE                         = atoms["WM_STATE"];
     XEMBED_INFO                      = atoms["_XEMBED_INFO"];
     NET_WM_DESKTOP                   = atoms["_NET_WM_DESKTOP"];
+
+    // Sync shared atoms struct for X11Window methods.
+    atoms_.NET_WM_STATE            = NET_WM_STATE;
+    atoms_.NET_WM_STATE_FULLSCREEN = NET_WM_STATE_FULLSCREEN;
+    atoms_.NET_WM_STATE_HIDDEN     = NET_WM_STATE_HIDDEN;
+    atoms_.NET_WM_STATE_FOCUSED    = NET_WM_STATE_FOCUSED;
+    atoms_.NET_FRAME_EXTENTS       = NET_FRAME_EXTENTS;
+    atoms_.NET_WM_DESKTOP          = NET_WM_DESKTOP;
+    atoms_.WM_STATE                = WM_STATE;
+    atoms_.WM_PROTOCOLS            = WM_PROTOCOLS;
+    atoms_.WM_DELETE_WINDOW        = WM_DELETE_WINDOW;
+    atoms_.WM_TAKE_FOCUS           = WM_TAKE_FOCUS;
 }
 
 bool X11Backend::ewmh_supports_delete(WindowId win) {
-    for (auto atom : xconn.get_atom_list_property(win, WM_PROTOCOLS))
-        if (atom == WM_DELETE_WINDOW) return true;
+    if (auto* xw = x11_window(win))
+        return xw->supports_delete();
     return false;
 }
 
 void X11Backend::ewmh_close_with_message(WindowId win) {
-    xcb_client_message_event_t ev = {};
-    ev.response_type  = XCB_CLIENT_MESSAGE;
-    ev.window         = win;
-    ev.format         = 32;
-    ev.type           = WM_PROTOCOLS;
-    ev.data.data32[0] = WM_DELETE_WINDOW;
-    ev.data.data32[1] = XCB_CURRENT_TIME;
-    xconn.send_event(win, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
+    if (auto* xw = x11_window(win))
+        xw->send_delete_message();
 }
 
 void X11Backend::focus_window(WindowId win) {
-    auto window = core.window_state_any(win);
-
-    // Respect WM_HINTS.input: if explicitly False, skip xcb_set_input_focus.
-    if (!window || !window->no_input_focus) {
-        xcb_set_input_focus(xconn.raw_conn(),
-            XCB_INPUT_FOCUS_POINTER_ROOT, win, last_event_time_);
+    auto* xw = x11_window(win);
+    if (!xw)
+        return;
+    xw->focus(last_event_time_);
+    if (!xw->no_input_focus)
         xconn.set_property(root_window, NET_ACTIVE_WINDOW, XCB_ATOM_WINDOW, win);
-    }
-
-    // Send WM_TAKE_FOCUS ClientMessage if the window supports it.
-    if (WM_TAKE_FOCUS != XCB_ATOM_NONE) {
-        for (auto atom : xconn.get_atom_list_property(win, WM_PROTOCOLS)) {
-            if (atom != WM_TAKE_FOCUS)
-                continue;
-            xcb_client_message_event_t ev = {};
-            ev.response_type  = XCB_CLIENT_MESSAGE;
-            ev.window         = win;
-            ev.format         = 32;
-            ev.type           = WM_PROTOCOLS;
-            ev.data.data32[0] = WM_TAKE_FOCUS;
-            ev.data.data32[1] = XCB_CURRENT_TIME;
-            xconn.send_event(win, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
-            break;
-        }
-    }
 }
 
 void X11Backend::ewmh_update_client_list() {
@@ -186,30 +172,30 @@ void X11Backend::ewmh_update_client_list() {
 }
 
 bool X11Backend::ewmh_has_fullscreen_state(WindowId win) {
-    auto states = xconn.get_atom_list_property(win, NET_WM_STATE);
-    return std::find(states.begin(), states.end(), NET_WM_STATE_FULLSCREEN) != states.end();
+    if (auto* xw = x11_window(win))
+        return xw->has_fullscreen_state();
+    return false;
 }
 
 void X11Backend::ewmh_set_wm_state_atom(WindowId win, xcb_atom_t atom, bool enabled) {
-    auto states = xconn.get_atom_list_property(win, NET_WM_STATE);
-    states.erase(std::remove(states.begin(), states.end(), atom), states.end());
-    if (enabled)
-        states.push_back(atom);
-    const xcb_atom_t* data = states.empty() ? nullptr : states.data();
-    xconn.set_property(win, NET_WM_STATE, XCB_ATOM_ATOM, data, (int)states.size());
+    if (auto* xw = x11_window(win))
+        xw->set_wm_state_atom(atom, enabled);
 }
 
 void X11Backend::ewmh_set_fullscreen_state_property(WindowId win, bool enabled) {
-    ewmh_set_wm_state_atom(win, NET_WM_STATE_FULLSCREEN, enabled);
+    if (auto* xw = x11_window(win))
+        xw->set_fullscreen_state(enabled);
 }
 
 void X11Backend::ewmh_set_frame_extents(WindowId win, uint32_t bw) {
-    if (NET_FRAME_EXTENTS == XCB_ATOM_NONE || win == NO_WINDOW)
-        return;
-    uint32_t extents[4] = { bw, bw, bw, bw }; // left, right, top, bottom
-    xconn.set_property(win, NET_FRAME_EXTENTS, XCB_ATOM_CARDINAL, extents, 4);
+    if (auto* xw = x11_window(win))
+        xw->set_frame_extents(bw);
 }
 
+void X11Backend::set_wm_state_normal(WindowId win) {
+    if (auto* xw = x11_window(win))
+        xw->set_wm_state_normal();
+}
 
 void X11Backend::ewmh_apply_fullscreen(WindowId win, bool enabled) {
     (void)core.dispatch(command::SetWindowFullscreen{ win, enabled });
@@ -315,7 +301,7 @@ void X11Backend::handle(event::ManageWindowQuery& ev) {
     if (has_xembed_info_property(xconn, win, XEMBED_INFO)) {
         auto [instance, cls] = xconn.get_wm_class(win);
         auto title = xconn.get_text_property(win, NET_WM_NAME, UTF8_STRING_ATOM);
-        auto [w, h]          = window_size(xconn, win);
+        auto [w, h] = window_size(xconn, win);
 
         bool identifiable   = !instance.empty() || !cls.empty() || !title.empty();
         bool tray_like_size = (w > 0 && h > 0 && w <= 128 && h <= 128);
@@ -333,33 +319,38 @@ void X11Backend::handle(event::ManageWindowQuery& ev) {
 }
 
 bool X11Backend::handle(event::CloseWindowRequest ev) {
-    if (ewmh_supports_delete(ev.window))
-        ewmh_close_with_message(ev.window);
-    else
-        xconn.kill_client(ev.window);
+    if (auto* xw = x11_window(ev.window)) {
+        if (xw->supports_delete())
+            xw->send_delete_message();
+        else
+            xw->kill();
+    }
     xconn.flush();
     return true;
 }
 
 void X11Backend::notify(event::WindowMapped ev) {
+    auto* xw = x11_window(ev.window);
+    if (!xw) return;
+
     // Paint initial border; skip if already focused (color set by update_focus).
     if (ev.window != border_painted_focused_)
-        set_border_color(ev.window, border_unfocused_pixel);
+        xw->set_border_color(border_unfocused_pixel);
 
-    // ICCCM §4.1.3: set WM_STATE to NormalState when managing a window.
-    if (WM_STATE != XCB_ATOM_NONE) {
-        uint32_t data[2] = { 1 /* NormalState */, XCB_WINDOW_NONE };
-        xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, ev.window,
-            WM_STATE, WM_STATE, 32, 2, data);
-    }
+    // ICCCM §4.1.3: set WM_STATE to NormalState when managing a visible window.
+    // Windows mapped onto an invisible workspace stay in IconicState.
+    if (!core.is_window_hidden_by_workspace(ev.window))
+        xw->set_wm_state_normal();
     // _NET_WM_DESKTOP: expose workspace index to panels and pagers.
-    if (NET_WM_DESKTOP != XCB_ATOM_NONE) {
+    {
         int ws = core.workspace_of_window(ev.window);
         if (ws >= 0)
-            xconn.set_property(ev.window, NET_WM_DESKTOP, XCB_ATOM_CARDINAL, (uint32_t)ws);
+            xw->set_desktop((uint32_t)ws);
     }
     ewmh_update_client_list();
-    // _NET_WM_STATE_HIDDEN: clear on map (window is now visible on its workspace).
+    // We no longer set _NET_WM_STATE_HIDDEN during workspace switches,
+    // but clear it on map anyway: the property may linger from a previous
+    // WM session (restart) or from an explicit HideWindow command.
     if (NET_WM_STATE_HIDDEN != XCB_ATOM_NONE)
         ewmh_set_wm_state_atom(ev.window, NET_WM_STATE_HIDDEN, false);
     {
@@ -384,26 +375,22 @@ void X11Backend::notify(event::WindowMapped ev) {
     // not offset their render children to compensate for a non-existent frame.
     ewmh_set_frame_extents(ev.window, 0u);
 
-    // xcb_map_window puts the window on top; re-raise bars so tray stays visible.
-    {
-        auto w = core.window_state_any(ev.window);
-        if (w && (w->borderless || w->fullscreen))
-            runtime.emit(core, event::RaiseDocks{});
-    }
+    // xcb_map_window puts the window on top of the stack.
+    // Borderless and fullscreen windows cover the entire monitor — they should
+    // stay above the bar, so do NOT raise docks over them.
 }
 
 void X11Backend::notify(event::WindowUnmapped ev) {
-    if (WM_STATE != XCB_ATOM_NONE && ev.window != NO_WINDOW) {
-        // ICCCM §4.1.4: WithdrawnState when unmanaged; IconicState when hidden
-        // by workspace switch so compositors keep tracking the window.
-        uint32_t state   = ev.withdrawn ? 0u /* WithdrawnState */ : 3u /* IconicState */;
-        uint32_t data[2] = { state, XCB_WINDOW_NONE };
-        xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, ev.window,
-            WM_STATE, WM_STATE, 32, 2, data);
+    if (auto* xw = x11_window(ev.window)) {
+        // ICCCM §4.1.4: WithdrawnState when unmanaged; IconicState when hidden.
+        uint32_t state = ev.withdrawn ? 0u /* WithdrawnState */ : 3u /* IconicState */;
+        xw->set_wm_state(state);
+        // _NET_WM_STATE_HIDDEN: only clear on withdraw (unmanage).
+        // Do NOT set on workspace hide — Qt/GTK treat it as an additional
+        // "minimized" signal and may aggressively suspend rendering.
+        if (ev.withdrawn)
+            xw->set_wm_state_atom(atoms_.NET_WM_STATE_HIDDEN, false);
     }
-    // _NET_WM_STATE_HIDDEN: set when hidden by workspace switch, clear on withdraw.
-    if (NET_WM_STATE_HIDDEN != XCB_ATOM_NONE && ev.window != NO_WINDOW)
-        ewmh_set_wm_state_atom(ev.window, NET_WM_STATE_HIDDEN, !ev.withdrawn);
     ewmh_update_client_list();
 }
 
@@ -459,9 +446,8 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
 }
 
 void X11Backend::notify(event::WindowAssignedToWorkspace ev) {
-    if (NET_WM_DESKTOP == XCB_ATOM_NONE)
-        return;
-    xconn.set_property(ev.window, NET_WM_DESKTOP, XCB_ATOM_CARDINAL, (uint32_t)ev.workspace_id);
+    if (auto* xw = x11_window(ev.window))
+        xw->set_desktop((uint32_t)ev.workspace_id);
 }
 
 bool X11Backend::handle(event::ClientMessageEv ev) {
@@ -472,7 +458,10 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
             return true;
 
         auto window = core.window_state_any(ev.window);
-        if (!window) return true;
+        if (!window) {
+            LOG_DEBUG("ClientMessage(%d): _NET_WM_STATE fullscreen but window not managed", ev.window);
+            return true;
+        }
 
         bool     enable = false;
         uint32_t action = ev.data[0];  // 0=remove, 1=add, 2=toggle
@@ -480,6 +469,9 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         else if (action == 1) enable = true;
         else if (action == 2) enable = !core.is_window_fullscreen(ev.window);
         else return true;
+
+        LOG_DEBUG("ClientMessage(%d): _NET_WM_STATE fullscreen action=%u enable=%d",
+            ev.window, action, (int)enable);
 
         // Self-managed windows control their own position; pinning to mon.x/mon.y breaks them.
         // WM-pinned borderless windows are already fullscreen-equivalent — applying fullscreen

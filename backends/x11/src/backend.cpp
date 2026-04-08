@@ -1,6 +1,2 @@
-#include <backend/backend.hpp>
-#include <x11_backend.hpp>
-
-std::unique_ptr<Backend> create_backend(Core& core, Runtime& runtime) {
-    return std::make_unique<X11Backend>(core, runtime);
-}
+// This TU is intentionally empty. The backend is now constructed by
+// RuntimeOf<X11Backend> via the template constructor, not a factory function.

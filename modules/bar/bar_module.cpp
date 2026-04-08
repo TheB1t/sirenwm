@@ -35,9 +35,6 @@ backend::TrayHost* BarModule::owner_tray() {
 }
 
 int BarModule::monitor_for_icon(WindowId icon_win) const {
-    if (!core_ref)
-        return bars.empty() ? 0 : bars.front()->monitor_index();
-
     // Default: keep icon where it currently is.
     int         fallback = -1;
     std::string icon_class;
@@ -55,16 +52,16 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
     if (icon_class.empty())
         return fallback;
 
-    const auto& mons = core_ref->monitor_states();
+    const auto&                  mons = core().monitor_states();
     std::unordered_map<int, int> ws_owner_mon;
     for (int mon_idx = 0; mon_idx < (int)mons.size(); mon_idx++)
-        for (int ws_id : core_ref->monitor_workspace_ids(mon_idx))
+        for (int ws_id : core().monitor_workspace_ids(mon_idx))
             ws_owner_mon[ws_id] = mon_idx;
 
     int best_mon   = -1;
     int best_score = -1;
-    for (auto win : core_ref->all_window_ids()) {
-        auto w = core_ref->window_state_any(win);
+    for (auto win : core().all_window_ids()) {
+        auto w = core().window_state_any(win);
         if (!w)
             continue;
 
@@ -72,9 +69,9 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
                 auto dot = s.find('.');
                 return dot != std::string::npos ? s.substr(0, dot) : s;
             };
-        std::string wc    = w->wm_class;
+        std::string wc = w->wm_class;
         for (auto& c : wc) c = (char)tolower((unsigned char)c);
-        std::string wi    = w->wm_instance;
+        std::string wi = w->wm_instance;
         for (auto& c : wi) c = (char)tolower((unsigned char)c);
         bool        match = (wc == icon_class) || (wi == icon_class)
             || (base_of(wc) == icon_class) || (wc == base_of(icon_class))
@@ -82,16 +79,16 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
         if (!match)
             continue;
 
-        int  ws_id     = core_ref->workspace_of_window(win);
+        int  ws_id     = core().workspace_of_window(win);
         auto it_owner  = ws_owner_mon.find(ws_id);
         int  owner_mon = (it_owner != ws_owner_mon.end()) ? it_owner->second : -1;
 
-        int  score     = 1;
+        int  score = 1;
         if (w->is_visible())
             score += 100;
-        if (owner_mon >= 0 && core_ref->active_workspace_on_monitor(owner_mon) == ws_id)
+        if (owner_mon >= 0 && core().active_workspace_on_monitor(owner_mon) == ws_id)
             score += 10;
-        if (owner_mon == core_ref->focused_monitor_index())
+        if (owner_mon == core().focused_monitor_index())
             score += 1;
 
         if (owner_mon >= 0 && score > best_score) {
@@ -127,7 +124,7 @@ void BarModule::rebalance_tray_icons() {
     if (trays.empty())
         return;
     // Snapshot all icons across all trays first (transfer modifies lists).
-    std::vector<std::pair<WindowId, int> > to_route;
+    std::vector<std::pair<WindowId, int>> to_route;
     for (auto& slot : trays) {
         if (!slot.tray)
             continue;
@@ -152,21 +149,30 @@ int BarModule::tag_at(WindowId bar_window, int click_x) const {
     return -1;
 }
 
+static void refresh_slot(LuaHost& lua, const BarSlot& slot) {
+    if (slot.kind != BarSlotKind::Lua || slot.interval <= 0)
+        return;
+    slot.ticks++;
+    if (slot.ticks < slot.interval)
+        return;
+    slot.ticks = 0;
+    lua.call_ref_method_string(slot.widget, "render", slot.cached_text, "bar.widget");
+}
+
 void BarModule::refresh_widgets() {
-    for (const auto& w : config().get_bar_widgets()) {
-        int& ticks = widget_ticks[w.name];
-        // interval=0 means refresh every redraw (handled in redraw directly)
-        if (w.interval <= 0)
-            continue;
-        ticks++;
-        if (ticks < w.interval)
-            continue;
-        ticks = 0;
-        std::string result;
-        config().lua().call_ref_string(w.callback, result,
-            ("bar.widget '" + w.name + "'").c_str());
-        widget_cache[w.name] = std::move(result);
-    }
+    if (runtime_state() != RuntimeState::Running) return;
+    auto& lua = config().lua();
+    for (const auto& slot : top_cfg.left)   refresh_slot(lua, slot);
+    for (const auto& slot : top_cfg.center) refresh_slot(lua, slot);
+    for (const auto& slot : top_cfg.right)  refresh_slot(lua, slot);
+    for (const auto& slot : bottom_cfg.left)   refresh_slot(lua, slot);
+    for (const auto& slot : bottom_cfg.center) refresh_slot(lua, slot);
+    for (const auto& slot : bottom_cfg.right)  refresh_slot(lua, slot);
+}
+
+static void update_reactive_slot(LuaHost& lua, const BarSlot& slot) {
+    if (slot.kind == BarSlotKind::Lua && slot.interval == 0)
+        lua.call_ref_method_string(slot.widget, "render", slot.cached_text, "bar.widget");
 }
 
 void BarModule::redraw() {
@@ -174,34 +180,35 @@ void BarModule::redraw() {
         return;
 
     // For interval=0 widgets, call Lua every redraw (fast/reactive widgets).
-    for (const auto& w : config().get_bar_widgets()) {
-        if (w.interval != 0)
-            continue;
-        std::string result;
-        config().lua().call_ref_string(w.callback, result,
-            ("bar.widget '" + w.name + "'").c_str());
-        widget_cache[w.name] = std::move(result);
+    // Only when fully started — earlier calls would reach modules before bind_backend.
+    if (runtime_state() == RuntimeState::Running) {
+        auto& lua = config().lua();
+        for (const auto& slot : top_cfg.left)      update_reactive_slot(lua, slot);
+        for (const auto& slot : top_cfg.center)    update_reactive_slot(lua, slot);
+        for (const auto& slot : top_cfg.right)     update_reactive_slot(lua, slot);
+        for (const auto& slot : bottom_cfg.left)   update_reactive_slot(lua, slot);
+        for (const auto& slot : bottom_cfg.center) update_reactive_slot(lua, slot);
+        for (const auto& slot : bottom_cfg.right)  update_reactive_slot(lua, slot);
     }
-
-    auto resolve_text = [&](const std::string& name) -> std::string {
-            auto it = widget_cache.find(name);
-            return (it != widget_cache.end()) ? it->second : std::string{};
-        };
 
     auto render_left_slot = [&](bar::widgets::PaintContext& paint,
         const BarState& state, const BarConfig& cfg,
         const BarSlot& slot, int& cursor,
         backend::TrayHost* tray) -> std::vector<bar::widgets::TagHit> {
-            if (slot.name == "tags")
-                return tags_widget.draw(paint, state, cfg, cursor);
-            if (slot.name == "tray") {
-                cursor += tray_widget.reserved_width(tray);
-                return {};
+            switch (slot.kind) {
+                case BarSlotKind::Tags:
+                    return tags_widget.draw(paint, state, cfg, cursor);
+                case BarSlotKind::Tray:
+                    cursor += tray_widget.reserved_width(tray);
+                    return {};
+                case BarSlotKind::Title:
+                    return {};
+                case BarSlotKind::Lua:
+                    if (!slot.cached_text.empty())
+                        cursor += paint.draw_text(cursor, slot.cached_text,
+                                cfg.colors.status_fg, cfg.colors.bar_bg);
+                    return {};
             }
-            std::string text = resolve_text(slot.name);
-            if (!text.empty())
-                cursor += paint.draw_text(cursor, text,
-                        cfg.colors.status_fg, cfg.colors.bar_bg);
             return {};
         };
 
@@ -209,16 +216,20 @@ void BarModule::redraw() {
         const BarState& state, const BarConfig& cfg,
         const BarSlot& slot, int right,
         backend::TrayHost* tray) -> int {
-            if (slot.name == "tray")
-                return right - tray_widget.reserved_width(tray);
-            if (slot.name == "tags")
-                return right; // unsupported in right zone
-            std::string text = resolve_text(slot.name);
-            if (!text.empty()) {
-                int sw = paint.text_width(text) + 16;
-                paint.draw_text(right - sw, text,
-                    cfg.colors.status_fg, cfg.colors.bar_bg);
-                return right - sw;
+            switch (slot.kind) {
+                case BarSlotKind::Tray:
+                    return right - tray_widget.reserved_width(tray);
+                case BarSlotKind::Tags:
+                case BarSlotKind::Title:
+                    return right;
+                case BarSlotKind::Lua:
+                    if (!slot.cached_text.empty()) {
+                        int sw = paint.text_width(slot.cached_text) + 16;
+                        paint.draw_text(right - sw, slot.cached_text,
+                            cfg.colors.status_fg, cfg.colors.bar_bg);
+                        return right - sw;
+                    }
+                    return right;
             }
             return right;
         };
@@ -226,42 +237,47 @@ void BarModule::redraw() {
     auto render_center_slot = [&](bar::widgets::PaintContext& paint,
         const BarState& state, const BarConfig& cfg,
         const BarSlot& slot, int left_edge, int right_edge) {
-            if (slot.name == "title") {
-                title_widget.draw_center(paint, state, cfg, left_edge, right_edge);
-                return;
-            }
-            std::string text = resolve_text(slot.name);
-            if (!text.empty()) {
-                int tw        = paint.text_width(text) + 16;
-                int available = right_edge - left_edge;
-                int cx        = left_edge + (available - tw) / 2;
-                cx = std::max(left_edge, std::min(cx, right_edge - tw));
-                if (cx + tw <= right_edge)
-                    paint.draw_text(cx, text,
-                        cfg.colors.normal_fg, cfg.colors.bar_bg);
+            switch (slot.kind) {
+                case BarSlotKind::Title:
+                    title_widget.draw_center(paint, state, cfg, left_edge, right_edge);
+                    return;
+                case BarSlotKind::Tags:
+                case BarSlotKind::Tray:
+                    return;
+                case BarSlotKind::Lua:
+                    if (!slot.cached_text.empty()) {
+                        int tw        = paint.text_width(slot.cached_text) + 16;
+                        int available = right_edge - left_edge;
+                        int cx        = left_edge + (available - tw) / 2;
+                        cx = std::max(left_edge, std::min(cx, right_edge - tw));
+                        if (cx + tw <= right_edge)
+                            paint.draw_text(cx, slot.cached_text,
+                                cfg.colors.normal_fg, cfg.colors.bar_bg);
+                    }
+                    return;
             }
         };
 
     auto has_tray_slot = [](const BarConfig& cfg) {
-            for (const auto& s : cfg.left)   if (s.name == "tray") return true;
-            for (const auto& s : cfg.right)  if (s.name == "tray") return true;
-            for (const auto& s : cfg.center) if (s.name == "tray") return true;
+            for (const auto& s : cfg.left)   if (s.kind == BarSlotKind::Tray) return true;
+            for (const auto& s : cfg.right)  if (s.kind == BarSlotKind::Tray) return true;
+            for (const auto& s : cfg.center) if (s.kind == BarSlotKind::Tray) return true;
             return false;
         };
 
     auto render_bar_set = [&](
-        std::vector<std::unique_ptr<backend::RenderWindow> >& bar_set,
+        std::vector<std::unique_ptr<backend::RenderWindow>>& bar_set,
         const BarConfig& cfg, bool is_top) {
             bool tray_in_zone = has_tray_slot(cfg);
             for (auto& bar : bar_set) {
                 backend::TrayHost* bar_tray = tray_in_zone
                     ? tray_for_monitor(bar->monitor_index()) : nullptr;
 
-                BarState state = state_provider(bar->monitor_index());
+                BarState                   state = state_provider(bar->monitor_index());
                 bar::widgets::PaintContext paint(*bar, cfg.font);
                 paint.clear(cfg.colors.bar_bg);
 
-                int left_cursor = 0;
+                int                               left_cursor = 0;
                 std::vector<bar::widgets::TagHit> hits;
                 for (const auto& slot : cfg.left) {
                     auto h = render_left_slot(paint, state, cfg, slot, left_cursor, bar_tray);
@@ -291,10 +307,10 @@ void BarModule::redraw() {
 void BarModule::raise_all() {
     for (auto& b : bars) {
         backend::TrayHost* t = tray_for_monitor(b->monitor_index());
-        if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
-            core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
+        if (core().monitor_has_visible_fullscreen(b->monitor_index()) ||
+            core().monitor_has_visible_borderless(b->monitor_index())) {
             b->lower();
-            if (t) t->raise(b->id()); // keep tray visible above fullscreen/borderless
+            if (t) t->raise(b->id());
             continue;
         }
         b->raise();
@@ -302,8 +318,8 @@ void BarModule::raise_all() {
     }
 
     for (auto& b : bottom_bars) {
-        if (core_ref && (core_ref->monitor_has_visible_fullscreen(b->monitor_index()) ||
-            core_ref->monitor_has_visible_borderless(b->monitor_index()))) {
+        if (core().monitor_has_visible_fullscreen(b->monitor_index()) ||
+            core().monitor_has_visible_borderless(b->monitor_index())) {
             b->lower();
             continue;
         }
@@ -312,16 +328,13 @@ void BarModule::raise_all() {
 }
 
 void BarModule::create_bars(int bar_h, const std::vector<MonRect>& mons) {
-    if (!render_port)
-        return;
+    auto& rp = *render_port_;
     for (const auto& m : mons) {
         backend::RenderWindowCreateInfo info;
         info.monitor_index           = m.idx;
-        info.x                       = m.x;
-        info.y                       = m.y;
-        info.width                   = m.w;
-        info.height                  = bar_h;
-        info.background_pixel        = render_port->black_pixel();
+        info.pos                     = m.pos;
+        info.size                    = { m.size.x(), bar_h };
+        info.background_pixel        = rp.black_pixel();
         info.want_expose             = true;
         info.want_button_press       = true;
         info.want_button_release     = true;
@@ -329,7 +342,7 @@ void BarModule::create_bars(int bar_h, const std::vector<MonRect>& mons) {
         info.hints.dock              = true;
         info.hints.keep_above        = true;
 
-        auto bar = render_port->create_window(info);
+        auto bar = rp.create_window(info);
         if (!bar)
             continue;
         // No strut: apps calculate their usable area from _NET_WM_STRUT.
@@ -339,16 +352,13 @@ void BarModule::create_bars(int bar_h, const std::vector<MonRect>& mons) {
 }
 
 void BarModule::create_bottom_bars(int bar_h, const std::vector<MonRect>& mons) {
-    if (!render_port)
-        return;
+    auto& rp = *render_port_;
     for (const auto& m : mons) {
         backend::RenderWindowCreateInfo info;
         info.monitor_index           = m.idx;
-        info.x                       = m.x;
-        info.y                       = m.y;    // caller sets correct y (monitor bottom - bar_h)
-        info.width                   = m.w;
-        info.height                  = bar_h;
-        info.background_pixel        = render_port->black_pixel();
+        info.pos                     = m.pos;
+        info.size                    = { m.size.x(), bar_h };
+        info.background_pixel        = rp.black_pixel();
         info.want_expose             = true;
         info.want_button_press       = true;
         info.want_button_release     = true;
@@ -356,7 +366,7 @@ void BarModule::create_bottom_bars(int bar_h, const std::vector<MonRect>& mons) 
         info.hints.dock              = true;
         info.hints.keep_above        = true;
 
-        auto bar = render_port->create_window(info);
+        auto bar = rp.create_window(info);
         if (!bar)
             continue;
         // No strut — see create_bars().
@@ -368,7 +378,7 @@ BarModule::~BarModule() {
     stop_runtime();
 }
 
-void BarModule::on_stop(Core&, bool) {
+void BarModule::on_stop(bool) {
     stop_runtime();
 }
 
@@ -388,13 +398,8 @@ void BarModule::stop_runtime() {
     trays.clear();
     tag_hits.clear();
     bars.clear();
-    render_port = nullptr;
-    core_ref    = nullptr;
+    bottom_bars.clear();
+    render_port_ = nullptr;
 }
 
-static bool _swm_registered_lua_symbols_bar = []() {
-        module_registry_static::add_lua_symbol_registration("bar", "bar");
-        return true;
-    }();
-
-SWM_REGISTER_MODULE("bar", BarModule)
+SIRENWM_REGISTER_MODULE("bar", BarModule)

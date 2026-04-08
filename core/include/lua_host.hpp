@@ -3,7 +3,11 @@
 #include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
+
+class Core;
 
 class LuaContext {
     void* state_ = nullptr;
@@ -18,6 +22,7 @@ class LuaContext {
         bool        is_nil(int idx) const;
         bool        is_bool(int idx) const;
         bool        is_integer(int idx) const;
+        int         arg_count() const;
         bool        is_number(int idx) const;
         bool        is_string(int idx) const;
         bool        is_table(int idx) const;
@@ -52,6 +57,11 @@ class LuaContext {
         void        get_global(const char* name) const;
         void        set_global(const char* name) const;
         void        set_metatable(int idx) const;
+        bool        new_metatable(const char* name) const;
+        void        get_metatable_reg(const char* name) const;
+        void*       new_userdata(size_t size) const;
+        void*       to_userdata(int idx) const;
+        bool        is_userdata(int idx) const;
         void        pop(int n = 1) const;
         void        remove(int idx) const;
         void        insert(int idx) const;
@@ -61,6 +71,9 @@ class LuaContext {
 
 using LuaNativeFn            = int (*)(LuaContext&);
 using LuaNativeFnWithContext = int (*)(LuaContext&, void*);
+// Signature for a function that pushes Lua arguments for a WM event onto the stack.
+// Returns the number of values pushed.
+using LuaEventPushFn = int (*)(LuaContext&, const void* ev, Core&);
 
 struct LuaFunctionReg {
     const char* name = nullptr;
@@ -68,7 +81,7 @@ struct LuaFunctionReg {
 };
 
 class LuaRegistryRef {
-    int ref_           = -1;
+    int      ref_      = -1;
     uint64_t vm_epoch_ = 0;
     friend class LuaHost;
 
@@ -79,8 +92,14 @@ class LuaRegistryRef {
 };
 
 class LuaHost {
-    void* state_       = nullptr;
+    void*    state_    = nullptr;
     uint64_t vm_epoch_ = 0;
+
+    // siren.on handlers: event name → list of Lua function refs
+    std::unordered_map<std::string, std::vector<LuaRegistryRef>> event_handlers_;
+
+    // Module API tables registered by C++ modules via set_module_table().
+    std::unordered_map<std::string, LuaRegistryRef> module_tables_;
 
     public:
         LuaHost() = default;
@@ -94,14 +113,30 @@ class LuaHost {
         void     reset_root_table();
         LuaContext context() const { return LuaContext(state_); }
 
-        void           register_namespace(const std::string& name,
-            std::initializer_list<LuaFunctionReg> funcs);
-        void           register_global(std::initializer_list<LuaFunctionReg> funcs);
-        void           ensure_table(const std::string& dotted_path);
-        void           push_callback(LuaNativeFn fn) const;
-        void           push_callback(LuaNativeFnWithContext fn, void* userdata) const;
+        // Register siren.on(event, fn) from Lua — called by the C++ siren.on binding.
+        void on(const std::string& event, LuaRegistryRef handler);
+        // Clear all handlers — call before reload so refs don't accumulate.
+        void clear_handlers();
+        // Emit event to Lua handlers. push_fn pushes arguments onto the stack.
+        void emit_to_lua(const std::string& event,
+            LuaEventPushFn push_fn = nullptr,
+            const void* ev         = nullptr,
+            Core* core             = nullptr);
 
-        bool           exec_file(const std::string& path);
+        void register_namespace(const std::string& name,
+            std::initializer_list<LuaFunctionReg> funcs);
+        void register_global(std::initializer_list<LuaFunctionReg> funcs);
+        void ensure_table(const std::string& dotted_path);
+        void push_callback(LuaNativeFn fn) const;
+        void push_callback(LuaNativeFnWithContext fn, void* userdata) const;
+
+        bool exec_file(const std::string& path);
+        bool exec_string(const char* code, const char* name = "=prelude");
+
+        // Module table registry: a module calls set_module_table(name) in on_lua_init()
+        // to publish its API table (top of stack). lua_module_preload then returns it.
+        void           set_module_table(const std::string& name);
+        bool           push_module_table(const std::string& name) const;
 
         LuaRegistryRef ref_value(int index) const;
         LuaRegistryRef ref_function(int index) const;
@@ -109,7 +144,8 @@ class LuaHost {
         bool           pcall(int nargs, int nresults, const char* context) const;
         bool           call_ref(const LuaRegistryRef& ref, int nargs, int nresults, const char* context) const;
         bool           call_ref_string(const LuaRegistryRef& ref, std::string& out, const char* context) const;
+        bool           call_ref_method_string(const LuaRegistryRef& obj_ref, const char* method, std::string& out, const char* context) const;
         bool           call_ref_with_int_fields(const LuaRegistryRef& ref,
-            std::initializer_list<std::pair<const char*, int64_t> > fields,
+            std::initializer_list<std::pair<const char*, int64_t>> fields,
             const char* context) const;
 };

@@ -7,14 +7,26 @@
 #include <utility>
 #include <vector>
 #include <atomic>
-#include <sys/select.h>
+#include <sys/epoll.h>
 
 #include <backend/events.hpp>
+#include <config.hpp>
+#include <core.hpp>
+#include <lua_host.hpp>
 #include <module.hpp>
 
-class Core;
+// ---------------------------------------------------------------------------
+// Lua event trait — specialise in lua_events.hpp to expose events to Lua.
+// Default: no Lua emission.
+// ---------------------------------------------------------------------------
+template<typename Ev>
+struct LuaEvent {
+    static constexpr const char* name = nullptr;
+};
+
+#include <runtime_state.hpp>
+
 class Backend;
-class Config;
 class ModuleRegistry;
 
 class Runtime {
@@ -25,22 +37,28 @@ class Runtime {
             SoftRestart,
         };
 
-        Config& config_;
+        Config config_;
         ModuleRegistry& module_registry_;
-        // Non-owning. Bound via bind_backend() before start(), unbound on stop().
-        Backend* active_backend_ = nullptr;
+        Core     core_;
+        Backend* backend_ = nullptr;  // non-null between start() and stop()
 
-        std::vector<std::unique_ptr<Module> > modules;
-        bool modules_frozen = false; // true after first start() — use() becomes no-op
+        std::vector<std::unique_ptr<Module>> modules;
 
-        std::function<void()> display_change_handler;
         int backend_extension_event_base = -1;
+
+        // SIGCHLD self-pipe: child exit writes a byte, event loop reaps and
+        // emits "child_exit" Lua events.
+        int sigchld_pipe_rd_ = -1;
+        int sigchld_pipe_wr_ = -1;
 
         struct WatchedFd {
             int                   fd;
             std::function<void()> cb;
         };
         std::vector<WatchedFd> watched_fds;
+        int epoll_fd_ = -1;
+
+        RuntimeState state_ = RuntimeState::Idle;
 
         std::atomic_bool reload_pending { false };
         std::atomic_bool soft_restart_pending { false };
@@ -48,19 +66,29 @@ class Runtime {
         std::atomic_bool stop_requested { false };
 
     public:
-        Runtime(Config& config, ModuleRegistry& module_registry)
-            : config_(config), module_registry_(module_registry) {}
+        explicit Runtime(ModuleRegistry& module_registry)
+            : module_registry_(module_registry) {}
+
+        // Non-copyable, non-movable (address stability for references).
+        Runtime(const Runtime&)            = delete;
+        Runtime& operator=(const Runtime&) = delete;
+        Runtime(Runtime&&)                 = delete;
+        Runtime& operator=(Runtime&&)      = delete;
+        virtual ~Runtime()                 = default;
+
+        Core&       core()       { return core_; }
+        const Core& core() const { return core_; }
 
         template<typename T, typename... Args>
-        Runtime& use(Core& core, Args&&... args) {
-            auto mod = std::make_unique<T>(ModuleDeps{ *this, config_ },
+        Runtime& use(Args&&... args) {
+            auto mod = std::make_unique<T>(ModuleDeps{ *this, config_, core_ },
                     std::forward<Args>(args)...);
-            mod->on_init(core);
+            mod->on_init();
             modules.push_back(std::move(mod));
             return *this;
         }
 
-        Runtime& use(Core& core, const std::string& name);
+        Runtime& use(const std::string& name);
 
         template<typename T>
         T* get_module() {
@@ -72,19 +100,32 @@ class Runtime {
 
         Module* get_module_by_name(const std::string& name);
 
-        void    emit_lua_init(Core& core);
-        void bind_backend(Backend& backend) { active_backend_ = &backend; }
-        void unbind_backend() { active_backend_ = nullptr; }
-        void start(Core& core, Backend& backend);
-        void stop(Core& core, bool is_exec_restart = false);
-        void reload(Core& core);
-        void request_reload();
-        void request_soft_restart();
-        void request_exec_restart(Core& core);
-        bool consume_exec_restart_request();
-        void request_stop() { stop_requested = true; }
-        bool process_pending_reload(Core& core);
-        void run_loop(Backend& backend, Core& core);
+        void    emit_lua_init();
+        void    reset_lua_init();
+
+        // Drive the full lifecycle: Idle→Configured→Starting→Running→Stopping→Stopped.
+        // If config_path fails to load, tries fallback_config_path (if non-empty).
+        // Returns when the WM shuts down. Call consume_exec_restart_request() after.
+        void    run(const std::string& config_path,
+                    const std::string& fallback_config_path = {});
+
+        void    stop(bool is_exec_restart = false);
+        void    request_reload();
+        void    request_soft_restart();
+        void    request_exec_restart();
+        bool    consume_exec_restart_request();
+        void    request_stop() { stop_requested = true; }
+
+        RuntimeState state() const { return state_; }
+
+        // For test harnesses that set up backend/core manually without load_config().
+        void mark_configured() {
+            if (state_ == RuntimeState::Idle)
+                state_ = RuntimeState::Configured;
+        }
+        // Used by test harnesses directly; prefer run() in production.
+        void start();
+        bool load_config(const std::string& path);
         Config& config() { return config_; }
         const Config& config() const { return config_; }
         Backend&       backend();
@@ -92,30 +133,36 @@ class Runtime {
         ModuleRegistry& module_registry() { return module_registry_; }
         const ModuleRegistry& module_registry() const { return module_registry_; }
 
+        void emit_to_lua(const char* event,
+            LuaEventPushFn push_args,
+            const void* ev);
+
         template<typename Ev>
-        void emit(Core& core, Ev ev) {
+        void emit(Ev ev) {
             for (auto& m : modules)
-                m->on(core, ev);
+                m->on(ev);
+            if constexpr (LuaEvent<Ev>::name != nullptr)
+                emit_to_lua(LuaEvent<Ev>::name, LuaEvent<Ev>::push_args, &ev);
         }
 
         template<typename Ev>
-        bool emit_until_handled(Core& core, Ev ev) {
+        bool emit_until_handled(Ev ev) {
             for (auto& m : modules)
-                if (m->on(core, ev))
+                if (m->on(ev))
                     return true;
             return false;
         }
 
         template<typename Ev>
-        void query(Core& core, Ev& ev) {
+        void query(Ev& ev) {
             for (auto& m : modules)
-                m->on(core, ev);
+                m->on(ev);
         }
 
         template<typename Ev, typename StopPred>
-        void query(Core& core, Ev& ev, StopPred stop_pred) {
+        void query(Ev& ev, StopPred stop_pred) {
             for (auto& m : modules) {
-                m->on(core, ev);
+                m->on(ev);
                 if (stop_pred(ev))
                     return;
             }
@@ -123,16 +170,44 @@ class Runtime {
 
         void set_backend_extension_event_base(int base) { backend_extension_event_base = base; }
         int get_backend_extension_event_base() const { return backend_extension_event_base; }
-        void set_display_change_handler(std::function<void()> fn) { display_change_handler = std::move(fn); }
         void dispatch_display_change();
 
         void watch_fd(int fd, std::function<void()> cb);
-        void populate_watched_fds(fd_set& fds, int& max_fd) const;
-        void dispatch_watched_fds(const fd_set& fds);
+        void unwatch_fd(int fd);
+        void dispatch_ready_fds(struct epoll_event* events, int count);
+
+        // Bind a concrete backend. Called by RuntimeOf<B> constructor and test harnesses.
+        void bind_backend(Backend& b) { backend_ = &b; }
 
     private:
-        void          save_restart_state(const Core& core);
+        void          reload();
+        void          tick();                    // one event-loop iteration (Running state)
+        void          run_loop();                // epoll setup + tick() loop
+        bool          process_pending_reload();  // consumed inside tick()
+        void          transition(RuntimeState from, RuntimeState to);
+        void          apply_and_refresh_monitors();
+        void          setup_sigchld_pipe();
+        void          teardown_sigchld_pipe();
+        void          reap_children();
+        void          save_restart_state();
         ReloadRequest consume_reload_request();
-        void          drain_core_events(Core& core);
-        bool          reload_runtime_config(Core& core);
+        void          drain_core_events();
+        bool          reload_runtime_config();
+};
+
+// ---------------------------------------------------------------------------
+// RuntimeOf<B> — typed wrapper that owns the concrete backend as a value.
+// All non-template code works with Runtime& and never sees B.
+// ---------------------------------------------------------------------------
+template<typename B, typename... BArgs>
+class RuntimeOf : public Runtime {
+    B backend_impl_;
+    public:
+        explicit RuntimeOf(ModuleRegistry& module_registry, BArgs&&... args)
+            : Runtime(module_registry)
+              , backend_impl_(core(), static_cast<Runtime&>(*this),
+                  std::forward<BArgs>(args)...)
+        {
+            bind_backend(backend_impl_);
+        }
 };

@@ -2,35 +2,51 @@
 
 #include <backend/events.hpp>
 #include <config_types.hpp>
-#include <window_state.hpp>
+#include <window.hpp>
 #include <monitor.hpp>
 #include <algorithm>
+#include <functional>
 #include <unordered_map>
 #include <cassert>
 
+// Factory function for creating Window instances.
+// Backend supplies its own factory to create subclassed windows (e.g. X11Window).
+using WindowFactory = std::function<std::shared_ptr<swm::Window>(WindowId)>;
+
+enum class WorkspaceMode { Normal, Fullscreen };
+
 struct Workspace {
-    int                                        id;
-    std::vector<std::shared_ptr<WindowState> > windows;
-    int                                        current = -1;
-    std::string                                name;
-    std::string                                monitor_alias; // which monitor alias this ws prefers
+    int                                       id;
+    std::vector<std::shared_ptr<swm::Window>> windows;
+    int                                       current = -1;
+    std::string                               name;
+    std::string                               monitor_alias;  // which monitor alias this ws prefers
+    WorkspaceMode                             mode = WorkspaceMode::Normal;
+
+    // Returns true if any visible window on this workspace is fullscreen or borderless.
+    bool has_fullscreen_window() const {
+        for (auto& w : windows)
+            if (w && w->is_visible() && (w->fullscreen || w->borderless))
+                return true;
+        return false;
+    }
 
     Workspace(int id, std::string name, std::string monitor_alias = "")
         : id(id), name(std::move(name)), monitor_alias(std::move(monitor_alias)) {}
 
-    void add_window(std::shared_ptr<WindowState> w);
-    bool remove_window(WindowId win, std::shared_ptr<WindowState>* removed = nullptr);
+    void add_window(std::shared_ptr<swm::Window> w);
+    bool remove_window(WindowId win, std::shared_ptr<swm::Window>* removed = nullptr);
 
     // Pure query: returns the window that would be focused, without changing state.
-    std::shared_ptr<WindowState>       focused();
-    std::shared_ptr<const WindowState> focused() const;
+    std::shared_ptr<swm::Window>       focused();
+    std::shared_ptr<const swm::Window> focused() const;
 
     // Finds a suitable focused window and advances the internal cursor.
     // Use when you actually want to update which window is "current".
-    std::shared_ptr<WindowState> advance_focus();
+    std::shared_ptr<swm::Window> advance_focus();
 
-    void focus_next();
-    void focus_prev();
+    void                         focus_next();
+    void                         focus_prev();
 };
 
 using WorkspaceState = Workspace;
@@ -48,25 +64,26 @@ struct MonitorFocusState {
 
 class WorkspaceManager {
     private:
+        WindowFactory window_factory_;
         std::vector<Workspace> workspaces;
-        std::vector<Monitor> monitors;
+        std::vector<Monitor>   monitors;
         // Authoritative owner: workspace id -> monitor index (-1 when unowned).
         std::vector<int> ws_owner;
         // Ordered workspace ids per monitor.
-        std::vector<std::vector<int> > monitor_pools;
+        std::vector<std::vector<int>> monitor_pools;
         // Active local workspace index per monitor (index into monitor_pools[i]).
         std::vector<int> monitor_active_local;
         // Pools parked from disconnected monitors by monitor name.
-        std::unordered_map<std::string, std::vector<int> > parked_pools;
+        std::unordered_map<std::string, std::vector<int>> parked_pools;
         // Active workspace id parked with monitor pool.
         std::unordered_map<std::string, int> parked_active_ws;
         // O(1) window lookup and ownership index.
-        std::unordered_map<WindowId, std::shared_ptr<WindowState> > window_index;
+        std::unordered_map<WindowId, std::shared_ptr<swm::Window>> window_index;
         std::unordered_map<WindowId, int> window_workspace;
 
         FocusState focus_; // cache — always derived from focused_monitor_ + monitor_focus_
 
-        int                          focused_monitor_ = 0;
+        int focused_monitor_ = 0;
         std::vector<MonitorFocusState> monitor_focus_;
 
         void ensure_monitor_focus_size();
@@ -91,17 +108,26 @@ class WorkspaceManager {
         void             select_valid_focused_monitor();
         int              resolve_alias_monitor(const std::string& alias,
             const std::vector<MonitorAlias>& aliases) const;
-        void             rebuild_pools_from_owner(const std::vector<std::vector<int> >& seed_pools,
+        void             rebuild_pools_from_owner(const std::vector<std::vector<int>>& seed_pools,
             const std::vector<int>& preferred_active_ws);
         Workspace&       fallback_workspace();
         const Workspace& fallback_workspace() const;
         void             clear_window_indexes();
-        void             index_window(WindowId win, const std::shared_ptr<WindowState>& w, int ws_id);
+        void             index_window(WindowId win, const std::shared_ptr<swm::Window>& w, int ws_id);
         void             unindex_window(WindowId win);
         void             rebuild_window_indexes();
+        bool             window_belongs_to_workspace(WindowId win, int ws_id) const;
+        bool             window_is_unique_across_workspaces(WindowId win) const;
+        bool             monitor_workspace_pools_have_no_duplicates() const;
+        size_t           indexed_window_count() const;
+        bool             indexes_consistent() const;
 
     public:
         WorkspaceManager() = default;
+
+        // Set a custom window factory (backend subclass creation).
+        // Must be called before any create_window() calls.
+        void set_window_factory(WindowFactory factory) { window_factory_ = std::move(factory); }
 
         void init_from_defs(const std::vector<WorkspaceDef>& defs,
             const std::vector<MonitorAlias>& aliases,
@@ -115,41 +141,37 @@ class WorkspaceManager {
             const MonitorCompose& compose = {});
 
         void             set_monitors(std::vector<Monitor> mons);
+        void             adjust_monitor_insets(int top_delta, int bottom_delta);
 
         Workspace&       current();
         const Workspace& current() const;
 
         int              workspace_of_window(WindowId win) const;
-        bool             window_belongs_to_workspace(WindowId win, int ws_id) const;
-        bool             window_is_unique_across_workspaces(WindowId win) const;
-        bool             monitor_workspace_pools_have_no_duplicates() const;
-        size_t           indexed_window_count() const;
-        bool             indexes_consistent() const;
 
         bool             switch_to(int ws_id,
-            const std::vector<MonitorAlias>& aliases                           = {},
-            int monitor_hint = -1,
-            const MonitorCompose& compose                                      = {});
+            const std::vector<MonitorAlias>& aliases = {},
+            int monitor_hint                         = -1,
+            const MonitorCompose& compose            = {});
 
-        void add_window(std::shared_ptr<WindowState> w, int ws_id              = -1);
-        std::shared_ptr<WindowState> create_window(WindowId win, int ws_id     = -1);
-        void remove_window(WindowId win, int ws_id                             = -1);
+        void                               add_window(std::shared_ptr<swm::Window> w, int ws_id = -1);
+        std::shared_ptr<swm::Window>       create_window(WindowId win, int ws_id                = -1);
+        void                               remove_window(WindowId win, int ws_id                = -1);
 
-        std::shared_ptr<WindowState>       find_window(WindowId win, int ws_id = -1);
-        std::shared_ptr<const WindowState> find_window(WindowId win, int ws_id = -1) const;
-        std::shared_ptr<WindowState>       find_window_in_all(WindowId win);
-        std::shared_ptr<const WindowState> find_window_in_all(WindowId win) const;
+        std::shared_ptr<swm::Window>       find_window(WindowId win, int ws_id = -1);
+        std::shared_ptr<const swm::Window> find_window(WindowId win, int ws_id = -1) const;
+        std::shared_ptr<swm::Window>       find_window_in_all(WindowId win);
+        std::shared_ptr<const swm::Window> find_window_in_all(WindowId win) const;
 
-        void remove_window_from_all(WindowId win);
-        void move_window_to(int ws_id, std::shared_ptr<WindowState> w);
+        void                               remove_window_from_all(WindowId win);
+        void                               move_window_to(int ws_id, std::shared_ptr<swm::Window> w);
 
-        bool focus_window(WindowId win);
-        std::shared_ptr<WindowState> focus_next();
-        std::shared_ptr<WindowState> focus_prev();
-        bool zoom_focused();
+        bool                               focus_window(WindowId win);
+        std::shared_ptr<swm::Window>       focus_next();
+        std::shared_ptr<swm::Window>       focus_prev();
+        bool                               zoom_focused();
 
-        bool switch_local_index(int mon_idx, int local_idx);
-        int  workspace_for_local_index(int mon_idx, int local_idx) const;
+        bool                               switch_local_index(int mon_idx, int local_idx);
+        int                                workspace_for_local_index(int mon_idx, int local_idx) const;
 
         const std::vector<int>& monitor_workspace_ids(int mon_idx) const {
             static const std::vector<int> empty;
@@ -194,7 +216,5 @@ class WorkspaceManager {
         }
         const std::vector<MonitorState>& all_monitor_states() const { return monitors; }
         const std::vector<WorkspaceState>& all_workspace_states() const { return workspaces; }
-        std::vector<Monitor>& get_monitors() { return monitors; }
         const std::vector<Monitor>& get_monitors() const { return monitors; }
-        const std::vector<Workspace>& all() const { return workspaces; }
 };

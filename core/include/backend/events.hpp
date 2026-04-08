@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <string>
 
+#include <vec.hpp>
+
 using WindowId = uint32_t;
 static constexpr WindowId NO_WINDOW = 0;
 
@@ -28,6 +30,7 @@ struct ApplyWindowRules { WindowId window; bool from_restart = false; };
 struct CloseWindowRequest { WindowId window; };
 struct RaiseDocks {};
 struct DisplayTopologyChanged {};
+struct RuntimeStarted {};   // fired once after start() completes: monitors and windows are ready
 struct WindowAdopted { WindowId window; bool currently_visible; };
 
 struct KeyPressEv {
@@ -39,8 +42,8 @@ struct KeyPressEv {
 struct ButtonEv {
     WindowId window;
     WindowId root;
-    int16_t  root_x, root_y;
-    int16_t  event_x, event_y;
+    Vec2i16  root_pos;
+    Vec2i16  event_pos;
     uint32_t time;
     uint8_t  button;
     uint16_t state;    // modifier mask
@@ -49,7 +52,7 @@ struct ButtonEv {
 
 struct MotionEv {
     WindowId window;
-    int16_t  root_x, root_y;
+    Vec2i16  root_pos;
     uint16_t state;
 };
 
@@ -63,7 +66,7 @@ struct ClientMessageEv {
 };
 
 struct DestroyNotify { WindowId window; };
-struct ConfigureNotify { WindowId window; int x, y, w, h; };
+struct ConfigureNotify { WindowId window; Vec2i pos; Vec2i size; };
 struct PropertyNotify { WindowId window; uint32_t atom; };
 
 // Emitted when an unmanaged XEMBED window reparents itself to any window.

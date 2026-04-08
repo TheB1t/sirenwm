@@ -27,7 +27,7 @@ std::vector<xcb::Crtc> select_crtcs(xcb::Screen& screen, xcb::Output& output,
     std::vector<xcb::Crtc>        result;
     std::vector<xcb_randr_crtc_t> seen;
 
-    auto push_unique = [&](xcb_randr_crtc_t id) {
+    auto                          push_unique = [&](xcb_randr_crtc_t id) {
             if (id == XCB_NONE)
                 return;
             for (auto s : seen)
@@ -53,10 +53,10 @@ std::vector<xcb::Crtc> select_crtcs(xcb::Screen& screen, xcb::Output& output,
 
 // Resolves the target mode id from explicit monitor dimensions/rate.
 xcb_randr_mode_t resolve_mode(xcb::Output& output, const backend::MonitorLayout& layout) {
-    auto best = output.find_mode(layout.width, layout.height, layout.refresh_rate);
+    auto best = output.find_mode(layout.size.x(), layout.size.y(), layout.refresh_rate);
     if (!best) {
         LOG_ERR("RandR: no mode matching %dx%d@%dHz for '%s'",
-            layout.width, layout.height, layout.refresh_rate, layout.output.c_str());
+            layout.size.x(), layout.size.y(), layout.refresh_rate, layout.output.c_str());
         return XCB_NONE;
     }
     return best->id;
@@ -97,12 +97,12 @@ bool configure_output(xcb::Screen& screen,
 
     auto current_crtc = output->crtc();
 
-    auto mode         = resolve_mode(*output, layout);
+    auto mode = resolve_mode(*output, layout);
     if (mode == XCB_NONE)
         return false;
 
-    int16_t  x        = (int16_t)layout.x;
-    int16_t  y        = (int16_t)layout.y;
+    int16_t  x = (int16_t)layout.pos.x();
+    int16_t  y = (int16_t)layout.pos.y();
 
     uint16_t rotation = xcb::parse_rotation(layout.rotation);
 
@@ -152,7 +152,7 @@ bool configure_output(xcb::Screen& screen,
         if (layout.primary)
             output->set_primary();
 
-        std::string mode_desc = std::to_string(layout.width) + "x" + std::to_string(layout.height);
+        std::string mode_desc = std::to_string(layout.size.x()) + "x" + std::to_string(layout.size.y());
         LOG_INFO("RandR: configured '%s': %s@%dHz rot=%s pos=%d+%d (crtc=%u)",
             layout.output.c_str(),
             mode_desc.c_str(),
@@ -185,15 +185,15 @@ void expand_screen_size(xcb_window_t root,
         auto output = screen.find_output(layout.output);
         if (!output || !output->connected()) continue;
 
-        int w = layout.width;
-        int h = layout.height;
+        int w = layout.size.x();
+        int h = layout.size.y();
         if (w <= 0 || h <= 0) continue;
 
         bool rotated = is_rotated(layout.rotation);
         int  sw      = rotated ? h : w;
         int  sh      = rotated ? w : h;
-        max_x = std::max(max_x, layout.x + sw);
-        max_y = std::max(max_y, layout.y + sh);
+        max_x = std::max(max_x, layout.pos.x() + sw);
+        max_y = std::max(max_y, layout.pos.y() + sh);
     }
 
     if (max_x <= 0 || max_y <= 0) return;
@@ -222,7 +222,7 @@ void expand_screen_size(xcb_window_t root,
 // X11 implementation of MonitorPort using RandR.
 class X11MonitorPort final : public backend::MonitorPort {
     XConnection& xconn;
-    Runtime& runtime;
+    Runtime&     runtime;
 
     public:
         X11MonitorPort(XConnection& xconn, Runtime& runtime)
@@ -242,7 +242,7 @@ class X11MonitorPort final : public backend::MonitorPort {
             xcb::Screen screen(conn, root);
             expand_screen_size(root, conn, screen, layouts);
 
-            bool all_ok = true;
+            bool                                 all_ok = true;
             std::unordered_set<xcb_randr_crtc_t> reserved_crtcs;
             for (auto& layout : layouts)
                 all_ok = configure_output(screen, conn, layout, reserved_crtcs) && all_ok;
@@ -257,7 +257,7 @@ class X11MonitorPort final : public backend::MonitorPort {
                 }
                 xconn.flush();
 
-                xcb::Screen retry_screen(conn, root);
+                xcb::Screen                          retry_screen(conn, root);
                 expand_screen_size(root, conn, retry_screen, layouts);
                 std::unordered_set<xcb_randr_crtc_t> retry_reserved_crtcs;
                 for (auto& layout : layouts)

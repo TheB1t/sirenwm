@@ -16,9 +16,10 @@
 #include <log.hpp>
 #include <monitor.hpp>
 #include <layout.hpp>
+#include <lua_host.hpp>
 #include <ws.hpp>
 
-using LayoutFn   = std::function<void (const std::vector<WindowId>&, const Monitor&, const layout::Config&,
+using LayoutFn = std::function<void (const std::vector<WindowId>&, const Monitor&, const layout::Config&,
     const layout::PlacementSink&)>;
 using KeyHandler = std::function<void ()>;
 
@@ -42,7 +43,7 @@ struct CoreReloadState {
     std::string             active_layout;
 };
 
-using WindowStateRef    = std::shared_ptr<const WindowState>;
+using WindowRef         = std::shared_ptr<const swm::Window>;
 using WorkspaceStateRef = const WorkspaceState*;
 using MonitorStateRef   = const MonitorState*;
 using CoreDomainEvent   = std::variant<
@@ -62,41 +63,47 @@ enum class BackendEffectKind {
     FocusRoot,
     UpdateWindow,
     WarpPointer,
+    RaiseWindow,           // raise window to top of X stacking order
+    LowerWindow,           // lower window to bottom of X stacking order
 };
 
 struct BackendEffect {
     BackendEffectKind kind   = BackendEffectKind::UpdateWindow;
     WindowId          window = NO_WINDOW;
-    int16_t           x      = 0;
-    int16_t           y      = 0;
+    Vec2i16           pos;
 };
 
 struct WindowFlush {
     enum Dirty : uint8_t {
-        X            = 1 << 0,
-        Y            = 1 << 1,
-        Width        = 1 << 2,
-        Height       = 1 << 3,
-        BorderWidth  = 1 << 4,
-        Geometry     = X | Y | Width | Height,
-        Position     = X | Y,
-        Size         = Width | Height,
-        All          = Geometry | BorderWidth,
+        X           = 1 << 0,
+        Y           = 1 << 1,
+        Width       = 1 << 2,
+        Height      = 1 << 3,
+        BorderWidth = 1 << 4,
+        Geometry    = X | Y | Width | Height,
+        Position    = X | Y,
+        Size        = Width | Height,
+        All         = Geometry | BorderWidth,
     };
 
-    WindowId window    = NO_WINDOW;
-    uint8_t  dirty     = 0;
+    WindowId window = NO_WINDOW;
+    uint8_t  dirty  = 0;
 
     bool has_config_changes() const { return dirty != 0; }
 };
 
 class Core {
     private:
-        std::unordered_map<std::string, LayoutFn> layouts;
+        std::unordered_map<std::string, LayoutFn>       layouts;
+        std::unordered_map<std::string, LuaRegistryRef> lua_layouts;
         std::vector<Keybinding> keybindings;
 
-        std::string active_layout = "tile";
+        std::string    active_layout = "tile";
         layout::Config layout_cfg;
+
+        // Non-null only while a Lua layout callback is being invoked from arrange().
+        // Used by siren.layout.place() to place windows without passing Core through Lua.
+        layout::PlacementSink* active_lua_sink_ = nullptr;
 
         WorkspaceManager wsman;
         std::vector<BackendEffect> pending_backend_effects;
@@ -105,12 +112,13 @@ class Core {
         CoreSettings settings;
 
         std::string config_path;
-        bool runtime_started             = false;
-        int monitor_top_inset_applied    = 0;
-        int monitor_bottom_inset_applied = 0;
+        LuaHost*    lua_host_                    = nullptr;
+        bool        runtime_started              = false;
+        int         monitor_top_inset_applied    = 0;
+        int         monitor_bottom_inset_applied = 0;
 
         void         emit_backend_effect(BackendEffectKind kind, WindowId window = NO_WINDOW);
-        void         emit_warp_pointer(int16_t x, int16_t y);
+        void         emit_warp_pointer(Vec2i16 pos);
         WindowFlush& ensure_window_flush(WindowId win);
         void         mark_window_dirty(WindowId win, uint8_t bits);
         void         sync_workspace_visibility();
@@ -122,6 +130,8 @@ class Core {
         void         emit_window_assigned_to_workspace(WindowId window, int workspace_id);
         void         emit_borderless_activated(WindowId window, int monitor_index);
         void         emit_borderless_deactivated();
+        void         evaluate_workspace_fullscreen(int ws_id);
+        void         pin_fullscreen_to_monitor(swm::Window& w, int ws_id);
 
     public:
         Core() = default;
@@ -129,10 +139,21 @@ class Core {
         // Schedule a FocusChanged event for delivery via drain_core_events.
         // Use instead of a direct backend notify so the event is ordered after
         // any older queued events — prevents stale focus from overwriting state.
-        void         emit_focus_changed(WindowId window);
+        void emit_focus_changed(WindowId window);
 
         void register_layout(const std::string& name, LayoutFn fn) {
             layouts[name] = std::move(fn);
+        }
+
+        void register_lua_layout(const std::string& name, LuaRegistryRef ref) {
+            lua_layouts[name] = std::move(ref);
+        }
+
+        // Called by siren.layout.place() during a Lua layout callback.
+        bool lua_place_window(WindowId id, Vec2i pos, Vec2i size, uint32_t border) {
+            if (!active_lua_sink_) return false;
+            (*active_lua_sink_)(id, pos, size, border);
+            return true;
         }
 
         void register_keybinding(uint16_t mods, uint32_t keysym, KeyHandler fn) {
@@ -142,6 +163,17 @@ class Core {
         const std::vector<Keybinding>& get_keybindings() const {
             return keybindings;
         }
+
+        void set_window_factory(WindowFactory factory) { wsman.set_window_factory(std::move(factory)); }
+        void bind_lua_host(LuaHost& host) { lua_host_ = &host; }
+        LuaHost& lua_host() const {
+            if (!lua_host_) {
+                LOG_ERR("lua_host() called before bind_lua_host()");
+                std::abort();
+            }
+            return *lua_host_;
+        }
+        bool has_lua_host() const { return lua_host_ != nullptr; }
 
         void set_config_path(const std::string& path) { config_path = path; }
         const std::string& get_config_path() const { return config_path; }
@@ -161,6 +193,7 @@ class Core {
         void            restore_reload_state(const CoreReloadState& snapshot);
         void clear_reloadable_runtime_state() {
             keybindings.clear();
+            lua_layouts.clear();
         }
 
         void init(std::vector<Monitor> initial_monitors = {});
@@ -237,18 +270,17 @@ class Core {
             // Monitor coordinates are adjusted by bar inset (mon.y += top_inset).
             // Callers may pass raw physical coordinates (e.g. WM_NORMAL_HINTS.PPosition
             // from Wine/Proton), so compensate before the lookup.
-            int top = std::max(0, monitor_top_inset_applied);
-            int mon = wsman.monitor_at_point(x, y + top);
+            int mon = wsman.monitor_at_point(x, y + std::max(0, monitor_top_inset_applied));
             return (mon >= 0) ? wsman.active_workspace(mon) : -1;
         }
         int workspace_count()         const { return (int)workspace_states().size(); }
 
         std::vector<WindowId> all_window_ids() const;
 
-        WindowStateRef focused_window_state() const {
-            int mon  = wsman.get_focused_monitor();
-            int ws   = wsman.active_workspace(mon);
-            WindowId w = wsman.last_focused_window(mon, ws);
+        WindowRef focused_window_state() const {
+            int      mon = wsman.get_focused_monitor();
+            int      ws  = wsman.active_workspace(mon);
+            WindowId w   = wsman.last_focused_window(mon, ws);
             if (w == NO_WINDOW) {
                 // Fall back to workspace cursor (covers fresh windows not yet recorded).
                 w = wsman.get_focus_state().window;
@@ -258,11 +290,16 @@ class Core {
             return wsman.find_window_in_all(w);
         }
 
-        WindowStateRef window_state(WindowId win) const {
+        WindowRef window_state(WindowId win) const {
             return wsman.find_window(win);
         }
 
-        WindowStateRef window_state_any(WindowId win) const {
+        WindowRef window_state_any(WindowId win) const {
+            return wsman.find_window_in_all(win);
+        }
+
+        // Mutable access for backend — returns the live Window object.
+        std::shared_ptr<swm::Window> window_mut(WindowId win) {
             return wsman.find_window_in_all(win);
         }
 

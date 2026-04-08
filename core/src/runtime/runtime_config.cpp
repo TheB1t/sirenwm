@@ -82,7 +82,7 @@ bool runtime_value_from_lua_impl(LuaContext& lua, int idx, RuntimeValue& out, in
                 lua.pop(2);
                 return false;
             }
-            std::string  k  = lua.to_string(-2);
+            std::string  k = lua.to_string(-2);
             RuntimeValue v;
             bool         ok = runtime_value_from_lua_impl(lua, -1, v, depth + 1);
             lua.pop();

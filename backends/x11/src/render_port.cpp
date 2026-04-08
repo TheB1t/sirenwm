@@ -30,10 +30,10 @@ class X11RenderWindow final : public backend::RenderWindow {
               conn_(xconn.raw_conn()),
               screen_(xconn.raw_screen()),
               monitor_index_(info.monitor_index),
-              x_(info.x),
-              y_(info.y),
-              w_(std::max(1, info.width)),
-              h_(std::max(1, info.height)) {
+              x_(info.pos.x()),
+              y_(info.pos.y()),
+              w_(std::max(1, info.size.x())),
+              h_(std::max(1, info.size.y())) {
             if (!conn_ || !screen_)
                 return;
 
@@ -209,20 +209,20 @@ class X11RenderWindow final : public backend::RenderWindow {
         }
 
     private:
-        XConnection& xconn_;
-        xcb_connection_t* conn_ = nullptr;
-        xcb_screen_t* screen_   = nullptr;
+        XConnection&      xconn_;
+        xcb_connection_t* conn_   = nullptr;
+        xcb_screen_t*     screen_ = nullptr;
 
-        xcb_window_t win_       = XCB_WINDOW_NONE;
-        xcb_pixmap_t buf_       = XCB_PIXMAP_NONE;
-        int monitor_index_      = -1;
-        int x_ = 0;
-        int y_ = 0;
-        int w_ = 1;
-        int h_ = 1;
+        xcb_window_t win_           = XCB_WINDOW_NONE;
+        xcb_pixmap_t buf_           = XCB_PIXMAP_NONE;
+        int          monitor_index_ = -1;
+        int          x_             = 0;
+        int          y_             = 0;
+        int          w_             = 1;
+        int          h_             = 1;
 
-        cairo_surface_t* surface_           = nullptr;
-        cairo_t* cr_                        = nullptr;
+        cairo_surface_t* surface_ = nullptr;
+        cairo_t*         cr_      = nullptr;
 
         xcb_atom_t NET_WM_STRUT_PARTIAL_    = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_STRUT_            = XCB_ATOM_NONE;

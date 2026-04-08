@@ -7,6 +7,7 @@
 
 #include <backend/events.hpp>
 #include <monitor.hpp>
+#include <vec.hpp>
 #include <window_state.hpp>
 
 namespace command {
@@ -52,7 +53,6 @@ struct EnsureWindow {
     int      workspace_id = -1;
 };
 
-
 struct AssignWindowWorkspace {
     WindowId window       = NO_WINDOW;
     int      workspace_id = -1;
@@ -61,22 +61,27 @@ struct AssignWindowWorkspace {
 // Raw observable facts about a window supplied by the backend at map time.
 // No policy decisions — just what the protocol says.
 struct WindowHints {
-    bool no_decorations = false; // _MOTIF_WM_HINTS decorations == 0
-    bool fixed_size     = false; // min == max in WM_NORMAL_HINTS
-    bool never_focus    = false; // WM_HINTS.input == False
-    bool static_gravity = false; // WM_NORMAL_HINTS StaticGravity
-    bool covers_monitor = false; // outer size >= any monitor usable area at map time
-    bool pre_fullscreen = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
-    bool is_xembed      = false; // _XEMBED_INFO present — not self-managed
+    bool  no_decorations = false; // _MOTIF_WM_HINTS decorations == 0
+    bool  fixed_size     = false; // min == max in WM_NORMAL_HINTS
+    bool  never_focus    = false; // WM_HINTS.input == False
+    bool  urgent         = false; // WM_HINTS UrgencyHint bit set
+    bool  static_gravity = false; // WM_NORMAL_HINTS StaticGravity
+    bool  covers_monitor = false; // outer size >= any monitor usable area at map time
+    bool  pre_fullscreen = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
+    bool  is_xembed      = false; // _XEMBED_INFO present — not self-managed
+    Vec2i size_min;               // WM_NORMAL_HINTS PMinSize  (0,0 = none)
+    Vec2i size_max;               // WM_NORMAL_HINTS PMaxSize  (0,0 = none)
+    Vec2i size_inc;               // WM_NORMAL_HINTS PResizeInc (0,0 = any)
+    Vec2i size_base;              // WM_NORMAL_HINTS PBaseSize (0,0 = none)
 };
 
 struct SetWindowMetadata {
-    WindowId     window = NO_WINDOW;
-    std::string  wm_instance;
-    std::string  wm_class;
-    WindowType   type          = WindowType::Normal;
-    WindowHints  hints;
-    WindowId     transient_for = NO_WINDOW;
+    WindowId    window = NO_WINDOW;
+    std::string wm_instance;
+    std::string wm_class;
+    WindowType  type = WindowType::Normal;
+    WindowHints hints;
+    WindowId    transient_for = NO_WINDOW;
 };
 
 struct SetWindowMapped {
@@ -154,22 +159,18 @@ struct RemoveWindowFromAllWorkspaces {
 
 struct SetWindowGeometry {
     WindowId window = NO_WINDOW;
-    int32_t  x      = 0;
-    int32_t  y      = 0;
-    uint32_t width  = 0;
-    uint32_t height = 0;
+    Vec2i    pos;
+    Vec2i    size;
 };
 
 struct SetWindowPosition {
     WindowId window = NO_WINDOW;
-    int32_t  x      = 0;
-    int32_t  y      = 0;
+    Vec2i    pos;
 };
 
 struct SetWindowSize {
     WindowId window = NO_WINDOW;
-    uint32_t width  = 0;
-    uint32_t height = 0;
+    Vec2i    size;
 };
 
 struct SetWindowBorderWidth {
@@ -178,11 +179,9 @@ struct SetWindowBorderWidth {
 };
 
 struct SyncWindowFromConfigureNotify {
-    WindowId window       = NO_WINDOW;
-    int32_t  x            = 0;
-    int32_t  y            = 0;
-    uint32_t width        = 0;
-    uint32_t height       = 0;
+    WindowId window = NO_WINDOW;
+    Vec2i    pos;
+    Vec2i    size;
     uint32_t border_width = 0;
 };
 

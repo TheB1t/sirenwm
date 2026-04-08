@@ -117,14 +117,14 @@ int PaintContext::draw_text(int x,
         return 0;
 
     pango_layout_set_text(layout_, text.c_str(), (int)text.size());
-    int    tw      = 0;
-    int    th      = 0;
+    int    tw = 0;
+    int    th = 0;
     pango_layout_get_pixel_size(layout_, &tw, &th);
     int    total_w = tw + pad * 2;
 
-    double br      = 0.0;
-    double bgc     = 0.0;
-    double bb      = 0.0;
+    double br  = 0.0;
+    double bgc = 0.0;
+    double bb  = 0.0;
     parse_hex_color(bg, br, bgc, bb);
     cairo_set_source_rgb(cr_, br, bgc, bb);
     cairo_rectangle(cr_, x, 0, total_w, height());
@@ -165,8 +165,14 @@ std::vector<TagHit> TagsWidget::draw(PaintContext& paint,
         return hits;
     }
     for (const auto& tag : state.tags) {
-        const std::string& fg = tag.focused ? cfg.colors.focused_fg : cfg.colors.normal_fg;
-        const std::string& bg = tag.focused ? cfg.colors.focused_bg : cfg.colors.bar_bg;
+        // urgent overrides focus colors so unfocused workspaces with urgent
+        // windows are visually distinct (matching dwm/i3 convention).
+        const std::string& fg = (tag.urgent && !tag.focused) ? cfg.colors.focused_bg
+                              : tag.focused                  ? cfg.colors.focused_fg
+                                                             : cfg.colors.normal_fg;
+        const std::string& bg = (tag.urgent && !tag.focused) ? cfg.colors.focused_fg
+                              : tag.focused                  ? cfg.colors.focused_bg
+                                                             : cfg.colors.bar_bg;
         int                tw = paint.draw_text(cursor_x, tag.name, fg, bg);
         if (tag.has_windows) {
             constexpr int sq = 4;

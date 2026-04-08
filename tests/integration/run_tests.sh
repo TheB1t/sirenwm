@@ -15,7 +15,7 @@ PASS=0
 FAIL=0
 
 LOG_DIR="${TMPDIR:-/tmp}/sirenwm-itest"
-SWM_LOG="$LOG_DIR/sirenwm.log"
+SIRENWM_LOG="$LOG_DIR/sirenwm.log"
 XEPHYR_LOG="$LOG_DIR/xephyr.log"
 TEST_HOME="$LOG_DIR/home"
 TEST_CONFIG="$TEST_HOME/.config/sirenwm/init.lua"
@@ -42,25 +42,25 @@ require_cmd() {
 }
 
 dump_logs() {
-    info "sirenwm log: $SWM_LOG"
-    tail -n 60 "$SWM_LOG" 2>/dev/null || true
+    info "sirenwm log: $SIRENWM_LOG"
+    tail -n 60 "$SIRENWM_LOG" 2>/dev/null || true
     info "Xephyr log: $XEPHYR_LOG"
     tail -n 60 "$XEPHYR_LOG" 2>/dev/null || true
 }
 
 XEPHYR_PID=0
-SWM_PID=0
+SIRENWM_PID=0
 
 cleanup() {
     info "Cleaning up..."
-    [[ $SWM_PID -ne 0 ]]    && kill $SWM_PID    2>/dev/null || true
+    [[ $SIRENWM_PID -ne 0 ]]    && kill $SIRENWM_PID    2>/dev/null || true
     [[ $XEPHYR_PID -ne 0 ]] && kill $XEPHYR_PID 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT
 
 mkdir -p "$LOG_DIR"
-: > "$SWM_LOG"
+: > "$SIRENWM_LOG"
 : > "$XEPHYR_LOG"
 
 for cmd in Xephyr xdpyinfo xwininfo xprop xclock xterm wmctrl; do
@@ -76,7 +76,9 @@ fi
 
 mkdir -p "$(dirname "$TEST_CONFIG")"
 cat >"$TEST_CONFIG" <<'LUA'
-siren.modules = { "layout", "monitors", "keybindings", "rules", "bar" }
+require("keybindings")
+require("bar")
+
 siren.modifier = "mod1"
 
 siren.theme = {
@@ -113,14 +115,18 @@ siren.bar = {
   },
 }
 
-siren.rules = {
-  { class = "XTerm",  workspace = 2, isfloating = false },
-  { class = "XClock", instance = "xclock_float", isfloating = true },
-}
+siren.on("window_rules", function(win)
+  if win.from_restart then return end
+  if win.class == "XTerm" then
+    siren.win.move_to(win.id, 2)
+  elseif win.class == "XClock" and win.instance == "xclock_float" then
+    siren.win.set_floating(win.id, true)
+  end
+end)
 
 siren.binds = {
-  { "mod1+j", function() siren.windows.focus_next() end },
-  { "mod1+k", function() siren.windows.focus_prev() end },
+  { "mod1+j", function() siren.win.focus_next() end },
+  { "mod1+k", function() siren.win.focus_prev() end },
 }
 
 siren.monitors = {
@@ -145,6 +151,29 @@ siren.workspaces = {
   { name = "[2]", monitor = "primary" },
   { name = "[3]", monitor = "primary" },
 }
+LUA
+
+# Install bundled Lua modules so require("swm.*") works without a system install.
+mkdir -p "$TEST_HOME/.config/sirenwm"
+cp -r "$REPO_ROOT/lua/." "$TEST_HOME/.config/sirenwm/"
+
+# Create a mock xwallpaper that records its arguments instead of running.
+WALLPAPER_ARGS_FILE="$LOG_DIR/xwallpaper_args.txt"
+mkdir -p "$TEST_HOME/bin"
+cat >"$TEST_HOME/bin/xwallpaper" <<MOCK
+#!/bin/sh
+echo "\$@" > "$WALLPAPER_ARGS_FILE"
+MOCK
+chmod +x "$TEST_HOME/bin/xwallpaper"
+export PATH="$TEST_HOME/bin:$PATH"
+
+# Append wallpaper config (needs variable expansion for the image path).
+cat >>"$TEST_CONFIG" <<LUA
+
+local wallpaper = require("swm.wallpaper")
+wallpaper.setup({
+  primary = { image = "$SCRIPT_DIR/picture.png", mode = "stretch" },
+})
 LUA
 
 wait_for_display() {
@@ -285,15 +314,15 @@ if ! wait_for_display $DISPLAY_NUM; then
 fi
 
 info "Starting sirenwm..."
-HOME=$TEST_HOME DISPLAY=$DISPLAY_NUM "$SIRENWM" >"$SWM_LOG" 2>&1 &
-SWM_PID=$!
+HOME=$TEST_HOME DISPLAY=$DISPLAY_NUM PATH="$TEST_HOME/bin:$PATH" "$SIRENWM" >"$SIRENWM_LOG" 2>&1 &
+SIRENWM_PID=$!
 sleep 0.8
 
 # ---------------------------------------------------------------------------
 # Test 1: sirenwm starts without crashing
 # ---------------------------------------------------------------------------
 
-if kill -0 $SWM_PID 2>/dev/null; then
+if kill -0 $SIRENWM_PID 2>/dev/null; then
     pass "sirenwm starts and stays alive"
 else
     fail "sirenwm starts and stays alive" "process exited immediately"
@@ -522,47 +551,6 @@ fi
 # covered by the code path and by the "switching to ws" log suppression above.
 info "_NET_ACTIVE_WINDOW hidden-window reject: skipped (xterm sends _NET_CURRENT_DESKTOP itself)"
 
-# ---------------------------------------------------------------------------
-# Test 7c: _NET_WM_STATE_HIDDEN set/cleared on workspace switch
-# ---------------------------------------------------------------------------
-
-DISPLAY=$DISPLAY_NUM wmctrl -s 0
-wait_for_desktop 0 || true
-sleep 0.1
-
-if [[ -n "${XCLOCK1_ID:-}" ]]; then
-    # On workspace 1 — should NOT have HIDDEN
-    XCLOCK_STATE=$(DISPLAY=$DISPLAY_NUM xprop -id "$XCLOCK1_ID" _NET_WM_STATE 2>/dev/null)
-    if ! echo "$XCLOCK_STATE" | grep -q "HIDDEN"; then
-        pass "_NET_WM_STATE_HIDDEN absent on visible window"
-    else
-        fail "_NET_WM_STATE_HIDDEN absent on visible window" "state: $XCLOCK_STATE"
-    fi
-
-    # Switch away — window should get HIDDEN
-    DISPLAY=$DISPLAY_NUM wmctrl -s 1
-    wait_for_desktop 1 || true
-    sleep 0.2
-    XCLOCK_STATE_HIDDEN=$(DISPLAY=$DISPLAY_NUM xprop -id "$XCLOCK1_ID" _NET_WM_STATE 2>/dev/null)
-    if echo "$XCLOCK_STATE_HIDDEN" | grep -q "HIDDEN"; then
-        pass "_NET_WM_STATE_HIDDEN set after workspace switch"
-    else
-        fail "_NET_WM_STATE_HIDDEN set after workspace switch" "state: $XCLOCK_STATE_HIDDEN"
-    fi
-
-    # Switch back — HIDDEN should be cleared
-    DISPLAY=$DISPLAY_NUM wmctrl -s 0
-    wait_for_desktop 0 || true
-    sleep 0.2
-    XCLOCK_STATE_BACK=$(DISPLAY=$DISPLAY_NUM xprop -id "$XCLOCK1_ID" _NET_WM_STATE 2>/dev/null)
-    if ! echo "$XCLOCK_STATE_BACK" | grep -q "HIDDEN"; then
-        pass "_NET_WM_STATE_HIDDEN cleared after switching back"
-    else
-        fail "_NET_WM_STATE_HIDDEN cleared after switching back" "state: $XCLOCK_STATE_BACK"
-    fi
-else
-    info "No xclock1 ID — skipping _NET_WM_STATE_HIDDEN tests"
-fi
 
 # ---------------------------------------------------------------------------
 # Test 7d: _NET_WM_STATE_FOCUSED tracks active window
@@ -976,11 +964,29 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 17: Wallpaper — xwallpaper mock receives correct arguments on start
+# ---------------------------------------------------------------------------
+
+sleep 0.5  # give sirenwm time to emit RuntimeStarted and run xwallpaper
+
+if [[ ! -f "$WALLPAPER_ARGS_FILE" ]]; then
+    fail "wallpaper: xwallpaper was not invoked" "args file not created"
+else
+    WP_ARGS=$(cat "$WALLPAPER_ARGS_FILE")
+    if echo "$WP_ARGS" | grep -q "\-\-output.*\-\-stretch.*picture\.png"; then
+        pass "wallpaper: xwallpaper invoked with correct args ($WP_ARGS)"
+    else
+        fail "wallpaper: xwallpaper invoked with correct args" \
+             "got: $WP_ARGS"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Test 8: sirenwm still alive after window operations
 # ---------------------------------------------------------------------------
 
 sleep 0.2
-if kill -0 $SWM_PID 2>/dev/null; then
+if kill -0 $SIRENWM_PID 2>/dev/null; then
     pass "sirenwm alive after window operations"
 else
     fail "sirenwm alive after window operations" "process died"

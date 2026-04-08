@@ -5,7 +5,6 @@ class Config;
 namespace config_runtime {
 
 // Registers built-in runtime settings owned by Config:
-// - behavior
 // - monitors
 // - compose_monitors
 // - workspaces

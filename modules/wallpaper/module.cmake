@@ -1,1 +1,0 @@
-set(SOURCES wallpaper.cpp)

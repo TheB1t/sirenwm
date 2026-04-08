@@ -8,25 +8,21 @@
 #include <runtime.hpp>
 
 // ---------------------------------------------------------------------------
-// Lua config: siren.keyboard = { layouts = "us,ru", options = "grp:alt_shift_toggle" }
+// Lua config parsing
 // ---------------------------------------------------------------------------
 
-static bool parse_keyboard_table(LuaContext& lua, int idx,
-    std::vector<std::string>& layouts_out,
-    std::string& options_out,
-    std::string& err) {
+bool KeyboardModule::parse_setup(LuaContext& lua, int idx, std::string& err) {
     if (!lua.is_table(idx)) {
-        err = "siren.keyboard must be a table";
+        err = "keyboard.setup: expected table";
         return false;
     }
 
-    layouts_out.clear();
-    options_out.clear();
+    layouts_.clear();
+    options_.clear();
 
     lua.get_field(idx, "layouts");
     if (lua.is_string(-1)) {
         std::string            raw = lua.to_string(-1);
-        // Split comma-separated layout string.
         std::string::size_type pos = 0;
         while (pos < raw.size()) {
             auto        comma = raw.find(',', pos);
@@ -34,12 +30,12 @@ static bool parse_keyboard_table(LuaContext& lua, int idx,
                 ? raw.substr(pos)
                 : raw.substr(pos, comma - pos);
             if (!tok.empty())
-                layouts_out.push_back(tok);
+                layouts_.push_back(tok);
             if (comma == std::string::npos) break;
             pos = comma + 1;
         }
     } else if (!lua.is_nil(-1)) {
-        err = "siren.keyboard.layouts must be a string (e.g. \"us,ru\")";
+        err = "keyboard.setup: layouts must be a string (e.g. \"us,ru\")";
         lua.pop(1);
         return false;
     }
@@ -47,9 +43,9 @@ static bool parse_keyboard_table(LuaContext& lua, int idx,
 
     lua.get_field(idx, "options");
     if (lua.is_string(-1))
-        options_out = lua.to_string(-1);
+        options_ = lua.to_string(-1);
     else if (!lua.is_nil(-1)) {
-        err = "siren.keyboard.options must be a string";
+        err = "keyboard.setup: options must be a string";
         lua.pop(1);
         return false;
     }
@@ -65,7 +61,7 @@ static bool parse_keyboard_table(LuaContext& lua, int idx,
 void KeyboardModule::apply() {
     if (layouts_.empty())
         return;
-    auto* kp = runtime().backend().keyboard_port();
+    auto* kp = backend().keyboard_port();
     if (!kp) {
         LOG_WARN("keyboard: no keyboard port available");
         return;
@@ -83,32 +79,44 @@ void KeyboardModule::apply() {
         options_.c_str());
 }
 
-void KeyboardModule::on_init(Core&) {
-    config().register_lua_assignment_handler("keyboard",
-        [this](LuaContext& lua, int idx, std::string& err) -> bool {
-            return parse_keyboard_table(lua, idx, layouts_, options_, err);
-        });
+void KeyboardModule::on_init() {}
+
+void KeyboardModule::on_lua_init() {
+    auto& lua = config().lua();
+    auto  ctx = lua.context();
+
+    // Proxy table: kbd.settings = {...} triggers parse_setup immediately.
+    ctx.new_table();   // proxy
+    ctx.new_table();   // metatable
+    lua.push_callback([](LuaContext& lctx, void* ud) -> int {
+            // __newindex(proxy, key, value)
+            std::string key = lctx.is_string(2) ? lctx.to_string(2) : "";
+            if (key == "settings") {
+                auto*       mod = static_cast<KeyboardModule*>(ud);
+                std::string err;
+                if (!mod->parse_setup(lctx, 3, err))
+                    LOG_ERR("%s", err.c_str());
+            }
+            return 0;
+        }, this);
+    ctx.set_field(-2, "__newindex");
+    ctx.set_metatable(-2);
+
+    lua.set_module_table("keyboard");
 }
 
-void KeyboardModule::on_lua_init(Core&) {
-    config().register_lua_assignment_handler("keyboard",
-        [this](LuaContext& lua, int idx, std::string& err) -> bool {
-            return parse_keyboard_table(lua, idx, layouts_, options_, err);
-        });
-}
-
-void KeyboardModule::on_start(Core&) {
+void KeyboardModule::on_start() {
     apply();
 }
 
-void KeyboardModule::on_reload(Core&) {
+void KeyboardModule::on_reload() {
     apply();
 }
 
-void KeyboardModule::on_stop(Core&, bool /*is_exec_restart*/) {
-    auto* kp = runtime().backend().keyboard_port();
+void KeyboardModule::on_stop(bool /*is_exec_restart*/) {
+    auto* kp = backend().keyboard_port();
     if (kp)
         kp->restore();
 }
 
-SWM_REGISTER_MODULE("keyboard", KeyboardModule)
+SIRENWM_REGISTER_MODULE("keyboard", KeyboardModule)

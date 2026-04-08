@@ -17,11 +17,11 @@ typedef struct _XDisplay Display;
 struct Monitor;
 
 class XConnection {
-    Display* dpy           = nullptr;
-    xcb_connection_t* conn = nullptr;
-    xcb_screen_t* screen   = nullptr;
-    bool dirty             = false;
-    int xkb_event_type_    = -1;
+    Display* dpy             = nullptr;
+    xcb_connection_t* conn   = nullptr;
+    xcb_screen_t*     screen = nullptr;
+    bool dirty               = false;
+    int  xkb_event_type_     = -1;
 
     public:
         XConnection();
@@ -148,14 +148,28 @@ class XConnection {
         WindowAttributes            get_window_attributes(xcb_window_t win) const;
         std::optional<Geometry>     get_window_geometry(xcb_window_t win) const;
         std::optional<xcb_window_t> get_transient_for_window(xcb_window_t win) const;
-        int          get_wm_state_value(xcb_window_t win, xcb_atom_t wm_state_atom) const;
-        bool         has_fixed_size_hints(xcb_window_t win) const;
-        bool         has_static_gravity(xcb_window_t win) const;
-        bool         motif_no_decorations(xcb_window_t win) const;
-        bool         get_wm_hints_no_input(xcb_window_t win) const;
-        bool         has_property_32(xcb_window_t win, xcb_atom_t prop, uint32_t min_items) const;
-        xcb_cursor_t create_left_ptr_cursor();
-        void         free_cursor(xcb_cursor_t cursor);
+        int                         get_wm_state_value(xcb_window_t win, xcb_atom_t wm_state_atom) const;
+        struct SizeHints {
+            bool fixed    = false; // min == max (implies no_resize)
+            bool has_min  = false;
+            bool has_max  = false;
+            bool has_inc  = false;
+            bool has_base = false;
+            int  min_w = 0, min_h = 0;
+            int  max_w = 0, max_h = 0;
+            int  inc_w = 0, inc_h = 0;  // size increment (terminal cell size)
+            int  base_w = 0, base_h = 0;
+        };
+        SizeHints                   get_size_hints(xcb_window_t win) const;
+        bool                        has_fixed_size_hints(xcb_window_t win) const;
+        bool                        has_static_gravity(xcb_window_t win) const;
+        bool                        motif_no_decorations(xcb_window_t win) const;
+        struct WmHints { bool no_input = false; bool urgent = false; };
+        WmHints                     get_wm_hints(xcb_window_t win) const;
+        bool                        get_wm_hints_no_input(xcb_window_t win) const;
+        bool                        has_property_32(xcb_window_t win, xcb_atom_t prop, uint32_t min_items) const;
+        xcb_cursor_t                create_left_ptr_cursor();
+        void                        free_cursor(xcb_cursor_t cursor);
 
         void change_property(xcb_window_t win, xcb_atom_t prop, xcb_atom_t type,
             uint8_t format, uint32_t count, const void* data) {
@@ -168,7 +182,7 @@ class XConnection {
         }
 
         xcb_atom_t intern_atom_reply(xcb_intern_atom_cookie_t cookie) const {
-            auto       r    = xcb_intern_atom_reply(conn, cookie, nullptr);
+            auto       r = xcb_intern_atom_reply(conn, cookie, nullptr);
             if (!r) return XCB_ATOM_NONE;
             xcb_atom_t atom = r->atom;
             free(r);

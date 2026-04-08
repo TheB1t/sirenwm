@@ -1,5 +1,7 @@
 #include "sysinfo_module.hpp"
 
+#include <backend/backend.hpp>
+#include <backend/keyboard_port.hpp>
 #include <config.hpp>
 #include <log.hpp>
 #include <module_registry.hpp>
@@ -190,7 +192,7 @@ static std::vector<DiskInfo> disks_read() {
 
     std::vector<DiskInfo> result;
     char                  dev[256], mnt[256], fstype[64], opts[256];
-    int dump, pass;
+    int                   dump, pass;
     while (fscanf(f, "%255s %255s %63s %255s %d %d", dev, mnt, fstype, opts, &dump, &pass) == 6) {
         if (is_pseudo(fstype)) continue;
         if (strncmp(dev, "/dev/", 5) != 0) continue;
@@ -236,7 +238,7 @@ static int lua_sys_uptime(LuaContext& lua) {
     if (fd < 0) {
         lua.push_number(0); return 1;
     }
-    ssize_t n  = read(fd, buf, sizeof(buf) - 1);
+    ssize_t n = read(fd, buf, sizeof(buf) - 1);
     close(fd);
     double  up = 0;
     if (n > 0) {
@@ -255,7 +257,7 @@ static int lua_sys_net_ip(LuaContext& lua) {
 static int lua_sys_disks(LuaContext& lua) {
     auto disks = disks_read();
     lua.new_table();
-    int  idx   = 1;
+    int  idx = 1;
     for (const auto& d : disks) {
         lua.new_table();
         lua.push_string(d.device.c_str());      lua.set_field(-2, "device");
@@ -290,34 +292,64 @@ static int lua_sys_loadavg(LuaContext& lua) {
 }
 
 // ---------------------------------------------------------------------------
+// kbd_layout — needs backend access via static module pointer
+// ---------------------------------------------------------------------------
+
+static SysinfoModule* g_instance = nullptr;
+
+backend::KeyboardPort* SysinfoModule::backend_keyboard_port() {
+    return backend().keyboard_port();
+}
+
+static int lua_sys_kbd_layout(LuaContext& lua) {
+    auto* kp = g_instance ? g_instance->backend_keyboard_port() : nullptr;
+    if (!kp) {
+        lua.push_nil();
+        return 1;
+    }
+    lua.push_string(kp->current_layout());
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
 // Module lifecycle
 // ---------------------------------------------------------------------------
 
-static void register_lua(Config& config) {
-    config.lua().register_namespace("sys", {
-        { "cpu",     lua_sys_cpu     },
-        { "mem",     lua_sys_mem     },
-        { "uptime",  lua_sys_uptime  },
-        { "loadavg", lua_sys_loadavg },
-        { "net_ip",  lua_sys_net_ip  },
-        { "disks",   lua_sys_disks   },
-    });
+void SysinfoModule::on_init() {
+    // Nothing — table is built in on_lua_init once backend is available.
 }
 
-void SysinfoModule::on_init(Core&) {
-    register_lua(config());
-}
-
-void SysinfoModule::on_start(Core&) {
+void SysinfoModule::on_start() {
     open_fds();
 }
 
-void SysinfoModule::on_lua_init(Core&) {
-    register_lua(config());
+void SysinfoModule::on_lua_init() {
+    g_instance = this;
+
+    auto& lua = config().lua();
+    auto  ctx = lua.context();
+
+    ctx.new_table();
+
+    static const LuaFunctionReg fns[] = {
+        { "cpu",        lua_sys_cpu        },
+        { "mem",        lua_sys_mem        },
+        { "uptime",     lua_sys_uptime     },
+        { "loadavg",    lua_sys_loadavg    },
+        { "net_ip",     lua_sys_net_ip     },
+        { "disks",      lua_sys_disks      },
+        { "kbd_layout", lua_sys_kbd_layout },
+    };
+    for (const auto& r : fns) {
+        lua.push_callback(r.func);
+        ctx.set_field(-2, r.name);
+    }
+
+    lua.set_module_table("sysinfo");
 }
 
-void SysinfoModule::on_stop(Core&, bool) {
+void SysinfoModule::on_stop(bool) {
     close_fds();
 }
 
-SWM_REGISTER_MODULE("sysinfo", SysinfoModule)
+SIRENWM_REGISTER_MODULE("sysinfo", SysinfoModule)

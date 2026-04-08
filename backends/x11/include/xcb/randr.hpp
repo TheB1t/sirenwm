@@ -22,7 +22,7 @@ struct Mode {
 
 class Crtc {
     xcb_connection_t* conn_;
-    xcb_randr_crtc_t id;
+    xcb_randr_crtc_t  id;
 
     public:
         Crtc(xcb_connection_t* conn, xcb_randr_crtc_t crtc) : conn_(conn), id(crtc) {}
@@ -73,10 +73,10 @@ class Crtc {
 };
 
 class Output {
-    xcb_connection_t* conn_;
+    xcb_connection_t*  conn_;
     xcb_randr_output_t id;
-    xcb_window_t root;
-    std::string output_name;
+    xcb_window_t       root;
+    std::string        output_name;
 
     public:
         Output(xcb_connection_t* conn, xcb_window_t r, xcb_randr_output_t o, std::string n)
@@ -110,16 +110,16 @@ class Output {
         std::vector<Mode> modes() const {
             auto res = xcb::reply(xcb_randr_get_screen_resources_current_reply(conn_,
                     xcb_randr_get_screen_resources_current(conn_, root), nullptr));
-            auto oi  = xcb::reply(xcb_randr_get_output_info_reply(conn_,
+            auto oi = xcb::reply(xcb_randr_get_output_info_reply(conn_,
                     xcb_randr_get_output_info(conn_, id, XCB_CURRENT_TIME), nullptr));
             if (!res || !oi) return {};
 
-            xcb_randr_mode_info_t* all = xcb_randr_get_screen_resources_current_modes(res.get());
-            int nall = xcb_randr_get_screen_resources_current_modes_length(res.get());
-            xcb_randr_mode_t*      oms = xcb_randr_get_output_info_modes(oi.get());
-            int               noms     = xcb_randr_get_output_info_modes_length(oi.get());
+            xcb_randr_mode_info_t* all  = xcb_randr_get_screen_resources_current_modes(res.get());
+            int                    nall = xcb_randr_get_screen_resources_current_modes_length(res.get());
+            xcb_randr_mode_t*      oms  = xcb_randr_get_output_info_modes(oi.get());
+            int                    noms = xcb_randr_get_output_info_modes_length(oi.get());
 
-            std::vector<Mode> result;
+            std::vector<Mode>      result;
             for (int i = 0; i < noms; i++)
                 for (int j = 0; j < nall; j++) {
                     if (all[j].id != oms[i]) continue;
@@ -157,7 +157,7 @@ class Output {
 
 class Screen {
     xcb_connection_t* conn_;
-    xcb_window_t root;
+    xcb_window_t      root;
 
     public:
         Screen(xcb_connection_t* conn, xcb_window_t r) : conn_(conn), root(r) {}
@@ -216,9 +216,9 @@ class Screen {
             int                  id = 0;
             while (it.rem > 0) {
                 xcb_randr_monitor_info_t* info = it.data;
-                auto        nr                 = xcb::reply(xcb_get_atom_name_reply(conn_,
+                auto                      nr   = xcb::reply(xcb_get_atom_name_reply(conn_,
                         xcb_get_atom_name(conn_, info->name), nullptr));
-                std::string name               = nr
+                std::string               name = nr
                 ? std::string(xcb_get_atom_name_name(nr.get()),
                         xcb_get_atom_name_name_length(nr.get()))
                 : "monitor" + std::to_string(id);

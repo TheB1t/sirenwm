@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <monitor.hpp>
+#include <vec.hpp>
 
 namespace backend {
 
@@ -13,14 +14,12 @@ namespace backend {
 struct MonitorLayout {
     std::string output;    // physical output name (e.g. "eDP-1")
     std::string alias;     // logical monitor name
-    bool        enabled      = true;
-    int         x            = 0; // absolute screen position
-    int         y            = 0;
-    int         width        = 0;
-    int         height       = 0;
+    bool        enabled = true;
+    Vec2i       pos;                  // absolute screen position
+    Vec2i       size;
     int         refresh_rate = 0;
     std::string rotation;  // "normal", "left", "right", "inverted"
-    bool        primary      = false; // whether this is the primary output
+    bool        primary = false;      // whether this is the primary output
 };
 
 class MonitorPort {
@@ -39,7 +38,7 @@ class MonitorPort {
         // Backend internally calls Runtime::dispatch_display_change() when change is detected.
         virtual void select_change_events() = 0;
 
-        virtual void flush()                = 0;
+        virtual void flush() = 0;
 };
 
 } // namespace backend

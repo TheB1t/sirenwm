@@ -8,6 +8,7 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 #include <backend/render_port.hpp>
+#include <backend/gl_port.hpp>
 #include <backend/tray_host.hpp>
 
 class XConnection;
@@ -19,6 +20,7 @@ std::unique_ptr<backend::InputPort>    create_input_port(XConnection& xconn, xcb
 std::unique_ptr<backend::KeyboardPort> create_keyboard_port(XConnection& xconn);
 std::unique_ptr<backend::MonitorPort>  create_monitor_port(XConnection& xconn, Runtime& runtime);
 std::unique_ptr<backend::RenderPort>   create_render_port(XConnection& xconn);
+std::unique_ptr<backend::GLPort>       create_gl_port();
 
 std::unique_ptr<backend::TrayHost>
 create_tray_host(XConnection& xconn,

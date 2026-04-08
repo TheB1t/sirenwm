@@ -2,7 +2,10 @@
 -- when no config file exists. Edit to suit your setup.
 -- See ~/.local/share/sirenwm/init.lua.example for a full annotated example.
 
-siren.modules = { "bar", "monitors", "layout", "keybindings" }
+-- Core modules (required)
+local kb  = require("keybindings")
+local bar = require("bar")
+
 
 -- Primary modifier key (mod4 = super/win)
 siren.modifier = "mod4"
@@ -43,68 +46,59 @@ siren.theme = {
     },
 }
 
--- Behavior
-siren.behavior = {
-    follow_moved_window = false,
-    focus_new_window    = true,
-}
-
 -- Mouse drag bindings
-siren.mouse = {
+kb.mouse = {
     { "mod+Button1", "move"   },
     { "mod+Button3", "resize" },
     { "mod+Button2", "float"  },
 }
 
--- Tiling layout
-siren.layout = {
-    name          = "tile",
-    master_factor = 0.55,
-}
+-- Widgets (optional — null-object if missing)
+local tags   = siren.load("widgets.tags")
+local title  = siren.load("widgets.title")
+local clock  = siren.load("widgets.clock")
 
--- Status bar
-siren.bar = {
+bar.settings = {
     top = {
         height = 18,
-        left   = { "tags" },
-        center = { "title" },
-        right  = { "clock" },
-    },
-    widgets = {
-        clock = function() return os.date(" %H:%M ") end,
+        left   = { tags },
+        center = { title },
+        right  = { clock },
     },
 }
 
 -- Keybindings
-siren.binds = {
+local binds = {
     { "mod+Return",       function() siren.spawn("xterm") end },
-    { "mod+shift+q",      function() siren.windows.close() end },
+    { "mod+shift+q",      function() siren.win.close() end },
 
-    { "mod+j",            function() siren.windows.focus_next() end },
-    { "mod+k",            function() siren.windows.focus_prev() end },
-    { "mod+shift+Return", function() siren.windows.zoom() end },
-    { "mod+shift+space",  function() siren.windows.toggle_floating() end },
+    { "mod+j",            function() siren.win.focus_next() end },
+    { "mod+k",            function() siren.win.focus_prev() end },
+    { "mod+shift+Return", function() siren.layout.zoom() end },
+    { "mod+shift+space",  function() siren.win.toggle_floating() end },
 
-    { "mod+h",            function() siren.windows.adj_master_factor(-0.05) end },
-    { "mod+l",            function() siren.windows.adj_master_factor( 0.05) end },
-    { "mod+i",            function() siren.windows.inc_master( 1) end },
-    { "mod+d",            function() siren.windows.inc_master(-1) end },
+    { "mod+h",            function() siren.layout.adj_master(-0.05) end },
+    { "mod+l",            function() siren.layout.adj_master( 0.05) end },
+    { "mod+i",            function() siren.layout.inc_master( 1) end },
+    { "mod+d",            function() siren.layout.inc_master(-1) end },
 
-    { "mod+m",            function() siren.windows.set_layout("monocle") end },
-    { "mod+t",            function() siren.windows.set_layout("tile") end },
+    { "mod+m",            function() siren.layout.set("monocle") end },
+    { "mod+t",            function() siren.layout.set("tile") end },
 
     { "mod+r",            function() siren.reload() end },
     { "mod+shift+r",      function() siren.restart() end },
 }
 
--- Workspace switch and move bindings (1–9)
+-- Workspace switch and move bindings (1-9)
 for i = 1, 9 do
-    table.insert(siren.binds, { "mod+"       .. i, function() siren.workspace.switch(i) end })
-    table.insert(siren.binds, { "mod+shift+" .. i, function() siren.windows.move_to(i)  end })
+    table.insert(binds, { "mod+"       .. i, function() siren.ws.switch(i) end })
+    table.insert(binds, { "mod+shift+" .. i, function() siren.win.move_to(i) end })
 end
 
 -- Monitor focus and window move bindings
 for i = 1, 8 do
-    table.insert(siren.binds, { "mod+ctrl+"       .. i, function() siren.monitor.focus(i) end })
-    table.insert(siren.binds, { "mod+ctrl+shift+" .. i, function() siren.windows.move_to_monitor(i) end })
+    table.insert(binds, { "mod+ctrl+"       .. i, function() siren.monitor.focus(i) end })
+    table.insert(binds, { "mod+ctrl+shift+" .. i, function() siren.win.move_to_monitor(i) end })
 end
+
+kb.binds = binds

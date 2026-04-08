@@ -10,21 +10,10 @@ extern "C" {
 #include <lualib.h>
 }
 
+#include <string_utils.hpp>
 #include <unordered_set>
 #include <unordered_map>
 #include <functional>
-
-static std::string lower_ascii(std::string s) {
-    for (char& c : s)
-        if (c >= 'A' && c <= 'Z')
-            c = (char)(c - 'A' + 'a');
-    return s;
-}
-
-static bool is_valid_rotation(const std::string& rot) {
-    auto r = lower_ascii(rot);
-    return r == "normal" || r == "left" || r == "right" || r == "inverted";
-}
 
 // ---------------------------------------------------------------------------
 // Config::validate()
@@ -33,7 +22,7 @@ static bool is_valid_rotation(const std::string& rot) {
 std::vector<std::string> Config::validate() const {
     std::vector<std::string> errs;
 
-    auto has_alias = [&](const std::string& alias) {
+    auto                     has_alias = [&](const std::string& alias) {
             for (auto& m : monitor_aliases)
                 if (m.alias == alias)
                     return true;
@@ -161,14 +150,6 @@ std::vector<std::string> Config::validate() const {
             errs.push_back("workspace '" + ws.name + "': unknown monitor alias '" + ws.monitor + "'");
     }
 
-    for (size_t i = 0; i < window_rules.size(); i++) {
-        const auto& r = window_rules[i];
-        if (r.class_name.empty() && r.instance_name.empty()) {
-            errs.push_back("window rule #" + std::to_string(i + 1) +
-                ": at least one of class/instance must be set");
-        }
-    }
-
     if (bar_config.has_value()) {
         if (bar_config->font.empty() && theme_.font.empty())
             errs.push_back("bar: 'font' is required (set in bar.top.font or theme.font)");
@@ -189,8 +170,12 @@ std::vector<std::string> Config::validate() const {
 // Config::load()
 // ---------------------------------------------------------------------------
 
-bool Config::load(const std::string& path, Core& core, Runtime& runtime, bool reset_lua_vm) {
-    return config_loader::load(*this, path, core, runtime, reset_lua_vm);
+Core& Config::bound_core() const {
+    return bound_runtime().core();
+}
+
+bool Config::load(const std::string& path, Runtime& runtime, bool reset_lua_vm) {
+    return config_loader::load(*this, path, runtime.core(), runtime, reset_lua_vm);
 }
 
 bool Config::check_syntax(const std::string& path) {

@@ -40,7 +40,7 @@ class PaintContext {
         backend::RenderWindow& window_;
         PangoLayout* layout_             = nullptr;
         PangoFontDescription* font_desc_ = nullptr;
-        cairo_t* cr_ = nullptr;
+        cairo_t* cr_                     = nullptr;
 };
 
 class TagsWidget {

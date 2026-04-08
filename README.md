@@ -10,19 +10,22 @@ SirenWM is a keyboard-first tiling WM for X11. Configuration is plain Lua — no
 
 ## Features
 
-- Tile and monocle layouts with configurable master factor, gap, and border
+- Tile, monocle, and custom Lua layouts with configurable master factor, gap, and border
 - Multi-monitor with RandR hotplug, compose graph, and workspace migration
 - Per-monitor workspace pools with deterministic topology restore
 - Full state preservation across hot reload and exec-restart
-- Focus-follows-mouse with cross-monitor support
-- Window rules by WM_CLASS
-- Hot config reload and exec-restart with Lua syntax pre-check
-- Cairo/Pango status bar with widget API and system tray (XEmbed)
-- Fullscreen and borderless game support (EWMH, MOTIF, Wine/Proton, SDL2, LibGDX); renderer steered to cursor monitor at launch
+- Focus-follows-mouse with cross-monitor support; click-to-focus (dwm-style passive grab)
+- Window rules, process autostart, and per-monitor wallpapers via Lua modules
+- Hot config reload and exec-restart with Lua syntax pre-check; fallback to default config on error
+- Cairo/Pango status bar with custom widget API and system tray (XEmbed)
+- Urgency hint support: urgent workspaces highlighted in the bar
+- Fullscreen and borderless game support (EWMH, MOTIF, Wine/Proton, SDL2, LibGDK); renderer steered to cursor monitor at launch
 - Pointer barriers: cursor confined to monitor while a fullscreen or borderless window is active
-- Mod+drag move and resize for floating windows
-- Autostart process management
-- ICCCM WM_DELETE_WINDOW and WM_TAKE_FOCUS support
+- Mod+drag move and resize for floating windows; WM_NORMAL_HINTS size constraints enforced
+- `siren.load()` for optional modules — returns a null-object on failure, config keeps working
+- Runtime lifecycle FSM for deterministic init/reload/shutdown sequencing
+- ImGui debug overlay for runtime WM state inspection (optional, `-DSIRENWM_DEBUG_UI=ON`)
+- ICCCM WM_DELETE_WINDOW, WM_TAKE_FOCUS, WM_HINTS (InputHint, UrgencyHint) support
 
 ## Getting Started
 
@@ -35,7 +38,8 @@ sudo apt install \
   libx11-dev libx11-xcb-dev \
   libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
   libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
-  libcairo2-dev libpango1.0-dev libfontconfig1-dev libspdlog-dev
+  libcairo2-dev libpango1.0-dev libfontconfig1-dev libspdlog-dev \
+  libegl-dev libgl-dev
 ```
 
 ### 2. Build
@@ -78,7 +82,7 @@ Then select "SirenWM" from your display manager's session list.
 ## Documentation
 
 - [`CONFIG.md`](CONFIG.md) — full Lua configuration reference
-- [`init.lua.example`](init.lua.example) — minimal single-monitor starter config
+- [`init.lua.example`](init.lua.example) — example multi-monitor config
 
 ## License
 

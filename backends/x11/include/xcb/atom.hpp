@@ -15,10 +15,10 @@ namespace xcb {
 //   xcb_atom_t raw = NET_WM_NAME;
 
 class Atom {
-    xcb_connection_t* conn;
-    const char* name;
-    mutable xcb_atom_t value = XCB_ATOM_NONE;
-    mutable bool resolved    = false;
+    xcb_connection_t*  conn;
+    const char*        name;
+    mutable xcb_atom_t value    = XCB_ATOM_NONE;
+    mutable bool       resolved = false;
 
     public:
         Atom(xcb_connection_t* c, const char* n) : conn(c), name(n) {}
@@ -46,7 +46,7 @@ intern_batch(xcb_connection_t* conn, std::initializer_list<const char*> names) {
         cookies.push_back(xcb_intern_atom(conn, 0, (uint16_t)strlen(n), n));
 
     std::unordered_map<std::string, xcb_atom_t> result;
-    int i = 0;
+    int                                         i = 0;
     for (auto n : names) {
         auto r = xcb::reply(xcb_intern_atom_reply(conn, cookies[i++], nullptr));
         result[n] = r ? r->atom : XCB_ATOM_NONE;
