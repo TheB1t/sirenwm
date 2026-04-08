@@ -516,6 +516,18 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         return true;
     }
 
+    if (ev.type == NET_WM_DESKTOP) {
+        int ws_id = (int)ev.data[0];
+        if (ws_id < 0 || ws_id >= core.workspace_count())
+            return true;
+        auto w = core.window_state_any(ev.window);
+        if (!w)
+            return true;
+        LOG_DEBUG("ClientMessage(%d): _NET_WM_DESKTOP -> workspace %d", ev.window, ws_id);
+        (void)core.dispatch(command::MoveWindowToWorkspace{ ev.window, ws_id });
+        return true;
+    }
+
     if (ev.type == NET_CLOSE_WINDOW) {
         (void)handle(event::CloseWindowRequest{ ev.window });
         return true;
