@@ -23,7 +23,7 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends \
-            cmake make pkg-config g++ \
+            cmake make pkg-config g++ git ca-certificates \
             libx11-dev libx11-xcb-dev \
             libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
             libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
@@ -62,7 +62,7 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends \
-            cmake make pkg-config g++ \
+            cmake make pkg-config g++ git ca-certificates \
             libx11-dev libx11-xcb-dev \
             libxcb1-dev libxcb-randr0-dev libxcb-keysyms1-dev \
             libxkbcommon-dev libxkbfile-dev libxfixes-dev liblua5.4-dev \
@@ -94,7 +94,7 @@ jobs:
       - name: Install dependencies
         run: |
           dnf install -y \
-            cmake make pkgconf gcc-c++ \
+            cmake make pkgconf gcc-c++ git \
             libX11-devel libxcb-devel xcb-util-keysyms-devel \
             libxkbcommon-devel libxkbfile-devel libXfixes-devel lua-devel \
             cairo-devel pango-devel \
@@ -161,7 +161,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm \
-            cmake make pkgconf gcc \
+            cmake make pkgconf gcc git \
             libx11 libxcb xcb-util-keysyms \
             libxkbcommon libxkbfile libxfixes lua \
             cairo pango fontconfig freetype2 libpng \
