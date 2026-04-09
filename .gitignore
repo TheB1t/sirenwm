@@ -1,5 +1,6 @@
 build/
-build*
+build*/
+!.github/
 output/
 .cache/
 .vscode/
