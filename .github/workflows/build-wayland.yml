@@ -1,0 +1,85 @@
+name: Build (Wayland backend)
+
+on:
+  push:
+    branches: [ wayland-backend ]
+  pull_request:
+    branches: [ wayland-backend ]
+
+jobs:
+  build-wayland:
+    name: Wayland backend (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: debian:trixie
+          - distro: archlinux:latest
+    container:
+      image: ${{ matrix.distro }}
+      options: --ulimit core=-1 --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Debian)
+        if: startsWith(matrix.distro, 'debian')
+        run: |
+          apt-get update -qq
+          echo "--- wlroots packages available ---"
+          apt-cache search wlroots || true
+          WLROOTS_PKG=$(apt-cache search '^libwlroots' | awk '{print $1}' | grep '\-dev$' | head -1)
+          echo "Using wlroots package: $WLROOTS_PKG"
+          apt-get install -y --no-install-recommends \
+            cmake make pkg-config g++ git ca-certificates \
+            liblua5.4-dev libspdlog-dev \
+            libcairo2-dev libpango1.0-dev \
+            libfontconfig1-dev libfreetype-dev libpng-dev \
+            fonts-dejavu-core \
+            $WLROOTS_PKG \
+            libwayland-dev wayland-protocols \
+            libxkbcommon-dev libpixman-1-dev \
+            libdrm-dev libgbm-dev libegl-dev \
+            libinput-dev libudev-dev libseat-dev \
+            libxcb1-dev libxcb-composite0-dev \
+            libxcb-xfixes0-dev libxcb-xinput-dev \
+            libxcb-randr0-dev libxcb-icccm4-dev \
+            libx11-dev libx11-xcb-dev \
+            libxcb-keysyms1-dev libxkbfile-dev libxfixes-dev
+
+      - name: Install dependencies (Arch)
+        if: startsWith(matrix.distro, 'archlinux')
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm
+          echo "--- wlroots packages available ---"
+          pacman -Ss wlroots || true
+          pacman -S --noconfirm \
+            cmake make pkgconf gcc git \
+            lua spdlog \
+            cairo pango fontconfig freetype2 libpng \
+            ttf-dejavu \
+            wlroots \
+            wayland wayland-protocols \
+            libxkbcommon pixman \
+            libdrm mesa libinput seatd \
+            libxcb xcb-util-keysyms xcb-util-icccm \
+            libx11 libxfixes
+
+      - name: Build
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DSIRENWM_BACKEND=wayland
+          cmake --build build -j$(nproc)
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wayland-build-${{ strategy.job-index }}
+          path: output/
+          if-no-files-found: ignore
+          retention-days: 7
