@@ -1,18 +1,18 @@
 # SirenWM
 
-X11 tiling window manager. Configuration is plain Lua — no recompile for everyday changes.
+SirenWM is a tiling window manager with selectable X11 and Wayland backends.
 
 ![SirenWM](picture.png)
 
 ## About
 
-SirenWM is a keyboard-first tiling WM for X11. It runs without a compositor, display daemon, or D-Bus dependency. The C++ core handles X11 protocol, window layout, and the event loop; everything user-visible — keybindings, rules, autostart, wallpaper, widgets — is written in Lua and hot-reloaded without restarting the WM. The config is a plain Lua script: variables, loops, and functions all work.
+SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles layout, rendering, and the event loop. Everything else — keybindings, rules, autostart, wallpaper, widgets — is Lua, hot-reloaded without restarting. Failed reloads roll back automatically.
 
 ## Requirements
 
 | Requirement | Minimum |
 | ----------- | ------- |
-| X server | X11 (XCB, RandR) — Wayland not supported |
+| Display server | X11 (XCB, RandR) **or** Wayland (wlroots 0.17+) |
 | C++ compiler | GCC 12 / Clang 16 (C++20) |
 | CMake | 3.14 |
 | Lua | 5.4 |
@@ -61,7 +61,8 @@ the core never reads `init.lua` directly — it exposes an API and the Lua layer
 
 | Layer | What lives here |
 | ----- | --------------- |
-| C++ core | X11/XCB backend, event loop, window manager logic, layout engine, bar renderer |
+| C++ core | Event loop, window manager logic, layout engine, bar renderer |
+| C++ backend | X11/XCB (`backends/x11/`) or Wayland/wlroots (`backends/wayland/`) — selected at build time |
 | C++ modules | `keybindings`, `bar`, `keyboard`, `sysinfo`, `debug_ui` |
 | Lua modules | `rules`, `wallpaper`, `autostart` — ship as `lua/swm/*.lua` |
 | Lua widgets | `widgets.tags`, `widgets.title`, `widgets.clock`, `widgets.sysinfo`, … |
@@ -77,7 +78,7 @@ Hot-reload is transactional: snapshot → clear → re-execute `init.lua` → co
 
 ### 1. Dependencies
 
-#### Debian / Ubuntu
+#### X11 backend — Debian / Ubuntu
 
 ```bash
 sudo apt install \
@@ -89,7 +90,7 @@ sudo apt install \
   libspdlog-dev
 ```
 
-#### Fedora
+#### X11 backend — Fedora
 
 ```bash
 sudo dnf install \
@@ -100,7 +101,7 @@ sudo dnf install \
   spdlog-devel
 ```
 
-#### Arch Linux
+#### X11 backend — Arch Linux
 
 ```bash
 sudo pacman -S \
@@ -111,15 +112,46 @@ sudo pacman -S \
   spdlog
 ```
 
+#### Wayland backend — Debian (trixie+)
+
+```bash
+sudo apt install \
+  cmake pkg-config gcc g++ \
+  libwlroots-dev libwayland-dev libwayland-bin wayland-protocols \
+  libxkbcommon-dev libpixman-1-dev libdrm-dev libgbm-dev libegl-dev \
+  libinput-dev libudev-dev libseat-dev \
+  libxcb1-dev libxcb-composite0-dev libxcb-xfixes0-dev libxcb-randr0-dev \
+  libx11-dev libxfixes-dev \
+  liblua5.4-dev libspdlog-dev \
+  libcairo2-dev libpango1.0-dev libfontconfig1-dev libfreetype-dev libpng-dev
+```
+
+#### Wayland backend — Arch Linux
+
+```bash
+sudo pacman -S \
+  cmake make pkgconf gcc \
+  wlroots0.18 wayland wayland-protocols \
+  libxkbcommon pixman libdrm mesa libinput seatd \
+  libxcb xcb-util-keysyms xcb-util-wm libx11 libxfixes \
+  lua spdlog cairo pango fontconfig freetype2 libpng
+```
+
 ### 2. Build
 
 ```bash
+# X11 backend (default)
 cmake -S . -B build
 cmake --build build -j$(nproc)
+
+# Wayland backend
+cmake -S . -B build -DSIRENWM_BACKEND=wayland
+cmake --build build -j$(nproc)
+
 # binary: output/sirenwm
 ```
 
-To build with the ImGui debug overlay:
+To build with the ImGui debug overlay (X11 only):
 
 ```bash
 # extra dependencies — Debian/Ubuntu
@@ -143,7 +175,7 @@ mkdir -p ~/.config/sirenwm
 cp init.lua.example ~/.config/sirenwm/init.lua
 ```
 
-Edit `output = "HDMI-1"` to match your actual RandR output name (`xrandr` to list them).
+Edit `output = "HDMI-1"` to match your monitor name. On X11 use `xrandr`, on Wayland use `wlr-randr` to list outputs.
 
 Minimal working config:
 
@@ -176,13 +208,19 @@ end
 
 ### 4. Run
 
-**xinitrc** — add to `~/.xinitrc`:
+**X11 — xinitrc** — add to `~/.xinitrc`:
 
 ```bash
 exec /path/to/output/sirenwm
 ```
 
-**System install** (puts `sirenwm` in PATH and registers the display manager session):
+**Wayland** — run directly from a TTY (wlroots opens DRM/KMS via libseat):
+
+```bash
+/path/to/output/sirenwm
+```
+
+**System install** (puts `sirenwm` in PATH and registers display manager sessions for both backends):
 
 ```bash
 sudo cmake --install build
