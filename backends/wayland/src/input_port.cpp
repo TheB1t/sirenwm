@@ -32,8 +32,8 @@ namespace backend::wl {
 // ---------------------------------------------------------------------------
 class WlInputPort final : public InputPort {
 public:
-    WlInputPort(wlr_seat* seat, wlr_cursor* cursor)
-        : seat_(seat), cursor_(cursor) {}
+    WlInputPort(wlr_seat* seat, wlr_cursor* cursor, bool& pointer_grabbed)
+        : seat_(seat), cursor_(cursor), pointer_grabbed_(pointer_grabbed) {}
 
     // Key grabs — stored locally; checked in WaylandBackend::handle_keyboard_key
     void grab_key(uint32_t /*keysym*/, uint16_t /*mods*/) override {
@@ -53,14 +53,9 @@ public:
     void ungrab_all_buttons(WindowId /*window*/) override {}
     void grab_button_any(WindowId /*window*/) override {}
 
-    // Pointer grab — prevent seat pointer events from reaching clients temporarily
-    void grab_pointer() override {
-        // TODO: wlr_seat_pointer_start_grab for drag ops
-    }
-
-    void ungrab_pointer() override {
-        // TODO: wlr_seat_pointer_end_grab
-    }
+    // Pointer grab — suppress pointer focus forwarding to clients during drag.
+    void grab_pointer() override   { pointer_grabbed_ = true;  }
+    void ungrab_pointer() override { pointer_grabbed_ = false; }
 
     void allow_events(bool /*replay*/) override {
         // X11 replay semantic has no direct Wayland equivalent.
@@ -83,10 +78,11 @@ public:
 private:
     wlr_seat*   seat_;
     wlr_cursor* cursor_;
+    bool&       pointer_grabbed_;
 };
 
-std::unique_ptr<InputPort> create_input_port(wlr_seat* seat, wlr_cursor* cursor) {
-    return std::make_unique<WlInputPort>(seat, cursor);
+std::unique_ptr<InputPort> create_input_port(wlr_seat* seat, wlr_cursor* cursor, bool& pointer_grabbed) {
+    return std::make_unique<WlInputPort>(seat, cursor, pointer_grabbed);
 }
 
 } // namespace backend::wl
