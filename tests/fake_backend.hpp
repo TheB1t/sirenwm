@@ -48,10 +48,10 @@ class FakeInputPort : public backend::InputPort {
 
 class FakeKeyboardPort : public backend::KeyboardPort {
     public:
-        std::string              active_layout = "us";
-        std::vector<std::string> layouts       = { "us" };
-        bool                     apply_called  = false;
-        bool                     restore_called = false;
+        std::string active_layout        = "us";
+        std::vector<std::string> layouts = { "us" };
+        bool apply_called                = false;
+        bool restore_called              = false;
 
         std::string              current_layout() const override { return active_layout; }
         std::vector<std::string> layout_names()   const override { return layouts; }
@@ -83,7 +83,7 @@ class FakeMonitorPort : public backend::MonitorPort {
 // ---------------------------------------------------------------------------
 
 class FakeRenderWindow : public backend::RenderWindow {
-        WindowId id_;
+    WindowId id_;
     public:
         explicit FakeRenderWindow(WindowId id) : id_(id) {}
         WindowId id() const override { return id_; }
@@ -107,7 +107,7 @@ class FakeRenderWindow : public backend::RenderWindow {
 // ---------------------------------------------------------------------------
 
 class FakeRenderPort : public backend::RenderPort {
-        WindowId next_id_ = 0x1000;
+    WindowId next_id_ = 0x1000;
     public:
         std::unique_ptr<backend::RenderWindow>
         create_window(const backend::RenderWindowCreateInfo&) override {
@@ -121,11 +121,11 @@ class FakeRenderPort : public backend::RenderPort {
 // ---------------------------------------------------------------------------
 
 class FakeBackend : public Backend {
-        FakeInputPort    input_port_;
-        FakeKeyboardPort keyboard_port_;
-        FakeMonitorPort  monitor_port_;
-        FakeRenderPort   render_port_;
-        int              pipe_fds_[2] = { -1, -1 };
+    FakeInputPort    input_port_;
+    FakeKeyboardPort keyboard_port_;
+    FakeMonitorPort  monitor_port_;
+    FakeRenderPort   render_port_;
+    int pipe_fds_[2] = { -1, -1 };
 
     public:
         explicit FakeBackend(std::vector<Monitor> monitors = {})

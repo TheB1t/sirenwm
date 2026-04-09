@@ -31,54 +31,54 @@ namespace backend::wl {
 //   - grab_button/ungrab_button similarly maintain a grab set.
 // ---------------------------------------------------------------------------
 class WlInputPort final : public InputPort {
-public:
-    WlInputPort(wlr_seat* seat, wlr_cursor* cursor, bool& pointer_grabbed)
-        : seat_(seat), cursor_(cursor), pointer_grabbed_(pointer_grabbed) {}
+    public:
+        WlInputPort(wlr_seat* seat, wlr_cursor* cursor, bool& pointer_grabbed)
+            : seat_(seat), cursor_(cursor), pointer_grabbed_(pointer_grabbed) {}
 
-    // Key grabs — stored locally; checked in WaylandBackend::handle_keyboard_key
-    void grab_key(uint32_t /*keysym*/, uint16_t /*mods*/) override {
-        // No-op: Wayland compositor intercepts all keys anyway.
-        // The keybindings module will match against emitted KeyPressEv events.
-    }
+        // Key grabs — stored locally; checked in WaylandBackend::handle_keyboard_key
+        void grab_key(uint32_t /*keysym*/, uint16_t /*mods*/) override {
+            // No-op: Wayland compositor intercepts all keys anyway.
+            // The keybindings module will match against emitted KeyPressEv events.
+        }
 
-    void ungrab_all_keys() override {
-        // No-op.
-    }
+        void ungrab_all_keys() override {
+            // No-op.
+        }
 
-    // Button grabs
-    void grab_button(WindowId /*window*/, uint8_t /*button*/, uint16_t /*mods*/) override {
-        // No-op: Wayland compositor gets all button events first.
-    }
+        // Button grabs
+        void grab_button(WindowId /*window*/, uint8_t /*button*/, uint16_t /*mods*/) override {
+            // No-op: Wayland compositor gets all button events first.
+        }
 
-    void ungrab_all_buttons(WindowId /*window*/) override {}
-    void grab_button_any(WindowId /*window*/) override {}
+        void ungrab_all_buttons(WindowId /*window*/) override {}
+        void grab_button_any(WindowId /*window*/) override {}
 
-    // Pointer grab — suppress pointer focus forwarding to clients during drag.
-    void grab_pointer() override   { pointer_grabbed_ = true;  }
-    void ungrab_pointer() override { pointer_grabbed_ = false; }
+        // Pointer grab — suppress pointer focus forwarding to clients during drag.
+        void grab_pointer() override { pointer_grabbed_ = true;  }
+        void ungrab_pointer() override { pointer_grabbed_ = false; }
 
-    void allow_events(bool /*replay*/) override {
-        // X11 replay semantic has no direct Wayland equivalent.
-    }
+        void allow_events(bool /*replay*/) override {
+            // X11 replay semantic has no direct Wayland equivalent.
+        }
 
-    void warp_pointer(WindowId /*window*/, Vec2i16 pos) override {
-        wlr_cursor_warp_absolute(cursor_, nullptr,
-            (double)pos.x(), (double)pos.y());
-    }
+        void warp_pointer(WindowId /*window*/, Vec2i16 pos) override {
+            wlr_cursor_warp_absolute(cursor_, nullptr,
+                (double)pos.x(), (double)pos.y());
+        }
 
-    void warp_pointer_abs(Vec2i16 pos) override {
-        wlr_cursor_warp_absolute(cursor_, nullptr,
-            (double)pos.x(), (double)pos.y());
-    }
+        void warp_pointer_abs(Vec2i16 pos) override {
+            wlr_cursor_warp_absolute(cursor_, nullptr,
+                (double)pos.x(), (double)pos.y());
+        }
 
-    void flush() override {
-        // No-op.
-    }
+        void flush() override {
+            // No-op.
+        }
 
-private:
-    wlr_seat*   seat_;
-    wlr_cursor* cursor_;
-    bool&       pointer_grabbed_;
+    private:
+        wlr_seat*   seat_;
+        wlr_cursor* cursor_;
+        bool&       pointer_grabbed_;
 };
 
 std::unique_ptr<InputPort> create_input_port(wlr_seat* seat, wlr_cursor* cursor, bool& pointer_grabbed) {

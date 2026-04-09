@@ -473,7 +473,7 @@ void KeybindingsModule::apply_pending() {
     auto& host = lua();
     if (pending_binds_.valid()) {
         if (host.push_ref(pending_binds_)) {
-            auto  ctx = host.context();
+            auto        ctx = host.context();
             std::string err;
             if (!load_bind_list(core(), host, mod_mask_, ctx, -1, "kb.binds", err))
                 LOG_ERR("keybindings: kb.binds: %s", err.c_str());
@@ -483,7 +483,7 @@ void KeybindingsModule::apply_pending() {
     }
     if (pending_mouse_.valid()) {
         if (host.push_ref(pending_mouse_)) {
-            auto  ctx = host.context();
+            auto        ctx = host.context();
             std::string err;
             if (!load_mouse_bind_list(host, mouse_bindings_, mod_mask_, ctx, -1, "kb.mouse", err))
                 LOG_ERR("keybindings: kb.mouse: %s", err.c_str());

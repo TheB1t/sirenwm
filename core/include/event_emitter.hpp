@@ -10,8 +10,8 @@
 class IEventReceiver;
 
 class IEventEmitter {
-public:
-    virtual ~IEventEmitter() = default;
-    virtual void add_receiver(IEventReceiver* receiver)    = 0;
-    virtual void remove_receiver(IEventReceiver* receiver) = 0;
+    public:
+        virtual ~IEventEmitter()                               = default;
+        virtual void add_receiver(IEventReceiver* receiver)    = 0;
+        virtual void remove_receiver(IEventReceiver* receiver) = 0;
 };

@@ -16,19 +16,19 @@
 #include "fake_backend.hpp"
 
 struct TestHarness {
-    ModuleRegistry  module_registry;
-    Runtime         runtime;
-    FakeBackend     backend;
+    ModuleRegistry module_registry;
+    Runtime        runtime;
+    FakeBackend    backend;
 
     // Shorthand so test code can say h.core.dispatch(...).
     Core& core;
 
     explicit TestHarness(std::vector<Monitor> monitors = {})
         : runtime(module_registry)
-        , backend(monitors.empty()
+          , backend(monitors.empty()
             ? std::vector<Monitor>{ make_monitor(0, 0, 0, 1920, 1080, "primary") }
             : std::move(monitors))
-        , core(runtime.core())
+          , core(runtime.core())
     {
         runtime.lua().init();
         runtime.bind_backend(backend);

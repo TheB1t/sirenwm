@@ -39,7 +39,7 @@ void WaylandBackend::render_frame() {
         if (auto flush = core_.take_window_flush(win)) {
             auto* ws = wl_surface(win);
             if (!ws) continue;
-            auto state = core_.window_state_any(win);
+            auto  state = core_.window_state_any(win);
             if (state)
                 ws->set_geometry(state->x(), state->y(), state->width(), state->height());
         }

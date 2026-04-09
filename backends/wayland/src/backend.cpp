@@ -77,8 +77,8 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
 #endif
     data_dev_mgr_ = wlr_data_device_manager_create(display_);
 
-    seat_       = wlr_seat_create(display_, "seat0");
-    cursor_     = wlr_cursor_create();
+    seat_        = wlr_seat_create(display_, "seat0");
+    cursor_      = wlr_cursor_create();
     xcursor_mgr_ = wlr_xcursor_manager_create(nullptr, 24);
     wlr_xcursor_manager_load(xcursor_mgr_, 1.0f);
     // Attach cursor to output layout after xcursor theme is loaded.
@@ -92,44 +92,44 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
 
     // Wire top-level backend signals
     on_new_output_.connect(&backend_->events.new_output, [this](void* data) {
-        handle_new_output(static_cast<wlr_output*>(data));
-    });
+            handle_new_output(static_cast<wlr_output*>(data));
+        });
     on_new_input_.connect(&backend_->events.new_input, [this](void* data) {
-        handle_new_input(static_cast<wlr_input_device*>(data));
-    });
+            handle_new_input(static_cast<wlr_input_device*>(data));
+        });
     on_new_xdg_surface_.connect(&xdg_shell_->events.new_surface, [this](void* data) {
-        handle_new_xdg_surface(static_cast<wlr_xdg_surface*>(data));
-    });
+            handle_new_xdg_surface(static_cast<wlr_xdg_surface*>(data));
+        });
 #ifndef SIRENWM_NO_LAYER_SHELL
     on_new_layer_surface_.connect(&layer_shell_->events.new_surface, [this](void* data) {
-        handle_new_layer_surface(static_cast<wlr_layer_surface_v1*>(data));
-    });
+            handle_new_layer_surface(static_cast<wlr_layer_surface_v1*>(data));
+        });
 #endif
 
     // Cursor signals
     on_cursor_motion_.connect(&cursor_->events.motion, [this](void* data) {
-        handle_cursor_motion(static_cast<wlr_pointer_motion_event*>(data));
-    });
+            handle_cursor_motion(static_cast<wlr_pointer_motion_event*>(data));
+        });
     on_cursor_motion_abs_.connect(&cursor_->events.motion_absolute, [this](void* data) {
-        handle_cursor_motion_abs(static_cast<wlr_pointer_motion_absolute_event*>(data));
-    });
+            handle_cursor_motion_abs(static_cast<wlr_pointer_motion_absolute_event*>(data));
+        });
     on_cursor_button_.connect(&cursor_->events.button, [this](void* data) {
-        handle_cursor_button(static_cast<wlr_pointer_button_event*>(data));
-    });
+            handle_cursor_button(static_cast<wlr_pointer_button_event*>(data));
+        });
     on_cursor_axis_.connect(&cursor_->events.axis, [this](void* data) {
-        handle_cursor_axis(static_cast<wlr_pointer_axis_event*>(data));
-    });
+            handle_cursor_axis(static_cast<wlr_pointer_axis_event*>(data));
+        });
     on_cursor_frame_.connect(&cursor_->events.frame, [this](void*) {
-        handle_cursor_frame();
-    });
+            handle_cursor_frame();
+        });
 
     // Seat signals
     on_request_cursor_.connect(&seat_->events.request_set_cursor, [this](void* data) {
-        handle_request_cursor(static_cast<wlr_seat_pointer_request_set_cursor_event*>(data));
-    });
+            handle_request_cursor(static_cast<wlr_seat_pointer_request_set_cursor_event*>(data));
+        });
     on_request_set_selection_.connect(&seat_->events.request_set_selection, [this](void* data) {
-        handle_request_set_selection(static_cast<wlr_seat_request_set_selection_event*>(data));
-    });
+            handle_request_set_selection(static_cast<wlr_seat_request_set_selection_event*>(data));
+        });
 
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(output_layout_, runtime_);
@@ -173,10 +173,10 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
             const char* xdg_runtime = std::getenv("XDG_RUNTIME_DIR");
             if (xdg_runtime) {
                 std::string sock_path = std::string(xdg_runtime) + "/" + socket_name_;
-                char link_buf[256];
+                char        link_buf[256];
                 for (int fd = 3; fd < 1024; ++fd) {
                     std::string proc_fd = "/proc/self/fd/" + std::to_string(fd);
-                    ssize_t n = readlink(proc_fd.c_str(), link_buf, sizeof(link_buf) - 1);
+                    ssize_t     n       = readlink(proc_fd.c_str(), link_buf, sizeof(link_buf) - 1);
                     if (n > 0) {
                         link_buf[n] = '\0';
                         if (sock_path == link_buf) {
@@ -370,7 +370,7 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
     }
     wlr_output_state_finish(&state);
 
-    auto* out_state   = new WlOutput();
+    auto* out_state = new WlOutput();
     out_state->output = output;
 
     // Add to output_layout (auto-placed to the right of existing outputs)
@@ -383,11 +383,11 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
 
     // Wire frame + destroy signals
     out_state->on_frame_.connect(&output->events.frame, [this, out_state](void*) {
-        handle_output_frame(out_state);
-    });
+            handle_output_frame(out_state);
+        });
     out_state->on_destroy_.connect(&output->events.destroy, [this, out_state](void*) {
-        handle_output_destroy(out_state);
-    });
+            handle_output_destroy(out_state);
+        });
 
     outputs_.push_back(std::unique_ptr<WlOutput>(out_state));
 
@@ -404,7 +404,9 @@ void WaylandBackend::handle_output_destroy(WlOutput* out) {
     out->on_frame_.disconnect();
     out->on_destroy_.disconnect();
     outputs_.erase(std::remove_if(outputs_.begin(), outputs_.end(),
-        [out](const auto& p) { return p.get() == out; }), outputs_.end());
+        [out](const auto& p) {
+            return p.get() == out;
+        }), outputs_.end());
     runtime_.dispatch_display_change();
 }
 
@@ -427,8 +429,8 @@ void WaylandBackend::handle_new_input(wlr_input_device* device) {
 }
 
 void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
-    auto* kb    = new WlKeyboard();
-    kb->device  = device;
+    auto* kb = new WlKeyboard();
+    kb->device = device;
 
     wlr_keyboard* keyboard = wlr_keyboard_from_input_device(device);
 
@@ -443,14 +445,14 @@ void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
     wlr_keyboard_set_repeat_info(keyboard, 25, 600);
 
     kb->on_key_.connect(&keyboard->events.key, [this, kb](void* data) {
-        handle_keyboard_key(kb, static_cast<wlr_keyboard_key_event*>(data));
-    });
+            handle_keyboard_key(kb, static_cast<wlr_keyboard_key_event*>(data));
+        });
     kb->on_modifiers_.connect(&keyboard->events.modifiers, [this, kb](void*) {
-        handle_keyboard_modifiers(kb);
-    });
+            handle_keyboard_modifiers(kb);
+        });
     kb->on_destroy_.connect(&device->events.destroy, [this, kb](void*) {
-        handle_keyboard_destroy(kb);
-    });
+            handle_keyboard_destroy(kb);
+        });
 
     wlr_seat_set_keyboard(seat_, keyboard);
 
@@ -465,10 +467,10 @@ void WaylandBackend::handle_new_pointer(wlr_input_device* device) {
 
 void WaylandBackend::handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event* ev) {
     wlr_keyboard* keyboard = wlr_keyboard_from_input_device(kb->device);
-    xkb_keycode_t   keycode = ev->keycode + 8;
-    xkb_keysym_t    keysym  = xkb_state_key_get_one_sym(keyboard->xkb_state, keycode);
+    xkb_keycode_t keycode  = ev->keycode + 8;
+    xkb_keysym_t  keysym   = xkb_state_key_get_one_sym(keyboard->xkb_state, keycode);
 
-    bool pressed = (ev->state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    bool          pressed = (ev->state == WL_KEYBOARD_KEY_STATE_PRESSED);
     if (!pressed)
         return;
 
@@ -492,7 +494,9 @@ void WaylandBackend::handle_keyboard_modifiers(WlKeyboard* kb) {
 
 void WaylandBackend::handle_keyboard_destroy(WlKeyboard* kb) {
     keyboards_.erase(std::remove_if(keyboards_.begin(), keyboards_.end(),
-        [kb](const auto& p) { return p.get() == kb; }), keyboards_.end());
+        [kb](const auto& p) {
+            return p.get() == kb;
+        }), keyboards_.end());
 }
 
 // ---------------------------------------------------------------------------
@@ -510,9 +514,9 @@ void WaylandBackend::handle_cursor_motion_abs(wlr_pointer_motion_absolute_event*
 
 void WaylandBackend::handle_cursor_button(wlr_pointer_button_event* ev) {
     event::ButtonEv bev;
-    bev.button  = (uint8_t)(ev->button & 0xFF);
-    bev.state   = (uint16_t)mod_state_;
-    bev.release = (ev->state == WLR_BUTTON_RELEASED);
+    bev.button   = (uint8_t)(ev->button & 0xFF);
+    bev.state    = (uint16_t)mod_state_;
+    bev.release  = (ev->state == WLR_BUTTON_RELEASED);
     bev.root_pos = { (int16_t)cursor_->x, (int16_t)cursor_->y };
     runtime_.emit(bev);
 
@@ -529,18 +533,18 @@ void WaylandBackend::handle_cursor_frame() {
 }
 
 void WaylandBackend::handle_request_cursor(
-        wlr_seat_pointer_request_set_cursor_event* ev) {
+    wlr_seat_pointer_request_set_cursor_event* ev) {
     wlr_cursor_set_surface(cursor_, ev->surface, ev->hotspot_x, ev->hotspot_y);
 }
 
 void WaylandBackend::handle_request_set_selection(
-        wlr_seat_request_set_selection_event* ev) {
+    wlr_seat_request_set_selection_event* ev) {
     wlr_seat_set_selection(seat_, ev->source, ev->serial);
 }
 
 void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
     // Find surface under cursor; notify seat
-    double sx = 0, sy = 0;
+    double             sx = 0, sy = 0;
     wlr_scene_node*    node    = wlr_scene_node_at(&scene_root()->node, cursor_->x, cursor_->y, &sx, &sy);
     wlr_scene_surface* ss      = nullptr;
     wlr_surface*       surface = nullptr;
@@ -731,7 +735,7 @@ void WaylandBackend::apply_core_backend_effects() {
 // Recalculate usable area for an output and send configure to all mapped
 // layer surfaces on that output.
 void WaylandBackend::arrange_layers(wlr_output* output) {
-    struct wlr_box usable{};
+    struct wlr_box usable {};
     wlr_output_effective_resolution(output, &usable.width, &usable.height);
 
     // Process layers from bottom to top; background/bottom/top/overlay.
@@ -780,26 +784,26 @@ void WaylandBackend::handle_new_layer_surface(wlr_layer_surface_v1* surface) {
     layer_surfaces_.push_back(std::move(ls));
 
     raw->on_map_.connect(&surface->surface->events.map, [this, raw](void*) {
-        LOG_INFO("WaylandBackend: layer surface mapped");
-        arrange_layers(raw->surface->output);
-        wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, true);
-    });
+            LOG_INFO("WaylandBackend: layer surface mapped");
+            arrange_layers(raw->surface->output);
+            wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, true);
+        });
 
     raw->on_unmap_.connect(&surface->surface->events.unmap, [this, raw](void*) {
-        LOG_INFO("WaylandBackend: layer surface unmapped");
-        wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, false);
-        arrange_layers(raw->surface->output);
-    });
+            LOG_INFO("WaylandBackend: layer surface unmapped");
+            wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, false);
+            arrange_layers(raw->surface->output);
+        });
 
     raw->on_commit_.connect(&surface->surface->events.commit, [this, raw](void*) {
-        // Re-arrange if the exclusive zone or anchor changed.
-        if (raw->surface->output)
-            arrange_layers(raw->surface->output);
-    });
+            // Re-arrange if the exclusive zone or anchor changed.
+            if (raw->surface->output)
+                arrange_layers(raw->surface->output);
+        });
 
     raw->on_destroy_.connect(&surface->events.destroy, [this, raw](void*) {
-        handle_layer_surface_destroy(raw);
-    });
+            handle_layer_surface_destroy(raw);
+        });
 
     // Send initial configure so the client knows its dimensions.
     arrange_layers(surface->output);
@@ -811,7 +815,9 @@ void WaylandBackend::handle_layer_surface_destroy(WlLayerSurface* ls) {
 
     layer_surfaces_.erase(
         std::remove_if(layer_surfaces_.begin(), layer_surfaces_.end(),
-            [ls](const auto& p) { return p.get() == ls; }),
+        [ls](const auto& p) {
+            return p.get() == ls;
+        }),
         layer_surfaces_.end());
 
     if (output) arrange_layers(output);

@@ -31,7 +31,7 @@ void WlCpuBuffer::destroy_impl(wlr_buffer* b) {
 }
 
 bool WlCpuBuffer::begin_data_ptr(wlr_buffer* b, uint32_t /*flags*/,
-                                  void** data, uint32_t* fmt, size_t* stride) {
+    void** data, uint32_t* fmt, size_t* stride) {
     auto* self = reinterpret_cast<WlCpuBuffer*>(b);
     *data   = self->pixels;
     *fmt    = DRM_FORMAT_ARGB8888;

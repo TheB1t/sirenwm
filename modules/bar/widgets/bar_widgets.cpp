@@ -173,7 +173,7 @@ std::vector<TagHit> TagsWidget::draw(PaintContext& paint,
         const std::string& bg = (tag.urgent && !tag.focused) ? cfg.colors.focused_fg
                               : tag.focused                  ? cfg.colors.focused_bg
                                                              : cfg.colors.bar_bg;
-        int                tw = paint.draw_text(cursor_x, tag.name, fg, bg);
+        int tw = paint.draw_text(cursor_x, tag.name, fg, bg);
         if (tag.has_windows) {
             constexpr int sq = 4;
             paint.draw_rect(cursor_x + 2, 2, sq, sq, fg);

@@ -301,12 +301,12 @@ static int g_bat_status_fd = -1;
 static void open_battery_fds() {
     if (g_bat_cap_fd >= 0) return; // already open
     for (int i = 0; i < 4; ++i) {
-        std::string base = "/sys/class/power_supply/BAT" + std::to_string(i);
+        std::string base      = "/sys/class/power_supply/BAT" + std::to_string(i);
         std::string type_path = base + "/type";
-        int fd = open(type_path.c_str(), O_RDONLY | O_CLOEXEC);
+        int         fd        = open(type_path.c_str(), O_RDONLY | O_CLOEXEC);
         if (fd < 0) continue;
-        char buf[32];
-        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        char        buf[32];
+        ssize_t     n = read(fd, buf, sizeof(buf) - 1);
         close(fd);
         if (n <= 0) continue;
         buf[n] = '\0';
@@ -318,8 +318,12 @@ static void open_battery_fds() {
 }
 
 static void close_battery_fds() {
-    if (g_bat_cap_fd >= 0)    { close(g_bat_cap_fd);    g_bat_cap_fd = -1; }
-    if (g_bat_status_fd >= 0) { close(g_bat_status_fd); g_bat_status_fd = -1; }
+    if (g_bat_cap_fd >= 0) {
+        close(g_bat_cap_fd);    g_bat_cap_fd = -1;
+    }
+    if (g_bat_status_fd >= 0) {
+        close(g_bat_status_fd); g_bat_status_fd = -1;
+    }
 }
 
 static int lua_sys_battery(LuaContext& lua) {
@@ -359,15 +363,17 @@ static void open_backlight_fds() {
         "intel_backlight", "amdgpu_bl0", "amdgpu_bl1",
         "nvidia_0", "acpi_video0", "acpi_video1", nullptr
     };
-    auto try_open = [](const std::string& base) -> bool {
-        int max_fd = open((base + "/max_brightness").c_str(), O_RDONLY | O_CLOEXEC);
-        if (max_fd < 0) return false;
-        int cur_fd = open((base + "/brightness").c_str(), O_RDONLY | O_CLOEXEC);
-        if (cur_fd < 0) { close(max_fd); return false; }
-        g_bl_cur_fd = cur_fd;
-        g_bl_max_fd = max_fd;
-        return true;
-    };
+    auto               try_open = [](const std::string& base) -> bool {
+            int max_fd = open((base + "/max_brightness").c_str(), O_RDONLY | O_CLOEXEC);
+            if (max_fd < 0) return false;
+            int cur_fd = open((base + "/brightness").c_str(), O_RDONLY | O_CLOEXEC);
+            if (cur_fd < 0) {
+                close(max_fd); return false;
+            }
+            g_bl_cur_fd = cur_fd;
+            g_bl_max_fd = max_fd;
+            return true;
+        };
     for (int i = 0; names[i]; ++i) {
         if (try_open(std::string("/sys/class/backlight/") + names[i]))
             return;
@@ -387,8 +393,12 @@ static void open_backlight_fds() {
 }
 
 static void close_backlight_fds() {
-    if (g_bl_cur_fd >= 0) { close(g_bl_cur_fd); g_bl_cur_fd = -1; }
-    if (g_bl_max_fd >= 0) { close(g_bl_max_fd); g_bl_max_fd = -1; }
+    if (g_bl_cur_fd >= 0) {
+        close(g_bl_cur_fd); g_bl_cur_fd = -1;
+    }
+    if (g_bl_max_fd >= 0) {
+        close(g_bl_max_fd); g_bl_max_fd = -1;
+    }
 }
 
 static int lua_sys_brightness(LuaContext& lua) {
@@ -400,7 +410,7 @@ static int lua_sys_brightness(LuaContext& lua) {
     int percent = 0;
     if (present) {
         char buf[32];
-        int cur = 0, max = 0;
+        int  cur = 0, max = 0;
         if (read_fd(g_bl_cur_fd, buf, sizeof(buf)) > 0) cur = std::atoi(buf);
         if (read_fd(g_bl_max_fd, buf, sizeof(buf)) > 0) max = std::atoi(buf);
         if (max > 0) percent = (int)((double)cur / max * 100.0 + 0.5);

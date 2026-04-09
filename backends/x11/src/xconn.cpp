@@ -245,27 +245,27 @@ XConnection::SizeHints XConnection::get_size_hints(xcb_window_t win) const {
             constexpr uint32_t PMaxSize   = (1u << 5);
             constexpr uint32_t PResizeInc = (1u << 6);
             constexpr uint32_t PBaseSize  = (1u << 8);
-            uint32_t flags = (uint32_t)d[0];
+            uint32_t           flags      = (uint32_t)d[0];
 
             if (flags & PMinSize) {
                 out.has_min = true;
-                out.min_w = d[5]; out.min_h = d[6];
+                out.min_w   = d[5]; out.min_h = d[6];
             }
             if (flags & PMaxSize) {
                 out.has_max = true;
-                out.max_w = d[7]; out.max_h = d[8];
+                out.max_w   = d[7]; out.max_h = d[8];
             }
             if (flags & PResizeInc && reply->value_len >= 11) {
                 out.has_inc = true;
-                out.inc_w = d[9]; out.inc_h = d[10];
+                out.inc_w   = d[9]; out.inc_h = d[10];
             }
             if (flags & PBaseSize && reply->value_len >= 17) {
                 out.has_base = true;
-                out.base_w = d[15]; out.base_h = d[16];
+                out.base_w   = d[15]; out.base_h = d[16];
             }
             out.fixed = out.has_min && out.has_max &&
-                        out.min_w > 0 && out.min_h > 0 &&
-                        out.min_w == out.max_w && out.min_h == out.max_h;
+                out.min_w > 0 && out.min_h > 0 &&
+                out.min_w == out.max_w && out.min_h == out.max_h;
         }
     }
     free(reply);

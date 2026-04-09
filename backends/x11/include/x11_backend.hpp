@@ -30,7 +30,7 @@ class X11Backend final : public Backend {
         std::unique_ptr<backend::MonitorPort>  monitor_port_impl;
         std::unique_ptr<backend::KeyboardPort> keyboard_port_impl;
 #ifdef SIRENWM_DEBUG_UI
-        std::unique_ptr<backend::GLPort>       gl_port_impl;
+        std::unique_ptr<backend::GLPort> gl_port_impl;
 #endif
         xcb_key_symbols_t* key_syms = nullptr;
         uint32_t net_wm_name        = 0;
@@ -119,8 +119,8 @@ class X11Backend final : public Backend {
         // Pointer barriers: confine cursor to monitor when a borderless window is active.
         // PointerBarrier is unsigned long (Xlib); avoid pulling Xlib.h into this header.
         unsigned long barriers_[4]    = { 0, 0, 0, 0 };
-        WindowId      barrier_window_   = NO_WINDOW;
-        int           barrier_mon_idx_  = -1;
+        WindowId      barrier_window_ = NO_WINDOW;
+        int barrier_mon_idx_          = -1;
         void set_pointer_barriers(WindowId win, int mon_idx);
         void clear_pointer_barriers();
 

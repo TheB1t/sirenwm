@@ -282,7 +282,7 @@ void BarModule::rebuild_bars() {
 bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {
     const ThemeConfig& theme = core().current_settings().theme;
     return load_bar_assignment(this->lua(), theme,
-        top_bar_setting_, bottom_bar_setting_, lua, table_idx, err);
+               top_bar_setting_, bottom_bar_setting_, lua, table_idx, err);
 }
 
 void BarModule::on_init() {
@@ -310,7 +310,9 @@ void BarModule::on_init() {
                 bool has_windows = !ws->windows.empty();
                 bool urgent      = false;
                 for (const auto& w : ws->windows)
-                    if (w->urgent) { urgent = true; break; }
+                    if (w->urgent) {
+                        urgent = true; break;
+                    }
                 s.tags.push_back({ ws_id, ws->name, focused, has_windows, urgent });
             }
 
@@ -328,7 +330,7 @@ void BarModule::on_init() {
 
 void BarModule::on_lua_init() {
     auto& host = this->lua();
-    auto  ctx = host.context();
+    auto  ctx  = host.context();
 
     // Proxy table: bar.settings = {...} triggers parse_setup immediately.
     ctx.new_table();   // proxy
@@ -339,7 +341,7 @@ void BarModule::on_lua_init() {
             if (key == "settings") {
                 auto*       mod = static_cast<BarModule*>(ud);
                 std::string err;
-                    if (!mod->parse_setup(lctx, 3, err))
+                if (!mod->parse_setup(lctx, 3, err))
                     LOG_ERR("bar.settings: %s", err.c_str());
             }
             return 0;
@@ -445,15 +447,15 @@ void BarModule::on_reload() {
         bottom_cfg = *bc;
 
     const ThemeConfig& th = core().current_settings().theme;
-    auto apply_theme = [&](BarConfig& cfg) {
-        if (cfg.font.empty())              cfg.font              = th.font;
-        if (cfg.colors.bar_bg.empty())     cfg.colors.bar_bg     = th.bg;
-        if (cfg.colors.normal_fg.empty())  cfg.colors.normal_fg  = th.fg;
-        if (cfg.colors.normal_bg.empty())  cfg.colors.normal_bg  = th.alt_bg;
-        if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
-        if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
-        if (cfg.colors.status_fg.empty())  cfg.colors.status_fg  = th.fg;
-    };
+    auto               apply_theme = [&](BarConfig& cfg) {
+            if (cfg.font.empty())              cfg.font = th.font;
+            if (cfg.colors.bar_bg.empty())     cfg.colors.bar_bg = th.bg;
+            if (cfg.colors.normal_fg.empty())  cfg.colors.normal_fg = th.fg;
+            if (cfg.colors.normal_bg.empty())  cfg.colors.normal_bg = th.alt_bg;
+            if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
+            if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
+            if (cfg.colors.status_fg.empty())  cfg.colors.status_fg = th.fg;
+        };
     apply_theme(top_cfg);
     apply_theme(bottom_cfg);
 
@@ -572,16 +574,16 @@ void BarModule::on_start() {
 
     // Theme is parsed after bar.settings in post-exec — patch colors/font now.
     const ThemeConfig& th = core().current_settings().theme;
-    auto apply_theme = [&](BarConfig& cfg) {
-        if (cfg.font.empty())
-            cfg.font = th.font;
-        if (cfg.colors.bar_bg.empty())    cfg.colors.bar_bg     = th.bg;
-        if (cfg.colors.normal_fg.empty()) cfg.colors.normal_fg  = th.fg;
-        if (cfg.colors.normal_bg.empty()) cfg.colors.normal_bg  = th.alt_bg;
-        if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
-        if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
-        if (cfg.colors.status_fg.empty()) cfg.colors.status_fg  = th.fg;
-    };
+    auto               apply_theme = [&](BarConfig& cfg) {
+            if (cfg.font.empty())
+                cfg.font = th.font;
+            if (cfg.colors.bar_bg.empty())    cfg.colors.bar_bg = th.bg;
+            if (cfg.colors.normal_fg.empty()) cfg.colors.normal_fg = th.fg;
+            if (cfg.colors.normal_bg.empty()) cfg.colors.normal_bg = th.alt_bg;
+            if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
+            if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
+            if (cfg.colors.status_fg.empty()) cfg.colors.status_fg = th.fg;
+        };
     apply_theme(top_cfg);
     apply_theme(bottom_cfg);
 

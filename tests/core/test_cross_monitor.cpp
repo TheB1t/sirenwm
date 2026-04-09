@@ -46,7 +46,7 @@ static std::unique_ptr<TestHarness> make_dual_monitor() {
 // ---------------------------------------------------------------------------
 
 TEST(CrossMonitor, MoveWindowToMonitorBasic) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     EXPECT_EQ(h->core.workspace_of_window(win), 0);
@@ -57,7 +57,7 @@ TEST(CrossMonitor, MoveWindowToMonitorBasic) {
 }
 
 TEST(CrossMonitor, MoveWindowToMonitorNoWindowUsesFocused) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::FocusWindow{ win });
@@ -68,10 +68,10 @@ TEST(CrossMonitor, MoveWindowToMonitorNoWindowUsesFocused) {
 }
 
 TEST(CrossMonitor, MoveWindowToMonitorInvalidMonitor) {
-    auto h = make_dual_monitor();
+    auto     h   = make_dual_monitor();
     WindowId win = h->map_window(0x1000, 0);
 
-    bool ok = h->core.dispatch(command::MoveWindowToMonitor{ win, 99 });
+    bool     ok = h->core.dispatch(command::MoveWindowToMonitor{ win, 99 });
     EXPECT_FALSE(ok);
     EXPECT_EQ(h->core.workspace_of_window(win), 0);
 }
@@ -81,7 +81,7 @@ TEST(CrossMonitor, MoveWindowToMonitorInvalidMonitor) {
 // ---------------------------------------------------------------------------
 
 TEST(CrossMonitor, FullscreenMoveUpdatesSourceWorkspaceMode) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::SetWindowFullscreen{ win, true });
@@ -96,7 +96,7 @@ TEST(CrossMonitor, FullscreenMoveUpdatesSourceWorkspaceMode) {
 }
 
 TEST(CrossMonitor, BorderlessMoveRepinsGeometry) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::SetWindowBorderless{ win, true });
@@ -116,7 +116,7 @@ TEST(CrossMonitor, BorderlessMoveRepinsGeometry) {
 }
 
 TEST(CrossMonitor, FullscreenMoveEmitsAssignedEvent) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::SetWindowFullscreen{ win, true });
@@ -138,7 +138,7 @@ TEST(CrossMonitor, FullscreenMoveEmitsAssignedEvent) {
 }
 
 TEST(CrossMonitor, NormalWindowMoveDoesNotTriggerFullscreenEval) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     drain(h->core);
@@ -155,7 +155,7 @@ TEST(CrossMonitor, NormalWindowMoveDoesNotTriggerFullscreenEval) {
 // ---------------------------------------------------------------------------
 
 TEST(CrossMonitor, FocusFollowsMovedWindowToVisibleWorkspace) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     drain(h->core);
@@ -168,7 +168,7 @@ TEST(CrossMonitor, FocusFollowsMovedWindowToVisibleWorkspace) {
 }
 
 TEST(CrossMonitor, FocusDoesNotFollowMoveToInvisibleWorkspace) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     drain(h->core);
@@ -185,7 +185,7 @@ TEST(CrossMonitor, FocusDoesNotFollowMoveToInvisibleWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(CrossMonitor, BorderlessActivatedEmittedAfterMove) {
-    auto h = make_dual_monitor();
+    auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::SetWindowBorderless{ win, true });

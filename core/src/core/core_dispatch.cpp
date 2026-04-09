@@ -380,8 +380,8 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     if (!w)
         return false;
 
-    int src_ws_id = workspace_of_window(cmd.window);
-    bool is_fs    = w->borderless || w->fullscreen;
+    int  src_ws_id = workspace_of_window(cmd.window);
+    bool is_fs     = w->borderless || w->fullscreen;
 
     wsman.move_window_to(cmd.workspace_id, w);
     emit_window_assigned_to_workspace(cmd.window, cmd.workspace_id);

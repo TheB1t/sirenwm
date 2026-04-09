@@ -96,11 +96,11 @@ struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
     WindowType  type              = WindowType::Normal;
-    bool  wm_fixed_size     = false;
-    bool  wm_never_focus    = false;
-    bool  wm_urgent         = false;
-    bool  wm_static_gravity = false;
-    Vec2i size_min, size_max, size_inc, size_base;
+    bool        wm_fixed_size     = false;
+    bool        wm_never_focus    = false;
+    bool        wm_urgent         = false;
+    bool        wm_static_gravity = false;
+    Vec2i       size_min, size_max, size_inc, size_base;
     bool        wm_no_decorations = false;
     // Geometry facts for intent classification in core.
     bool        covers_monitor       = false;
@@ -122,13 +122,13 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
     else if (has_atom(types, atoms.dialog))  out.type = WindowType::Dialog;
     else if (has_atom(types, atoms.utility)) out.type = WindowType::Utility;
     else if (has_atom(types, atoms.splash))  out.type = WindowType::Splash;
-    auto sz_hints         = xconn.get_size_hints(window);
-    out.wm_fixed_size     = sz_hints.fixed;
-    out.size_min          = { sz_hints.min_w, sz_hints.min_h };
-    out.size_max          = { sz_hints.max_w, sz_hints.max_h };
-    out.size_inc          = { sz_hints.inc_w, sz_hints.inc_h };
-    out.size_base         = { sz_hints.base_w, sz_hints.base_h };
-    auto wm_hints         = xconn.get_wm_hints(window);
+    auto sz_hints = xconn.get_size_hints(window);
+    out.wm_fixed_size = sz_hints.fixed;
+    out.size_min      = { sz_hints.min_w, sz_hints.min_h };
+    out.size_max      = { sz_hints.max_w, sz_hints.max_h };
+    out.size_inc      = { sz_hints.inc_w, sz_hints.inc_h };
+    out.size_base     = { sz_hints.base_w, sz_hints.base_h };
+    auto wm_hints = xconn.get_wm_hints(window);
     out.wm_never_focus    = wm_hints.no_input;
     out.wm_urgent         = wm_hints.urgent;
     out.wm_static_gravity = xconn.has_static_gravity(window);

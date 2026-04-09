@@ -104,7 +104,7 @@ TEST(Window, ToggleFloating) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    bool was = h.core.window_state_any(win)->floating;
+    bool     was = h.core.window_state_any(win)->floating;
 
     h.core.dispatch(command::ToggleWindowFloating{ win });
     EXPECT_NE(h.core.window_state_any(win)->floating, was);
@@ -180,7 +180,9 @@ TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
     bool found = false;
     for (const auto& e : events) {
         if (auto* ev = std::get_if<event::WorkspaceSwitched>(&e)) {
-            if (ev->workspace_id == 1) { found = true; break; }
+            if (ev->workspace_id == 1) {
+                found = true; break;
+            }
         }
     }
     EXPECT_TRUE(found);
@@ -199,7 +201,9 @@ TEST(Workspace, MoveWindowEmitsAssignedEvent) {
     bool found = false;
     for (const auto& e : events) {
         if (auto* ev = std::get_if<event::WindowAssignedToWorkspace>(&e)) {
-            if (ev->window == win && ev->workspace_id == 1) { found = true; break; }
+            if (ev->window == win && ev->workspace_id == 1) {
+                found = true; break;
+            }
         }
     }
     EXPECT_TRUE(found);
@@ -218,7 +222,9 @@ TEST(Workspace, BorderlessEmitsBorderlessActivatedEvent) {
     bool found = false;
     for (const auto& e : events) {
         if (auto* ev = std::get_if<event::BorderlessActivated>(&e)) {
-            if (ev->window == win) { found = true; break; }
+            if (ev->window == win) {
+                found = true; break;
+            }
         }
     }
     EXPECT_TRUE(found);

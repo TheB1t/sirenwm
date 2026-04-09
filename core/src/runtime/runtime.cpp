@@ -244,17 +244,17 @@ std::vector<std::string> Runtime::validate_settings() const {
 
     // --- Core settings cross-checks ---
 
-    const auto& monitors  = core_config_.monitors.get();
-    const auto& compose   = core_config_.compose.get();
+    const auto& monitors   = core_config_.monitors.get();
+    const auto& compose    = core_config_.compose.get();
     const auto& workspaces = core_config_.workspaces.get();
-    const auto& theme     = core_config_.theme.get();
+    const auto& theme      = core_config_.theme.get();
 
-    auto has_alias = [&](const std::string& alias) {
-        for (auto& m : monitors)
-            if (m.alias == alias)
-                return true;
-        return false;
-    };
+    auto        has_alias = [&](const std::string& alias) {
+            for (auto& m : monitors)
+                if (m.alias == alias)
+                    return true;
+            return false;
+        };
 
     // Modifier
     if (auto* s = store_.find("modifier")) {
@@ -296,8 +296,8 @@ std::vector<std::string> Runtime::validate_settings() const {
         errs.push_back("monitor composition not defined — set siren.compose_monitors = {...}");
     } else {
         auto valid_side = [](const std::string& s) {
-            return s == "left" || s == "right" || s == "top" || s == "bottom";
-        };
+                return s == "left" || s == "right" || s == "top" || s == "bottom";
+            };
         if (compose.primary.empty())
             errs.push_back("compose_monitors: 'primary' must be set");
 
@@ -331,47 +331,47 @@ std::vector<std::string> Runtime::validate_settings() const {
 
         std::unordered_map<std::string, int>    state;
         std::function<void(const std::string&)> dfs = [&](const std::string& name) {
-            if (state[name] == 2)
-                return;
-            if (state[name] == 1) {
-                errs.push_back("compose_monitors: cycle detected at '" + name + "'");
-                return;
-            }
-            state[name] = 1;
-            auto it = by_monitor.find(name);
-            if (it == by_monitor.end()) {
-                if (name == compose.primary) {
+                if (state[name] == 2)
+                    return;
+                if (state[name] == 1) {
+                    errs.push_back("compose_monitors: cycle detected at '" + name + "'");
+                    return;
+                }
+                state[name] = 1;
+                auto it = by_monitor.find(name);
+                if (it == by_monitor.end()) {
+                    if (name == compose.primary) {
+                        state[name] = 2;
+                        return;
+                    }
+                    errs.push_back("compose_monitors: missing layout entry for '" + name + "'");
                     state[name] = 2;
                     return;
                 }
-                errs.push_back("compose_monitors: missing layout entry for '" + name + "'");
-                state[name] = 2;
-                return;
-            }
-            auto* link = it->second;
-            if (name == compose.primary) {
-                if (!link->relative_to.empty())
-                    errs.push_back("compose_monitors: primary monitor '" + name + "' must not have relative_to");
-                if (!link->side.empty())
-                    errs.push_back("compose_monitors: primary monitor '" + name + "' must not have side");
-            } else {
-                if (link->relative_to.empty())
-                    errs.push_back("compose_monitors: monitor '" + name + "' must set relative_to");
-                if (link->side.empty())
-                    errs.push_back("compose_monitors: monitor '" + name + "' must set side");
-            }
-            if (!link->relative_to.empty()) {
-                if (!has_alias(link->relative_to)) {
-                    errs.push_back("compose_monitors: monitor '" + name + "' references unknown relative_to '" +
-                        link->relative_to + "'");
-                } else if (link->relative_to == name) {
-                    errs.push_back("compose_monitors: monitor '" + name + "' cannot reference itself");
+                auto* link = it->second;
+                if (name == compose.primary) {
+                    if (!link->relative_to.empty())
+                        errs.push_back("compose_monitors: primary monitor '" + name + "' must not have relative_to");
+                    if (!link->side.empty())
+                        errs.push_back("compose_monitors: primary monitor '" + name + "' must not have side");
                 } else {
-                    dfs(link->relative_to);
+                    if (link->relative_to.empty())
+                        errs.push_back("compose_monitors: monitor '" + name + "' must set relative_to");
+                    if (link->side.empty())
+                        errs.push_back("compose_monitors: monitor '" + name + "' must set side");
                 }
-            }
-            state[name] = 2;
-        };
+                if (!link->relative_to.empty()) {
+                    if (!has_alias(link->relative_to)) {
+                        errs.push_back("compose_monitors: monitor '" + name + "' references unknown relative_to '" +
+                            link->relative_to + "'");
+                    } else if (link->relative_to == name) {
+                        errs.push_back("compose_monitors: monitor '" + name + "' cannot reference itself");
+                    } else {
+                        dfs(link->relative_to);
+                    }
+                }
+                state[name] = 2;
+            };
 
         for (auto& m : monitors) {
             if (m.enabled)
@@ -388,14 +388,14 @@ std::vector<std::string> Runtime::validate_settings() const {
     }
 
     // Bar → theme cross-checks
-    auto* bar_s = store_.find("bar");
-    auto* bottom_bar_s = store_.find("bottom_bar");
-    const auto* bar_ts = bar_s
+    auto*       bar_s        = store_.find("bar");
+    auto*       bottom_bar_s = store_.find("bottom_bar");
+    const auto* bar_ts       = bar_s
         ? dynamic_cast<const TypedSetting<std::optional<BarConfig>>*>(bar_s) : nullptr;
     const auto* bottom_bar_ts = bottom_bar_s
         ? dynamic_cast<const TypedSetting<std::optional<BarConfig>>*>(bottom_bar_s) : nullptr;
-    bool has_bar = (bar_ts && bar_ts->get().has_value());
-    bool has_bottom = (bottom_bar_ts && bottom_bar_ts->get().has_value());
+    bool        has_bar    = (bar_ts && bar_ts->get().has_value());
+    bool        has_bottom = (bottom_bar_ts && bottom_bar_ts->get().has_value());
 
     if (has_bar) {
         if (bar_ts->get()->font.empty() && theme.font.empty())
@@ -624,8 +624,8 @@ void Runtime::tick() {
     constexpr std::size_t kMaxBackendEventsPerTick = 2048;
     constexpr int         kMaxEpollEvents          = 16;
 
-    struct epoll_event ready[kMaxEpollEvents];
-    int n = epoll_wait(epoll_fd_, ready, kMaxEpollEvents, 100);
+    struct epoll_event    ready[kMaxEpollEvents];
+    int                   n = epoll_wait(epoll_fd_, ready, kMaxEpollEvents, 100);
 
     dispatch_ready_fds(ready, n);
     backend_->pump_events(kMaxBackendEventsPerTick);
@@ -674,7 +674,7 @@ void Runtime::run_loop() {
 }
 
 void Runtime::run(const std::string& config_path,
-                   const std::string& fallback_config_path) {
+    const std::string& fallback_config_path) {
     while (true) {
         switch (state_) {
             case RuntimeState::Idle:

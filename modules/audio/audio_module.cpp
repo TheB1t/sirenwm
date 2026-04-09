@@ -1,6 +1,5 @@
 #include "audio_module.hpp"
 
-
 #include <lua_host.hpp>
 #include <log.hpp>
 #include <module_registry.hpp>
@@ -20,7 +19,7 @@ struct VolumeInfo {
 };
 
 static VolumeInfo read_mixer(const char* card, const char* elem_name, bool capture) {
-    VolumeInfo v;
+    VolumeInfo   v;
 
     snd_mixer_t* mixer = nullptr;
     if (snd_mixer_open(&mixer, 0) < 0)
@@ -164,7 +163,7 @@ void AudioModule::on_lua_init() {
                 lctx.pop(1);
 
                 LOG_INFO("audio: card=%s output=%s input=%s",
-                    g_card.c_str(), g_output_elem.c_str(), g_input_elem.c_str());
+                g_card.c_str(), g_output_elem.c_str(), g_input_elem.c_str());
             }
             return 0;
         }, nullptr);

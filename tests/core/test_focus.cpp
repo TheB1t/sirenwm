@@ -55,14 +55,14 @@ TEST(Focus, FocusNextCyclesThroughWindows) {
     h.core.take_backend_effects(); // drain
     h.core.dispatch(command::FocusNextWindow{});
 
-    auto fx = h.core.take_backend_effects();
+    auto     fx = h.core.take_backend_effects();
     // There must be a FocusWindow effect for some window that is not a
-    bool found_focus = false;
+    bool     found_focus = false;
     WindowId focused_win = NO_WINDOW;
     for (const auto& e : fx) {
         if (e.kind == BackendEffectKind::FocusWindow) {
-            found_focus  = true;
-            focused_win  = e.window;
+            found_focus = true;
+            focused_win = e.window;
             break;
         }
     }
@@ -83,8 +83,8 @@ TEST(Focus, FocusPrevCyclesThroughWindows) {
     h.core.take_backend_effects();
     h.core.dispatch(command::FocusPrevWindow{});
 
-    auto fx = h.core.take_backend_effects();
-    bool found_focus = false;
+    auto     fx          = h.core.take_backend_effects();
+    bool     found_focus = false;
     WindowId focused_win = NO_WINDOW;
     for (const auto& e : fx) {
         if (e.kind == BackendEffectKind::FocusWindow) {
@@ -111,7 +111,7 @@ TEST(Focus, FocusNextWrapsAround) {
     h.core.dispatch(command::FocusNextWindow{});
 
     // After two steps, a FocusWindow effect must have been emitted each time.
-    auto fx = h.core.take_backend_effects();
+    auto fx        = h.core.take_backend_effects();
     bool any_focus = false;
     for (const auto& e : fx) {
         if (e.kind == BackendEffectKind::FocusWindow)

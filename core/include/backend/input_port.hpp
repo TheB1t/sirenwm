@@ -62,10 +62,10 @@ class InputPort {
         // Grab any button with any modifier on window using SYNC pointer mode.
         // Used for click-to-focus on unfocused windows: WM receives the press,
         // calls allow_events(replay=true) to pass it through to the client.
-        virtual void grab_button_any(WindowId window)                            = 0;
+        virtual void grab_button_any(WindowId window) = 0;
 
-        virtual void grab_pointer()                             = 0;
-        virtual void ungrab_pointer()                           = 0;
+        virtual void grab_pointer()   = 0;
+        virtual void ungrab_pointer() = 0;
         // Release the passive button grab after a ButtonPress.
         // replay=true  → XCB_ALLOW_REPLAY_POINTER: re-deliver the event to the window
         // replay=false → XCB_ALLOW_ASYNC_POINTER:  discard it (WM consumed the click)

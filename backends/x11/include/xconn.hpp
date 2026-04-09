@@ -160,16 +160,16 @@ class XConnection {
             int  inc_w = 0, inc_h = 0;  // size increment (terminal cell size)
             int  base_w = 0, base_h = 0;
         };
-        SizeHints                   get_size_hints(xcb_window_t win) const;
-        bool                        has_fixed_size_hints(xcb_window_t win) const;
-        bool                        has_static_gravity(xcb_window_t win) const;
-        bool                        motif_no_decorations(xcb_window_t win) const;
+        SizeHints    get_size_hints(xcb_window_t win) const;
+        bool         has_fixed_size_hints(xcb_window_t win) const;
+        bool         has_static_gravity(xcb_window_t win) const;
+        bool         motif_no_decorations(xcb_window_t win) const;
         struct WmHints { bool no_input = false; bool urgent = false; };
-        WmHints                     get_wm_hints(xcb_window_t win) const;
-        bool                        get_wm_hints_no_input(xcb_window_t win) const;
-        bool                        has_property_32(xcb_window_t win, xcb_atom_t prop, uint32_t min_items) const;
-        xcb_cursor_t                create_left_ptr_cursor();
-        void                        free_cursor(xcb_cursor_t cursor);
+        WmHints      get_wm_hints(xcb_window_t win) const;
+        bool         get_wm_hints_no_input(xcb_window_t win) const;
+        bool         has_property_32(xcb_window_t win, xcb_atom_t prop, uint32_t min_items) const;
+        xcb_cursor_t create_left_ptr_cursor();
+        void         free_cursor(xcb_cursor_t cursor);
 
         void change_property(xcb_window_t win, xcb_atom_t prop, xcb_atom_t type,
             uint8_t format, uint32_t count, const void* data) {

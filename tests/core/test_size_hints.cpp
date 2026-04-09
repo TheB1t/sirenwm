@@ -18,7 +18,7 @@ TEST(SizeHints, ClampToMinMax) {
 
     // Set hints: min=200x100, max=800x600
     command::SetWindowMetadata meta;
-    meta.window = win;
+    meta.window         = win;
     meta.hints.size_min = {200, 100};
     meta.hints.size_max = {800, 600};
     h.core.dispatch(meta);
@@ -44,7 +44,7 @@ TEST(SizeHints, IncrementSnapping) {
     h.core.dispatch(command::SetWindowFloating{ win, true });
 
     command::SetWindowMetadata meta;
-    meta.window = win;
+    meta.window          = win;
     meta.hints.size_base = {5, 5};
     meta.hints.size_inc  = {10, 10};
     h.core.dispatch(meta);
@@ -64,7 +64,7 @@ TEST(SizeHints, IncrementSnappingWithMinSize) {
     h.core.dispatch(command::SetWindowFloating{ win, true });
 
     command::SetWindowMetadata meta;
-    meta.window = win;
+    meta.window          = win;
     meta.hints.size_min  = {100, 100};
     meta.hints.size_inc  = {10, 10};
     meta.hints.size_base = {0, 0};
@@ -85,7 +85,7 @@ TEST(SizeHints, TiledWindowIgnoresSizeHints) {
     // Window is tiled (not floating)
 
     command::SetWindowMetadata meta;
-    meta.window = win;
+    meta.window         = win;
     meta.hints.size_min = {500, 500};
     meta.hints.size_max = {500, 500};
     h.core.dispatch(meta);
@@ -105,7 +105,7 @@ TEST(SizeHints, SetWindowGeometryAppliesHintsForFloating) {
     h.core.dispatch(command::SetWindowFloating{ win, true });
 
     command::SetWindowMetadata meta;
-    meta.window = win;
+    meta.window         = win;
     meta.hints.size_min = {300, 300};
     meta.hints.size_max = {300, 300};
     h.core.dispatch(meta);
@@ -132,11 +132,11 @@ TEST(SizeHints, TransientRoutesToParentWorkspace) {
     h.core.apply_settings(s);
     h.start();
 
-    WindowId parent = h.map_window(0x1000, 0);
-    WindowId child  = h.map_window(0x2000, 1);
+    WindowId                   parent = h.map_window(0x1000, 0);
+    WindowId                   child  = h.map_window(0x2000, 1);
 
     command::SetWindowMetadata meta;
-    meta.window = child;
+    meta.window        = child;
     meta.transient_for = parent;
     h.core.dispatch(meta);
 
@@ -151,11 +151,11 @@ TEST(SizeHints, TransientSuppressesFocusOnce) {
     TestHarness h;
     h.start();
 
-    WindowId parent = h.map_window(0x1000, 0);
-    WindowId child  = h.map_window(0x2000, 0);
+    WindowId                   parent = h.map_window(0x1000, 0);
+    WindowId                   child  = h.map_window(0x2000, 0);
 
     command::SetWindowMetadata meta;
-    meta.window = child;
+    meta.window        = child;
     meta.transient_for = parent;
     h.core.dispatch(meta);
 
@@ -171,11 +171,11 @@ TEST(SizeHints, DialogAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId win = h.map_window(0x1000, 0);
+    WindowId                   win = h.map_window(0x1000, 0);
 
     command::SetWindowMetadata meta;
     meta.window = win;
-    meta.type = WindowType::Dialog;
+    meta.type   = WindowType::Dialog;
     h.core.dispatch(meta);
 
     auto w = h.core.window_state_any(win);
@@ -186,11 +186,11 @@ TEST(SizeHints, UtilityAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId win = h.map_window(0x1000, 0);
+    WindowId                   win = h.map_window(0x1000, 0);
 
     command::SetWindowMetadata meta;
     meta.window = win;
-    meta.type = WindowType::Utility;
+    meta.type   = WindowType::Utility;
     h.core.dispatch(meta);
 
     auto w = h.core.window_state_any(win);
@@ -201,10 +201,10 @@ TEST(SizeHints, FixedSizeNonBorderlessAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId win = h.map_window(0x1000, 0);
+    WindowId                   win = h.map_window(0x1000, 0);
 
     command::SetWindowMetadata meta;
-    meta.window = win;
+    meta.window           = win;
     meta.hints.fixed_size = true;
     h.core.dispatch(meta);
 
@@ -216,11 +216,11 @@ TEST(SizeHints, SplashAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId win = h.map_window(0x1000, 0);
+    WindowId                   win = h.map_window(0x1000, 0);
 
     command::SetWindowMetadata meta;
     meta.window = win;
-    meta.type = WindowType::Splash;
+    meta.type   = WindowType::Splash;
     h.core.dispatch(meta);
 
     auto w = h.core.window_state_any(win);

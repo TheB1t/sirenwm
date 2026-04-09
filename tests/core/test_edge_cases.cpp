@@ -69,10 +69,12 @@ TEST(EdgeCases, AssignWindowWorkspaceBasic) {
     EXPECT_TRUE(ok);
 
     auto events = h.core.take_core_events();
-    bool found = false;
+    bool found  = false;
     for (const auto& e : events) {
         if (auto* ev = std::get_if<event::WindowAssignedToWorkspace>(&e)) {
-            if (ev->window == win && ev->workspace_id == 2) { found = true; break; }
+            if (ev->window == win && ev->workspace_id == 2) {
+                found = true; break;
+            }
         }
     }
     EXPECT_TRUE(found);
@@ -244,7 +246,7 @@ TEST(EdgeCases, EnsureWindowCreatesNew) {
     h.start();
 
     WindowId win = 0xABCD;
-    bool ok = h.core.dispatch(command::EnsureWindow{ win, 0 });
+    bool     ok  = h.core.dispatch(command::EnsureWindow{ win, 0 });
     EXPECT_TRUE(ok);
     EXPECT_NE(h.core.window_state_any(win), nullptr);
 }
@@ -483,6 +485,6 @@ TEST(EdgeCases, SetMetadataNonexistentReturnsFalse) {
 
     command::SetWindowMetadata meta;
     meta.window = 0xDEAD;
-    bool ok = h.core.dispatch(meta);
+    bool                       ok = h.core.dispatch(meta);
     EXPECT_FALSE(ok);
 }

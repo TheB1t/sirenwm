@@ -43,7 +43,7 @@ static int lua_module_preload(LuaContext& lua, void* userdata) {
     if (!lua.is_string(1))
         return 0;
     const std::string name    = lua.to_string(1);
-    auto& runtime = loader_runtime(userdata);
+    auto&             runtime = loader_runtime(userdata);
     runtime.use(name);
     runtime.emit_lua_init();
     if (runtime.lua().push_module_table(name))
@@ -494,7 +494,7 @@ bool load(const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, b
             "string", "table", "math", "io", "os", "coroutine",
             "package", "debug", "utf8", nullptr
         };
-        auto is_stdlib = [](const std::string& key) {
+        auto                     is_stdlib = [](const std::string& key) {
                 for (const char* const* p = std_libs; *p; ++p)
                     if (key == *p) return true;
                 return false;
@@ -538,7 +538,7 @@ bool load(const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, b
         std::string user_swm_path = home
             ? std::string(home) + "/.config/sirenwm/swm/?.lua"
             : std::string();
-        std::string sys_swm_path = SIRENWM_LUA_DIR "/swm/?.lua";
+        std::string sys_swm_path  = SIRENWM_LUA_DIR "/swm/?.lua";
         std::string sys_root_path = SIRENWM_LUA_DIR "/?.lua";
 
         ctx.get_global("package");
@@ -634,7 +634,7 @@ setmetatable(Vec2, {__call = function(_, x, y) return Vec2.new(x, y) end})
     // -----------------------------------------------------------------------
 
     ctx.get_global("siren");
-    int siren_idx = ctx.abs_index(-1);
+    int  siren_idx = ctx.abs_index(-1);
 
     bool store_ok = runtime.store().apply_from_lua(ctx, siren_idx);
 

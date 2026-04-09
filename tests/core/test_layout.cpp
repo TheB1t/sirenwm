@@ -183,7 +183,7 @@ TEST(Layout, SwitchLocalIndexChangesWorkspace) {
     // local index 0 is already active; switch to 1
     int ws_before = h.core.active_workspace_on_monitor(0);
     h.core.dispatch(command::SwitchWorkspaceLocalIndex{ 1 });
-    int ws_after  = h.core.active_workspace_on_monitor(0);
+    int ws_after = h.core.active_workspace_on_monitor(0);
 
     EXPECT_NE(ws_after, ws_before);
 }

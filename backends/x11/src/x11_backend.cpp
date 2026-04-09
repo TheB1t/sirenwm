@@ -19,7 +19,7 @@ X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     monitor_port_impl  = backend::x11::create_monitor_port(xconn, runtime_ref);
     keyboard_port_impl = backend::x11::create_keyboard_port(xconn);
 #ifdef SIRENWM_DEBUG_UI
-    gl_port_impl       = backend::x11::create_gl_port();
+    gl_port_impl = backend::x11::create_gl_port();
 #endif
     auto atoms = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
     net_wm_name = atoms["_NET_WM_NAME"];

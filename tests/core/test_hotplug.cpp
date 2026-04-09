@@ -85,8 +85,8 @@ TEST(Hotplug, WindowsOnRemovedMonitorMigrated) {
     h.start();
 
     // Map a window on monitor 1's workspace
-    int ws_on_mon1 = h.core.active_workspace_on_monitor(1);
-    WindowId win   = h.map_window(0x3000, ws_on_mon1);
+    int      ws_on_mon1 = h.core.active_workspace_on_monitor(1);
+    WindowId win        = h.map_window(0x3000, ws_on_mon1);
 
     // Remove monitor 1
     apply_topology(h.core, {
@@ -204,7 +204,7 @@ TEST(Hotplug, MoveWindowToSameMonitorIsNoop) {
     });
     h.start();
 
-    int ws0 = h.core.active_workspace_on_monitor(0);
+    int      ws0 = h.core.active_workspace_on_monitor(0);
     WindowId win = h.map_window(0x5000, ws0);
 
     // Move to same monitor (0) — should stay on same workspace
@@ -226,7 +226,7 @@ TEST(Hotplug, TopologyChangeEmitsDomainEvent) {
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
 
-    auto evts = h.core.take_core_events();
+    auto evts  = h.core.take_core_events();
     bool found = false;
     for (const auto& ev : evts) {
         if (std::holds_alternative<event::DisplayTopologyChanged>(ev)) {

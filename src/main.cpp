@@ -41,10 +41,10 @@ void signal_handler(int signum) {
 
 std::string resolve_default_config_path() {
     auto try_default = [](const std::string& dir) -> std::string {
-        std::string p = dir + "/sirenwm/init.lua.default";
-        struct stat s {};
-        return (stat(p.c_str(), &s) == 0) ? p : "";
-    };
+            std::string p = dir + "/sirenwm/init.lua.default";
+            struct stat s {};
+            return (stat(p.c_str(), &s) == 0) ? p : "";
+        };
 
     std::string result;
     if (const char* xdg = std::getenv("XDG_DATA_DIRS")) {
@@ -62,7 +62,7 @@ std::string resolve_default_config_path() {
 }
 
 std::string resolve_user_config_path() {
-    const char* home = std::getenv("HOME");
+    const char* home     = std::getenv("HOME");
     std::string cfg_path = "init.lua";
     if (home)
         cfg_path = std::string(home) + "/.config/sirenwm/init.lua";
@@ -88,11 +88,11 @@ int main(int argc, char** argv) {
         log_path = std::string(home) + "/runtime.log";
     log_init(log_path);
 
-    std::string exec_path    = resolve_exec_path(argc, argv);
-    std::string cfg_path     = resolve_user_config_path();
-    std::string default_path = resolve_default_config_path();
+    std::string              exec_path    = resolve_exec_path(argc, argv);
+    std::string              cfg_path     = resolve_user_config_path();
+    std::string              default_path = resolve_default_config_path();
 
-    ModuleRegistry module_registry;
+    ModuleRegistry           module_registry;
     module_registry_static::apply_static_registrations(module_registry);
     RuntimeOf<ActiveBackend> runtime(module_registry);
     g_signal_runtime = &runtime;

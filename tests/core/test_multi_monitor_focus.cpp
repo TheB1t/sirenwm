@@ -65,7 +65,7 @@ TEST(MultiMonitorFocus, FocusMonitorEmitsFocusRootOnOldMonitor) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, WindowsOnDifferentMonitorsIndependent) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
@@ -84,7 +84,7 @@ TEST(MultiMonitorFocus, WindowsOnDifferentMonitorsIndependent) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, WorkspaceSwitchIsolatedPerMonitor) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId w1 = h->map_window(0x1000, 0); // ws 0 on monitor 0
     WindowId w2 = h->map_window(0x2000, 1); // ws 1 on monitor 1
@@ -107,7 +107,7 @@ TEST(MultiMonitorFocus, WorkspaceSwitchIsolatedPerMonitor) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, FocusFollowsWindowToOtherMonitor) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::FocusWindow{ win });
@@ -125,7 +125,7 @@ TEST(MultiMonitorFocus, FocusFollowsWindowToOtherMonitor) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, MoveToMonitorUsesActiveWorkspace) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::MoveWindowToMonitor{ win, 1 });
@@ -140,7 +140,7 @@ TEST(MultiMonitorFocus, MoveToMonitorUsesActiveWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, FullscreenOnOneMonitorDoesNotAffectOther) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
@@ -160,7 +160,7 @@ TEST(MultiMonitorFocus, FullscreenOnOneMonitorDoesNotAffectOther) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, FocusNextStaysOnCurrentWorkspace) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 0);
@@ -187,7 +187,7 @@ TEST(MultiMonitorFocus, FocusNextStaysOnCurrentWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, FullscreenOnBothMonitors) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
@@ -212,7 +212,7 @@ TEST(MultiMonitorFocus, FullscreenOnBothMonitors) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, RemoveWindowOnOtherMonitorSafe) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
@@ -232,7 +232,7 @@ TEST(MultiMonitorFocus, RemoveWindowOnOtherMonitorSafe) {
 // ---------------------------------------------------------------------------
 
 TEST(MultiMonitorFocus, BorderlessActivatedHasCorrectMonitor) {
-    auto h = make_dual();
+    auto     h = make_dual();
 
     WindowId win = h->map_window(0x2000, 1);
     h->core.take_core_events(); // drain

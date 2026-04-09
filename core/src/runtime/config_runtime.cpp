@@ -262,21 +262,21 @@ std::optional<std::string> parse_theme_runtime(
         return std::string("must be an object");
 
     auto read_int = [&](const char* key, int& v) {
-        auto it = obj->find(key);
-        if (it != obj->end()) {
-            if (const auto* iv = it->second.as_int())
-                v = static_cast<int>(*iv);
-            else if (const auto* nv = it->second.as_num())
-                v = static_cast<int>(*nv);
-        }
-    };
+            auto it = obj->find(key);
+            if (it != obj->end()) {
+                if (const auto* iv = it->second.as_int())
+                    v = static_cast<int>(*iv);
+                else if (const auto* nv = it->second.as_num())
+                    v = static_cast<int>(*nv);
+            }
+        };
     auto read_str = [&](const char* key, std::string& v) {
-        auto it = obj->find(key);
-        if (it != obj->end()) {
-            if (const auto* sv = it->second.as_string())
-                v = *sv;
-        }
-    };
+            auto it = obj->find(key);
+            if (it != obj->end()) {
+                if (const auto* sv = it->second.as_string())
+                    v = *sv;
+            }
+        };
 
     read_int("dpi",          out.dpi);
     read_int("cursor_size",  out.cursor_size);
@@ -294,21 +294,21 @@ std::optional<std::string> parse_theme_runtime(
         const auto* bobj = bit->second.as_object();
         if (bobj) {
             auto bri = [&](const char* key, int& v) {
-                auto it2 = bobj->find(key);
-                if (it2 != bobj->end()) {
-                    if (const auto* iv = it2->second.as_int())
-                        v = static_cast<int>(*iv);
-                    else if (const auto* nv = it2->second.as_num())
-                        v = static_cast<int>(*nv);
-                }
-            };
+                    auto it2 = bobj->find(key);
+                    if (it2 != bobj->end()) {
+                        if (const auto* iv = it2->second.as_int())
+                            v = static_cast<int>(*iv);
+                        else if (const auto* nv = it2->second.as_num())
+                            v = static_cast<int>(*nv);
+                    }
+                };
             auto brs = [&](const char* key, std::string& v) {
-                auto it2 = bobj->find(key);
-                if (it2 != bobj->end()) {
-                    if (const auto* sv = it2->second.as_string())
-                        v = *sv;
-                }
-            };
+                    auto it2 = bobj->find(key);
+                    if (it2 != bobj->end()) {
+                        if (const auto* sv = it2->second.as_string())
+                            v = *sv;
+                    }
+                };
             bri("thickness", out.border_thickness);
             brs("focused",   out.border_focused);
             brs("unfocused", out.border_unfocused);

@@ -29,7 +29,7 @@ TEST(Reload, WorkspaceCountCanGrow) {
     TestHarness h;
     h.start();
 
-    int before = h.core.workspace_count();
+    int          before = h.core.workspace_count();
 
     CoreSettings s;
     s.workspace_defs.resize((size_t)before + 2);
@@ -59,8 +59,8 @@ TEST(Reload, WindowsMigratedFromRemovedWorkspace) {
     h.start();
 
     // Map window on last workspace
-    int last_ws = h.core.workspace_count() - 1;
-    WindowId win = h.map_window(0x1000, last_ws);
+    int      last_ws = h.core.workspace_count() - 1;
+    WindowId win     = h.map_window(0x1000, last_ws);
     EXPECT_EQ(h.core.workspace_of_window(win), last_ws);
 
     // Shrink to remove that workspace

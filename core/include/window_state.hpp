@@ -34,23 +34,23 @@ struct WindowState {
 
     std::string wm_instance;
     std::string wm_class;
-    WindowType  type                  = WindowType::Normal;
-    bool        size_locked           = false;   // WM_NORMAL_HINTS min == max
-    bool        no_input_focus        = false;  // WM_HINTS.input == False
-    bool        urgent                = false;  // WM_HINTS UrgencyHint
-    bool        preserve_position     = false;  // client wants to keep physical coordinates (X11: StaticGravity)
+    WindowType  type              = WindowType::Normal;
+    bool        size_locked       = false;       // WM_NORMAL_HINTS min == max
+    bool        no_input_focus    = false;      // WM_HINTS.input == False
+    bool        urgent            = false;      // WM_HINTS UrgencyHint
+    bool        preserve_position = false;      // client wants to keep physical coordinates (X11: StaticGravity)
 
     // WM_NORMAL_HINTS size constraints (used when floating).
-    Vec2i       size_min;   // min size (0,0 = unconstrained)
-    Vec2i       size_max;   // max size (0,0 = unconstrained)
-    Vec2i       size_inc;   // resize increment (terminal cell size); (0,0 = any)
-    Vec2i       size_base;  // base size subtracted before applying increments
-    bool        self_managed          = false;   // client owns geometry; WM must not override position/size
-    bool        promote_to_borderless = false;   // set by core at MapRequest: backend should make this borderless
+    Vec2i    size_min;      // min size (0,0 = unconstrained)
+    Vec2i    size_max;      // max size (0,0 = unconstrained)
+    Vec2i    size_inc;      // resize increment (terminal cell size); (0,0 = any)
+    Vec2i    size_base;     // base size subtracted before applying increments
+    bool     self_managed          = false;      // client owns geometry; WM must not override position/size
+    bool     promote_to_borderless = false;      // set by core at MapRequest: backend should make this borderless
 
-    Vec2i       pos_;
-    Vec2i       size_;
-    uint32_t    border_width = 0;
+    Vec2i    pos_;
+    Vec2i    size_;
+    uint32_t border_width = 0;
 
     // Scalar accessors (backward compat)
     int&       x()             { return pos_.x(); }

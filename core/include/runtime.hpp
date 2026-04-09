@@ -31,11 +31,11 @@ class Runtime : public IEventEmitter {
         };
 
         ModuleRegistry& module_registry_;
-        Core     core_;
-        LuaHost  lua_host_{core_};   // must be declared after core_
+        Core         core_;
+        LuaHost      lua_host_{core_}; // must be declared after core_
         RuntimeStore store_;
         CoreConfig   core_config_;
-        Backend* backend_ = nullptr;  // non-null between start() and stop()
+        Backend*     backend_ = nullptr; // non-null between start() and stop()
 
         std::vector<std::unique_ptr<Module>> modules;
 
@@ -62,7 +62,6 @@ class Runtime : public IEventEmitter {
 
     public:
         explicit Runtime(ModuleRegistry& module_registry);
-
 
         // Non-copyable, non-movable (address stability for references).
         Runtime(const Runtime&)            = delete;
@@ -101,14 +100,14 @@ class Runtime : public IEventEmitter {
         // Drive the full lifecycle: Idle→Configured→Starting→Running→Stopping→Stopped.
         // If config_path fails to load, tries fallback_config_path (if non-empty).
         // Returns when the WM shuts down. Call consume_exec_restart_request() after.
-        void    run(const std::string& config_path,
-                    const std::string& fallback_config_path = {});
+        void run(const std::string& config_path,
+            const std::string& fallback_config_path = {});
 
-        void    stop(bool is_exec_restart = false);
-        void    request_reload();
-        void    request_soft_restart();
-        void    request_exec_restart();
-        bool    consume_exec_restart_request();
+        void stop(bool is_exec_restart = false);
+        void request_reload();
+        void request_soft_restart();
+        void request_exec_restart();
+        bool consume_exec_restart_request();
         void    request_stop() { stop_requested = true; }
 
         RuntimeState state() const { return state_; }
@@ -119,8 +118,8 @@ class Runtime : public IEventEmitter {
                 state_ = RuntimeState::Configured;
         }
         // Used by test harnesses directly; prefer run() in production.
-        void start();
-        bool load_config(const std::string& path);
+        void           start();
+        bool           load_config(const std::string& path);
         Backend&       backend();
         const Backend& backend() const;
         ModuleRegistry& module_registry() { return module_registry_; }
@@ -139,7 +138,7 @@ class Runtime : public IEventEmitter {
         CoreConfig&       core_config()       { return core_config_; }
         const CoreConfig& core_config() const { return core_config_; }
 
-        CoreSettings build_core_settings() const;
+        CoreSettings             build_core_settings() const;
         std::vector<std::string> validate_settings() const;
 
         template<typename Ev>
