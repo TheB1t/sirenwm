@@ -36,6 +36,21 @@ extern "C" {
 class Core;
 class Runtime;
 
+#ifndef SIRENWM_NO_LAYER_SHELL
+// ---------------------------------------------------------------------------
+// Per-layer-surface state.
+// ---------------------------------------------------------------------------
+struct WlLayerSurface {
+    wlr_layer_surface_v1*        surface      = nullptr;
+    wlr_scene_layer_surface_v1*  scene_layer  = nullptr;
+
+    WlListener on_map_;
+    WlListener on_unmap_;
+    WlListener on_destroy_;
+    WlListener on_commit_;
+};
+#endif
+
 // ---------------------------------------------------------------------------
 // Per-output state tracked by the backend.
 // ---------------------------------------------------------------------------
@@ -168,6 +183,11 @@ private:
     // WindowId allocator for native Wayland surfaces (starts at 1, never 0)
     std::atomic<WindowId> next_id_{ 1 };
 
+#ifndef SIRENWM_NO_LAYER_SHELL
+    // Active layer-shell surfaces (compositor owns)
+    std::vector<std::unique_ptr<WlLayerSurface>> layer_surfaces_;
+#endif
+
     // Current modifier state (accumulated across all keyboards)
     uint32_t mod_state_ = 0;
 
@@ -196,6 +216,8 @@ private:
     void handle_new_xdg_surface(wlr_xdg_surface* surface);
 #ifndef SIRENWM_NO_LAYER_SHELL
     void handle_new_layer_surface(wlr_layer_surface_v1* surface);
+    void handle_layer_surface_destroy(WlLayerSurface* ls);
+    void arrange_layers(wlr_output* output);
 #endif
     void handle_output_frame(WlOutput* out);
     void handle_output_destroy(WlOutput* out);

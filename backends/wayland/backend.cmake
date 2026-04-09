@@ -109,6 +109,7 @@ endmacro()
 
 patch_wlr_header("wlr/types/wlr_scene.h")
 patch_wlr_header("wlr/render/wlr_renderer.h")
+patch_wlr_header("wlr/types/wlr_layer_shell_v1.h")
 
 # Detect whether wlr_scene::tree is a pointer or a value.
 # This changed between wlroots versions.
