@@ -89,6 +89,7 @@ public:
     void   on_reload_applied() override;
     void   on_start(Core& core) override;
     void   shutdown() override;
+    void   prepare_exec_restart() override;
 
     StartupSnapshot scan_existing_windows() override;
 
@@ -194,6 +195,12 @@ private:
     // True when running on a software (pixman) renderer with no DRM device.
     // In this mode cursor attachment and xcursor upload must be skipped.
     bool software_renderer_ = false;
+
+    // Wayland display socket fd (owned by us, passed to wl_display_add_socket_fd).
+    // -1 if inherited from parent process via SIRENWM_WL_SOCKET_FD.
+    int  socket_fd_   = -1;
+    // Socket name (e.g. "wayland-1"), stored for prepare_exec_restart().
+    std::string socket_name_;
 
     // Backend-level signal listeners
     WlListener on_new_output_;

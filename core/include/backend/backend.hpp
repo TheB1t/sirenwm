@@ -71,6 +71,9 @@ class Backend {
         virtual void render_frame()                               = 0;
         virtual void on_reload_applied()                          = 0;
         virtual void shutdown() {}
+        // Called by main() just before execv() on exec-restart.
+        // Backend should drop O_CLOEXEC on any fds that must survive across exec.
+        virtual void prepare_exec_restart() {}
         virtual StartupSnapshot scan_existing_windows() { return {}; }
 
         // Called by Runtime once, after core.init() and before module on_start callbacks.
