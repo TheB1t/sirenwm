@@ -28,10 +28,14 @@ namespace {
 std::atomic<Runtime*> g_signal_runtime { nullptr };
 
 void signal_handler(int signum) {
-    if (signum == SIGINT) {
-        LOG_INFO("Received SIGINT, stopping window manager");
-        if (auto* rt = g_signal_runtime.load())
+    if (auto* rt = g_signal_runtime.load()) {
+        if (signum == SIGINT) {
+            LOG_INFO("Received SIGINT, stopping window manager");
             rt->request_stop();
+        } else if (signum == SIGHUP) {
+            LOG_INFO("Received SIGHUP, reloading config");
+            rt->request_reload();
+        }
     }
 }
 
@@ -88,7 +92,8 @@ int main(int argc, char** argv) {
     module_registry_static::apply_static_registrations(module_registry);
     RuntimeOf<ActiveBackend> runtime(module_registry);
     g_signal_runtime = &runtime;
-    signal(SIGINT, signal_handler);
+    signal(SIGINT,  signal_handler);
+    signal(SIGHUP,  signal_handler);
 
     std::string exec_path    = resolve_exec_path(argc, argv);
     std::string cfg_path     = resolve_user_config_path();
