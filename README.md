@@ -52,6 +52,7 @@ SirenWM is a keyboard-first tiling WM for X11. It runs without a compositor, dis
 
 - ImGui debug overlay for live WM state inspection (`-DSIRENWM_DEBUG_UI=ON`)
 - Runtime lifecycle FSM (Idle → Configured → Starting → Running → Stopping → Stopped)
+- Typed setting registry with transactional reload and per-setting validation
 
 ## Architecture
 
@@ -68,6 +69,9 @@ the core never reads `init.lua` directly — it exposes an API and the Lua layer
 
 C++ modules are loaded with `require("name")` and return an API table.
 Lua modules use the same `require()` — or `siren.load()` for optional ones.
+
+No global config object — each module owns its own settings.
+Hot-reload is transactional: snapshot → clear → re-execute `init.lua` → commit or rollback.
 
 ## Getting Started
 
