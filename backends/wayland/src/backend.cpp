@@ -131,7 +131,7 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(output_layout_, runtime_);
     render_port_impl_   = backend::wl::create_render_port(scene_root(), renderer_, allocator_);
-    input_port_impl_    = backend::wl::create_input_port(seat_, cursor_);
+    input_port_impl_    = backend::wl::create_input_port(seat_, cursor_, pointer_grabbed_);
     keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_);
 
     // Start the backend (opens DRM device, creates initial outputs)
@@ -548,6 +548,12 @@ void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
             surface = ss->surface;
     }
 
+    if (pointer_grabbed_) {
+        // Pointer is grabbed (drag/resize): keep cursor shape but don't
+        // forward focus or motion to clients.
+        return;
+    }
+
     if (!surface) {
         set_cursor("left_ptr");
         wlr_seat_pointer_clear_focus(seat_);
@@ -577,8 +583,16 @@ void WaylandBackend::on(event::WorkspaceSwitched ev) {
 }
 
 void WaylandBackend::on(event::FocusChanged ev) {
+    // Deactivate previously focused window.
+    if (focused_window_ != NO_WINDOW && focused_window_ != ev.window) {
+        auto prev = surfaces_.find(focused_window_);
+        if (prev != surfaces_.end() && prev->second && prev->second->xdg_surface())
+            wlr_xdg_toplevel_set_activated(prev->second->xdg_surface()->toplevel, false);
+    }
+
     if (ev.window == NO_WINDOW) {
         wlr_seat_keyboard_notify_clear_focus(seat_);
+        focused_window_ = NO_WINDOW;
         return;
     }
 
@@ -589,7 +603,10 @@ void WaylandBackend::on(event::FocusChanged ev) {
     if (!surf || !surf->xdg_surface())
         return;
 
-    // Notify seat that keyboard focus goes to this surface
+    wlr_xdg_toplevel_set_activated(surf->xdg_surface()->toplevel, true);
+    focused_window_ = ev.window;
+
+    // Notify seat that keyboard focus goes to this surface.
     if (!keyboards_.empty()) {
         wlr_keyboard* keyboard = wlr_keyboard_from_input_device(keyboards_[0]->device);
         wlr_seat_set_keyboard(seat_, keyboard);
@@ -648,6 +665,8 @@ void WaylandBackend::apply_core_backend_effects() {
                 auto it = surfaces_.find(e.window);
                 if (it != surfaces_.end()) {
                     it->second->mapped = true;
+                    if (it->second->scene_node())
+                        wlr_scene_node_set_enabled(&it->second->scene_node()->node, true);
                     runtime_.emit(event::WindowMapped{ e.window });
                 }
                 break;

@@ -115,12 +115,11 @@ private:
 class WlRenderWindow final : public RenderWindow {
 public:
     WlRenderWindow(wlr_scene_tree* root, const RenderWindowCreateInfo& info,
-                   wlr_renderer* renderer, wlr_allocator* allocator)
+                   wlr_renderer* /*renderer*/, wlr_allocator* allocator)
         : monitor_index_(info.monitor_index),
           x_(info.pos.x()), y_(info.pos.y()),
           w_(std::max(1, info.size.x())),
           h_(std::max(1, info.size.y())),
-          renderer_(renderer),
           allocator_(allocator) {
 
         // Cairo draws into our own pixel array.
@@ -222,23 +221,15 @@ public:
 
 private:
     bool allocate_wlr_buffer() {
-        if (!allocator_ || !renderer_) return false;
+        if (!allocator_) return false;
 
-        // Query the renderer's supported shm formats and pick ARGB8888.
-        size_t           n_fmts = 0;
-        const uint32_t*  fmts   = wlr_renderer_get_shm_texture_formats(renderer_, &n_fmts);
-        uint32_t         chosen = DRM_FORMAT_ARGB8888;
-        bool             found  = false;
-        for (size_t i = 0; i < n_fmts; ++i) {
-            if (fmts[i] == DRM_FORMAT_ARGB8888) { found = true; break; }
-        }
-        if (!found && n_fmts > 0) chosen = fmts[0];  // best effort
-
+        // Request ARGB8888 with no modifiers (implicit linear).
+        // pixman/shm allocator always supports this format.
         wlr_drm_format fmt{};
-        fmt.format      = chosen;
-        fmt.len         = 0;  // no modifiers → implicit linear
-        fmt.capacity    = 0;
-        fmt.modifiers   = nullptr;
+        fmt.format    = DRM_FORMAT_ARGB8888;
+        fmt.len       = 0;
+        fmt.capacity  = 0;
+        fmt.modifiers = nullptr;
 
         wlr_buf_ = wlr_allocator_create_buffer(allocator_, w_, h_, &fmt);
         if (!wlr_buf_) {
@@ -254,7 +245,6 @@ private:
     uint8_t*          pixels_        = nullptr;
     cairo_surface_t*  cairo_surface_ = nullptr;
     cairo_t*          cairo_ctx_     = nullptr;
-    wlr_renderer*     renderer_      = nullptr;
     wlr_allocator*    allocator_     = nullptr;
     wlr_buffer*       wlr_buf_       = nullptr;
     wlr_scene_tree*   tree_          = nullptr;

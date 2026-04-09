@@ -192,6 +192,13 @@ private:
     // Current modifier state (accumulated across all keyboards)
     uint32_t mod_state_ = 0;
 
+    // Last window that received activated=true (for deactivation on focus change).
+    WindowId focused_window_ = NO_WINDOW;
+
+    // True while a pointer grab is active (mouse drag/resize).
+    // Suppresses pointer focus forwarding to clients.
+    bool pointer_grabbed_ = false;
+
     // True when running on a software (pixman) renderer with no DRM device.
     // In this mode cursor attachment and xcursor upload must be skipped.
     bool software_renderer_ = false;
