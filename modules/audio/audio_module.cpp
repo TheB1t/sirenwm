@@ -1,6 +1,7 @@
 #include "audio_module.hpp"
 
-#include <config.hpp>
+
+#include <lua_host.hpp>
 #include <log.hpp>
 #include <module_registry.hpp>
 
@@ -127,7 +128,7 @@ void AudioModule::on_init() {}
 void AudioModule::on_lua_init() {
     g_instance = this;
 
-    auto& lua = config().lua();
+    auto& lua = this->lua();
     auto  ctx = lua.context();
 
     // Proxy table with __newindex for audio.settings = {...}

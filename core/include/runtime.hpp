@@ -10,11 +10,12 @@
 #include <sys/epoll.h>
 
 #include <backend/events.hpp>
-#include <config.hpp>
 #include <core.hpp>
+#include <core_config.hpp>
 #include <event_emitter.hpp>
 #include <lua_host.hpp>
 #include <module.hpp>
+#include <runtime_store.hpp>
 
 #include <runtime_state.hpp>
 
@@ -29,10 +30,11 @@ class Runtime : public IEventEmitter {
             SoftRestart,
         };
 
-        Config config_;
         ModuleRegistry& module_registry_;
         Core     core_;
         LuaHost  lua_host_{core_};   // must be declared after core_
+        RuntimeStore store_;
+        CoreConfig   core_config_;
         Backend* backend_ = nullptr;  // non-null between start() and stop()
 
         std::vector<std::unique_ptr<Module>> modules;
@@ -59,11 +61,8 @@ class Runtime : public IEventEmitter {
         std::atomic_bool stop_requested { false };
 
     public:
-        explicit Runtime(ModuleRegistry& module_registry)
-            : module_registry_(module_registry)
-        {
-            config_.bind_runtime_handles(*this, lua_host_);
-        }
+        explicit Runtime(ModuleRegistry& module_registry);
+
 
         // Non-copyable, non-movable (address stability for references).
         Runtime(const Runtime&)            = delete;
@@ -77,7 +76,7 @@ class Runtime : public IEventEmitter {
 
         template<typename T, typename... Args>
         Runtime& use(Args&&... args) {
-            auto mod = std::make_unique<T>(ModuleDeps{ *this, config_, core_ },
+            auto mod = std::make_unique<T>(ModuleDeps{ *this, core_ },
                     std::forward<Args>(args)...);
             mod->on_init();
             modules.push_back(std::move(mod));
@@ -122,8 +121,6 @@ class Runtime : public IEventEmitter {
         // Used by test harnesses directly; prefer run() in production.
         void start();
         bool load_config(const std::string& path);
-        Config& config() { return config_; }
-        const Config& config() const { return config_; }
         Backend&       backend();
         const Backend& backend() const;
         ModuleRegistry& module_registry() { return module_registry_; }
@@ -135,6 +132,15 @@ class Runtime : public IEventEmitter {
 
         LuaHost& lua() { return lua_host_; }
         const LuaHost& lua() const { return lua_host_; }
+
+        RuntimeStore& store() { return store_; }
+        const RuntimeStore& store() const { return store_; }
+
+        CoreConfig&       core_config()       { return core_config_; }
+        const CoreConfig& core_config() const { return core_config_; }
+
+        CoreSettings build_core_settings() const;
+        std::vector<std::string> validate_settings() const;
 
         template<typename Ev>
         void emit(Ev ev) {

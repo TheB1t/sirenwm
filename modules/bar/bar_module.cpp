@@ -1,7 +1,6 @@
 #include "bar_module.hpp"
 
 #include <module_registry.hpp>
-#include <config.hpp>
 #include <core.hpp>
 #include <log.hpp>
 #include <backend/backend.hpp>
@@ -161,7 +160,7 @@ static void refresh_slot(LuaHost& lua, const BarSlot& slot) {
 
 void BarModule::refresh_widgets() {
     if (runtime_state() != RuntimeState::Running) return;
-    auto& lua = config().lua();
+    auto& lua = this->lua();
     for (const auto& slot : top_cfg.left)   refresh_slot(lua, slot);
     for (const auto& slot : top_cfg.center) refresh_slot(lua, slot);
     for (const auto& slot : top_cfg.right)  refresh_slot(lua, slot);
@@ -182,7 +181,7 @@ void BarModule::redraw() {
     // For interval=0 widgets, call Lua every redraw (fast/reactive widgets).
     // Only when fully started — earlier calls would reach modules before bind_backend.
     if (runtime_state() == RuntimeState::Running) {
-        auto& lua = config().lua();
+        auto& lua = this->lua();
         for (const auto& slot : top_cfg.left)      update_reactive_slot(lua, slot);
         for (const auto& slot : top_cfg.center)    update_reactive_slot(lua, slot);
         for (const auto& slot : top_cfg.right)     update_reactive_slot(lua, slot);

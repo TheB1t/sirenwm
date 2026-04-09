@@ -1,6 +1,5 @@
 #include <module.hpp>
 #include <module_registry.hpp>
-#include <config.hpp>
 #include <core.hpp>
 #include <lua_host.hpp>
 #include <runtime.hpp>
@@ -127,7 +126,7 @@ static DebugUIModule* g_instance = nullptr;
 void DebugUIModule::on_lua_init() {
     g_instance = this;
 
-    auto& lua = config().lua();
+    auto& lua = this->lua();
     auto  ctx = lua.context();
 
     ctx.new_table();

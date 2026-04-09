@@ -1,7 +1,6 @@
-#include <runtime/config_runtime.hpp>
-
-#include <config.hpp>
+#include <core_config.hpp>
 #include <log.hpp>
+#include <runtime_store.hpp>
 #include <string_utils.hpp>
 
 #include <limits>
@@ -251,57 +250,106 @@ std::optional<std::string> parse_workspaces_runtime(
 
 namespace config_runtime {
 
-void register_builtin_runtime_settings(Config& config) {
-    config.register_runtime_setting("monitors", RuntimeSettingSpec{
-            .expected_type = RuntimeValueType::Array,
-            .validate      = [](const RuntimeValue& value) -> std::optional<std::string> {
-                std::vector<MonitorAlias> tmp;
-                return parse_monitors_runtime(value, tmp);
-            },
-            .apply = [&config](const RuntimeValue& value) {
-                std::vector<MonitorAlias> aliases;
-                auto err = parse_monitors_runtime(value, aliases);
-                if (err.has_value()) {
-                    LOG_ERR("monitors.apply: unexpected parse failure after validation: %s", err->c_str());
-                    return;
-                }
-                config.set_monitor_aliases(std::move(aliases));
-            },
-        });
+// ---------------------------------------------------------------------------
+// Theme parser (RuntimeValue-based, replaces ad-hoc Lua table read)
+// ---------------------------------------------------------------------------
 
-    config.register_runtime_setting("compose_monitors", RuntimeSettingSpec{
-            .expected_type = RuntimeValueType::Object,
-            .validate      = [](const RuntimeValue& value) -> std::optional<std::string> {
-                MonitorCompose tmp;
-                return parse_compose_runtime(value, tmp);
-            },
-            .apply = [&config](const RuntimeValue& value) {
-                MonitorCompose compose;
-                auto err = parse_compose_runtime(value, compose);
-                if (err.has_value()) {
-                    LOG_ERR("compose_monitors.apply: unexpected parse failure after validation: %s", err->c_str());
-                    return;
-                }
-                config.set_monitor_compose(std::move(compose));
-            },
-        });
+std::optional<std::string> parse_theme_runtime(
+    const RuntimeValue& value,
+    ThemeConfig& out) {
+    const auto* obj = value.as_object();
+    if (!obj)
+        return std::string("must be an object");
 
-    config.register_runtime_setting("workspaces", RuntimeSettingSpec{
-            .expected_type = RuntimeValueType::Array,
-            .validate      = [](const RuntimeValue& value) -> std::optional<std::string> {
-                std::vector<WorkspaceDef> tmp;
-                return parse_workspaces_runtime(value, tmp);
-            },
-            .apply = [&config](const RuntimeValue& value) {
-                std::vector<WorkspaceDef> defs;
-                auto err = parse_workspaces_runtime(value, defs);
-                if (err.has_value()) {
-                    LOG_ERR("workspaces.apply: unexpected parse failure after validation: %s", err->c_str());
-                    return;
+    auto read_int = [&](const char* key, int& v) {
+        auto it = obj->find(key);
+        if (it != obj->end()) {
+            if (const auto* iv = it->second.as_int())
+                v = static_cast<int>(*iv);
+            else if (const auto* nv = it->second.as_num())
+                v = static_cast<int>(*nv);
+        }
+    };
+    auto read_str = [&](const char* key, std::string& v) {
+        auto it = obj->find(key);
+        if (it != obj->end()) {
+            if (const auto* sv = it->second.as_string())
+                v = *sv;
+        }
+    };
+
+    read_int("dpi",          out.dpi);
+    read_int("cursor_size",  out.cursor_size);
+    read_str("cursor_theme", out.cursor_theme);
+    read_str("font",   out.font);
+    read_str("bg",     out.bg);
+    read_str("fg",     out.fg);
+    read_str("alt_bg", out.alt_bg);
+    read_str("alt_fg", out.alt_fg);
+    read_str("accent", out.accent);
+    read_int("gap",    out.gap);
+
+    auto bit = obj->find("border");
+    if (bit != obj->end()) {
+        const auto* bobj = bit->second.as_object();
+        if (bobj) {
+            auto bri = [&](const char* key, int& v) {
+                auto it2 = bobj->find(key);
+                if (it2 != bobj->end()) {
+                    if (const auto* iv = it2->second.as_int())
+                        v = static_cast<int>(*iv);
+                    else if (const auto* nv = it2->second.as_num())
+                        v = static_cast<int>(*nv);
                 }
-                config.set_workspace_defs(std::move(defs));
-            },
-        });
+            };
+            auto brs = [&](const char* key, std::string& v) {
+                auto it2 = bobj->find(key);
+                if (it2 != bobj->end()) {
+                    if (const auto* sv = it2->second.as_string())
+                        v = *sv;
+                }
+            };
+            bri("thickness", out.border_thickness);
+            brs("focused",   out.border_focused);
+            brs("unfocused", out.border_unfocused);
+        }
+    }
+
+    return std::nullopt;
+}
+
+// ---------------------------------------------------------------------------
+// CoreConfig registration into RuntimeStore
+// ---------------------------------------------------------------------------
+
+void register_core_config(CoreConfig& cc, RuntimeStore& store) {
+    cc.monitors.set_parse(
+        [](const RuntimeValue& v, std::vector<MonitorAlias>& out) {
+            return parse_monitors_runtime(v, out);
+        },
+        RuntimeValueType::Array);
+    store.register_setting("monitors", cc.monitors);
+
+    cc.compose.set_parse(
+        [](const RuntimeValue& v, MonitorCompose& out) {
+            return parse_compose_runtime(v, out);
+        },
+        RuntimeValueType::Object);
+    store.register_setting("compose_monitors", cc.compose);
+
+    cc.workspaces.set_parse(
+        [](const RuntimeValue& v, std::vector<WorkspaceDef>& out) {
+            return parse_workspaces_runtime(v, out);
+        },
+        RuntimeValueType::Array);
+    store.register_setting("workspaces", cc.workspaces);
+
+    cc.theme.set_parse(
+        [](const RuntimeValue& v, ThemeConfig& out) {
+            return parse_theme_runtime(v, out);
+        },
+        RuntimeValueType::Object);
+    store.register_setting("theme", cc.theme);
 }
 
 } // namespace config_runtime

@@ -2,11 +2,13 @@
 
 #include <backend/backend.hpp>
 #include <backend/commands.hpp>
-#include <config.hpp>
+#include <config_loader.hpp>
 #include <core.hpp>
 #include <module_registry.hpp>
 #include <monitor_layout.hpp>
 #include <log.hpp>
+#include <string_utils.hpp>
+#include <bar_config.hpp>
 
 #include <cstdlib>
 #include <csignal>
@@ -45,6 +47,16 @@ void Runtime::transition(RuntimeState from, RuntimeState to) {
     }
     LOG_INFO("FSM: %s → %s", runtime_state_name(from), runtime_state_name(to));
     state_ = to;
+}
+
+// ---------------------------------------------------------------------------
+// Runtime constructor
+// ---------------------------------------------------------------------------
+
+Runtime::Runtime(ModuleRegistry& module_registry)
+    : module_registry_(module_registry)
+{
+    config_runtime::register_core_config(core_config_, store_);
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +201,7 @@ Runtime& Runtime::use(const std::string& name) {
     for (auto& m : modules)
         if (m && m->name() == name)
             return *this;
-    auto mod = module_registry_.create(name, ModuleDeps{ *this, config_, core_ });
+    auto mod = module_registry_.create(name, ModuleDeps{ *this, core_ });
     if (mod) {
         mod->on_init();
         modules.push_back(std::move(mod));
@@ -214,31 +226,205 @@ void Runtime::reset_lua_init() {
         m->lua_init_reset();
 }
 
-namespace {
-
-CoreSettings make_core_settings_from_config(const Config& cfg) {
-    CoreSettings out;
-    out.monitor_aliases = cfg.get_monitor_aliases();
-    out.monitor_compose = cfg.get_monitor_compose();
-    out.workspace_defs  = cfg.get_workspace_defs();
-    out.theme           = cfg.get_theme();
-    return out;
+CoreSettings Runtime::build_core_settings() const {
+    return CoreSettings{
+        core_config_.monitors.get(),
+        core_config_.compose.get(),
+        core_config_.workspaces.get(),
+        core_config_.theme.get(),
+    };
 }
 
-} // namespace
+std::vector<std::string> Runtime::validate_settings() const {
+    std::vector<std::string> errs;
+
+    // Per-setting validation.
+    auto per = store_.validate_all();
+    errs.insert(errs.end(), per.begin(), per.end());
+
+    // --- Core settings cross-checks ---
+
+    const auto& monitors  = core_config_.monitors.get();
+    const auto& compose   = core_config_.compose.get();
+    const auto& workspaces = core_config_.workspaces.get();
+    const auto& theme     = core_config_.theme.get();
+
+    auto has_alias = [&](const std::string& alias) {
+        for (auto& m : monitors)
+            if (m.alias == alias)
+                return true;
+        return false;
+    };
+
+    // Modifier
+    if (auto* s = store_.find("modifier")) {
+        auto* ts = dynamic_cast<const TypedSetting<std::optional<uint16_t>>*>(s);
+        if (!ts || !ts->get().has_value())
+            errs.push_back("modifier not set — use siren.modifier = 'mod4' (or shift/ctrl/alt/mod1..mod5)");
+    } else {
+        errs.push_back("modifier not set — use siren.modifier = 'mod4' (or shift/ctrl/alt/mod1..mod5)");
+    }
+
+    // Workspaces
+    if (workspaces.empty())
+        errs.push_back("no workspaces defined — set siren.workspaces = {...}");
+
+    // Monitors
+    if (monitors.empty()) {
+        errs.push_back("no monitors defined — set siren.monitors = {...}");
+    } else {
+        std::unordered_set<std::string> aliases_seen;
+        std::unordered_set<std::string> outputs_seen;
+        for (auto& m : monitors) {
+            if (m.alias.empty())
+                errs.push_back("monitor: 'name' must be non-empty");
+            if (m.output.empty())
+                errs.push_back("monitor '" + m.alias + "': 'output' must be non-empty");
+            if (m.width <= 0 || m.height <= 0)
+                errs.push_back("monitor '" + m.alias + "': width/height must be > 0");
+            if (!is_valid_rotation(m.rotation))
+                errs.push_back("monitor '" + m.alias + "': rotation must be one of normal/left/right/inverted");
+            if (!aliases_seen.insert(m.alias).second)
+                errs.push_back("duplicate monitor alias '" + m.alias + "'");
+            if (!outputs_seen.insert(m.output).second)
+                errs.push_back("duplicate output mapping '" + m.output + "'");
+        }
+    }
+
+    // Compose
+    if (!compose.defined) {
+        errs.push_back("monitor composition not defined — set siren.compose_monitors = {...}");
+    } else {
+        auto valid_side = [](const std::string& s) {
+            return s == "left" || s == "right" || s == "top" || s == "bottom";
+        };
+        if (compose.primary.empty())
+            errs.push_back("compose_monitors: 'primary' must be set");
+
+        std::unordered_map<std::string, const MonitorComposeLink*> by_monitor;
+        for (auto& l : compose.layout) {
+            if (l.monitor.empty())
+                errs.push_back("compose_monitors.layout: 'monitor' must be non-empty");
+            if (!has_alias(l.monitor))
+                errs.push_back("compose_monitors.layout: unknown monitor alias '" + l.monitor + "'");
+            if (by_monitor.count(l.monitor))
+                errs.push_back("compose_monitors.layout: duplicate entry for '" + l.monitor + "'");
+            else
+                by_monitor[l.monitor] = &l;
+            if (!l.side.empty() && !valid_side(l.side))
+                errs.push_back("compose_monitors.layout: monitor '" + l.monitor +
+                    "' has invalid side '" + l.side + "'");
+        }
+
+        if (!compose.primary.empty() && !has_alias(compose.primary))
+            errs.push_back("compose_monitors: primary alias '" + compose.primary +
+                "' not found in siren.monitors");
+
+        for (auto& m : monitors) {
+            if (!m.enabled)
+                continue;
+            if (m.alias == compose.primary)
+                continue;
+            if (!by_monitor.count(m.alias))
+                errs.push_back("compose_monitors.layout: missing entry for enabled monitor '" + m.alias + "'");
+        }
+
+        std::unordered_map<std::string, int>    state;
+        std::function<void(const std::string&)> dfs = [&](const std::string& name) {
+            if (state[name] == 2)
+                return;
+            if (state[name] == 1) {
+                errs.push_back("compose_monitors: cycle detected at '" + name + "'");
+                return;
+            }
+            state[name] = 1;
+            auto it = by_monitor.find(name);
+            if (it == by_monitor.end()) {
+                if (name == compose.primary) {
+                    state[name] = 2;
+                    return;
+                }
+                errs.push_back("compose_monitors: missing layout entry for '" + name + "'");
+                state[name] = 2;
+                return;
+            }
+            auto* link = it->second;
+            if (name == compose.primary) {
+                if (!link->relative_to.empty())
+                    errs.push_back("compose_monitors: primary monitor '" + name + "' must not have relative_to");
+                if (!link->side.empty())
+                    errs.push_back("compose_monitors: primary monitor '" + name + "' must not have side");
+            } else {
+                if (link->relative_to.empty())
+                    errs.push_back("compose_monitors: monitor '" + name + "' must set relative_to");
+                if (link->side.empty())
+                    errs.push_back("compose_monitors: monitor '" + name + "' must set side");
+            }
+            if (!link->relative_to.empty()) {
+                if (!has_alias(link->relative_to)) {
+                    errs.push_back("compose_monitors: monitor '" + name + "' references unknown relative_to '" +
+                        link->relative_to + "'");
+                } else if (link->relative_to == name) {
+                    errs.push_back("compose_monitors: monitor '" + name + "' cannot reference itself");
+                } else {
+                    dfs(link->relative_to);
+                }
+            }
+            state[name] = 2;
+        };
+
+        for (auto& m : monitors) {
+            if (m.enabled)
+                dfs(m.alias);
+        }
+    }
+
+    // Workspace → monitor refs
+    for (auto& ws : workspaces) {
+        if (ws.monitor.empty())
+            continue;
+        if (!has_alias(ws.monitor))
+            errs.push_back("workspace '" + ws.name + "': unknown monitor alias '" + ws.monitor + "'");
+    }
+
+    // Bar → theme cross-checks
+    auto* bar_s = store_.find("bar");
+    auto* bottom_bar_s = store_.find("bottom_bar");
+    const auto* bar_ts = bar_s
+        ? dynamic_cast<const TypedSetting<std::optional<BarConfig>>*>(bar_s) : nullptr;
+    const auto* bottom_bar_ts = bottom_bar_s
+        ? dynamic_cast<const TypedSetting<std::optional<BarConfig>>*>(bottom_bar_s) : nullptr;
+    bool has_bar = (bar_ts && bar_ts->get().has_value());
+    bool has_bottom = (bottom_bar_ts && bottom_bar_ts->get().has_value());
+
+    if (has_bar) {
+        if (bar_ts->get()->font.empty() && theme.font.empty())
+            errs.push_back("bar: 'font' is required (set in bar.top.font or theme.font)");
+    }
+
+    if (has_bar || has_bottom) {
+        if (theme.bg.empty())     errs.push_back("theme: 'bg' is required when bar is configured");
+        if (theme.fg.empty())     errs.push_back("theme: 'fg' is required when bar is configured");
+        if (theme.alt_bg.empty()) errs.push_back("theme: 'alt_bg' is required when bar is configured");
+        if (theme.alt_fg.empty()) errs.push_back("theme: 'alt_fg' is required when bar is configured");
+        if (theme.accent.empty()) errs.push_back("theme: 'accent' is required when bar is configured");
+    }
+
+    return errs;
+}
 
 bool Runtime::load_config(const std::string& path) {
-    if (!config_.load(path, *this))
+    if (!config_loader::load(path, core_, *this, lua_host_, /*reset_lua_vm=*/ true))
         return false;
 
-    auto errs = config_.validate();
+    auto errs = validate_settings();
     if (!errs.empty()) {
         for (auto& e : errs)
             LOG_ERR("Config: %s", e.c_str());
         return false;
     }
 
-    core_.apply_settings(make_core_settings_from_config(config_));
+    core_.apply_settings(build_core_settings());
     return true;
 }
 
@@ -310,7 +496,8 @@ void Runtime::apply_and_refresh_monitors() {
         return;
     }
 
-    mp->apply_monitor_layout(monitor_layout::build(config_));
+    mp->apply_monitor_layout(monitor_layout::build(
+        core_config_.monitors.get(), core_config_.compose.get()));
 
     auto monitors = mp->get_monitors();
     LOG_INFO("monitors: found %d monitor(s):", (int)monitors.size());
@@ -588,7 +775,7 @@ void Runtime::save_restart_state() {
 
 void Runtime::request_exec_restart() {
     const auto& path = core_.get_config_path();
-    if (!path.empty() && !Config::check_syntax(path)) {
+    if (!path.empty() && !config_loader::check_syntax(path)) {
         LOG_ERR("restart: aborted — syntax error in %s", path.c_str());
         return;
     }
@@ -608,29 +795,30 @@ bool Runtime::reload_runtime_config() {
         return false;
     }
 
-    if (!Config::check_syntax(config_path)) {
+    if (!config_loader::check_syntax(config_path)) {
         LOG_ERR("reload: aborted — syntax error in %s, config unchanged", config_path.c_str());
         return false;
     }
 
-    auto config_backup      = config_.snapshot();
+    // Snapshot store for transactional rollback.
+    store_.snapshot_all();
     auto core_reload_backup = core_.snapshot_reload_state();
 
     auto restore_snapshot = [&]() {
-            config_.restore(config_backup);
+            store_.rollback_all();
             core_.restore_reload_state(core_reload_backup);
         };
 
-    config_.clear();
+    store_.clear_all();
     core_.clear_reloadable_runtime_state();
 
-    if (!config_.load(config_path, *this, /*reset_lua_vm=*/ false)) {
+    if (!config_loader::load(config_path, core_, *this, lua_host_, /*reset_lua_vm=*/ false)) {
         restore_snapshot();
         LOG_ERR("reload: aborted — failed to execute %s", config_path.c_str());
         return false;
     }
 
-    auto errs = config_.validate();
+    auto errs = validate_settings();
     if (!errs.empty()) {
         for (auto& e : errs)
             LOG_ERR("Config(reload): %s", e.c_str());
@@ -639,7 +827,8 @@ bool Runtime::reload_runtime_config() {
         return false;
     }
 
-    core_.apply_settings(make_core_settings_from_config(config_));
+    store_.commit_all();
+    core_.apply_settings(build_core_settings());
     reload();
     return true;
 }

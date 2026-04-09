@@ -2,7 +2,6 @@
 #include <backend/backend.hpp>
 #include <backend/input_port.hpp>
 #include <core.hpp>
-#include <config.hpp>
 #include <runtime.hpp>
 #include <module_registry.hpp>
 #include <log.hpp>
@@ -33,17 +32,17 @@ static std::optional<std::string> validate_modifier_value(const RuntimeValue& va
 }
 
 static bool parse_binding_modifier_token(const std::string& token,
-    const Config& config,
+    const TypedSetting<std::optional<uint16_t>>& mod_mask,
     uint16_t& out,
     std::string* err_out = nullptr) {
     auto t = lower_ascii(token);
     if (t == "mod") {
-        if (!config.has_mod_mask()) {
+        if (!mod_mask.get().has_value()) {
             if (err_out)
                 *err_out = "primary modifier is not set (set siren.modifier first)";
             return false;
         }
-        out = config.get_mod_mask();
+        out = *mod_mask.get();
         return true;
     }
 
@@ -59,7 +58,7 @@ static bool parse_binding_modifier_token(const std::string& token,
 
 // "Mod+Shift+Return" -> mods + keysym
 static bool parse_key(const std::string& spec,
-    const Config& config,
+    const TypedSetting<std::optional<uint16_t>>& mod_mask,
     uint16_t& mods_out,
     uint32_t& keysym_out,
     std::string* err_out = nullptr) {
@@ -72,7 +71,7 @@ static bool parse_key(const std::string& spec,
         auto        token_lower = lower_ascii(token);
         uint16_t    mod         = 0;
         std::string mod_err;
-        if (parse_binding_modifier_token(token, config, mod, &mod_err)) {
+        if (parse_binding_modifier_token(token, mod_mask, mod, &mod_err)) {
             mods_out |= mod;
             continue;
         }
@@ -98,7 +97,8 @@ static bool parse_key(const std::string& spec,
 }
 
 static bool register_lua_keybinding(Core& core,
-    Config& config,
+    LuaHost& host,
+    const TypedSetting<std::optional<uint16_t>>& mod_mask,
     LuaContext& lua,
     const std::string& spec,
     int fn_index,
@@ -114,7 +114,7 @@ static bool register_lua_keybinding(Core& core,
     uint16_t    mods   = 0;
     uint32_t    keysym = 0;
     std::string key_err;
-    if (!parse_key(spec, config, mods, keysym, &key_err)) {
+    if (!parse_key(spec, mod_mask, mods, keysym, &key_err)) {
         if (err_out) {
             if (key_err.empty())
                 *err_out = std::string(origin) + ": invalid key spec";
@@ -124,21 +124,22 @@ static bool register_lua_keybinding(Core& core,
         return false;
     }
 
-    auto callback = config.lua().ref_function(fn_index);
+    auto callback = host.ref_function(fn_index);
     if (!callback.valid()) {
         if (err_out)
             *err_out = std::string(origin) + ": callback must be a function";
         return false;
     }
 
-    core.register_keybinding(mods, keysym, [&config, callback]() {
-            config.lua().call_ref(callback, 0, 0, "key callback error");
+    core.register_keybinding(mods, keysym, [&host, callback]() {
+            host.call_ref(callback, 0, 0, "key callback error");
         });
     return true;
 }
 
 static bool load_bind_list(Core& core,
-    Config& config,
+    LuaHost& host,
+    const TypedSetting<std::optional<uint16_t>>& mod_mask,
     LuaContext& lua,
     int table_idx,
     const char* origin,
@@ -213,7 +214,7 @@ static bool load_bind_list(Core& core,
             mark_error(label + ": expected { \"mod+Key\", fn } or { key=..., action=... }");
         } else {
             std::string bind_err;
-            if (!register_lua_keybinding(core, config, lua, spec, fn_idx, label.c_str(), &bind_err))
+            if (!register_lua_keybinding(core, host, mod_mask, lua, spec, fn_idx, label.c_str(), &bind_err))
                 mark_error(bind_err.empty() ? (label + ": invalid binding") : bind_err);
             lua.pop();
         }
@@ -228,7 +229,7 @@ static bool load_bind_list(Core& core,
 
 // "Mod+Button1" -> mods + button
 static bool parse_mouse_spec(const std::string& spec,
-    const Config& config,
+    const TypedSetting<std::optional<uint16_t>>& mod_mask,
     uint16_t& mods_out,
     uint32_t& btn_out,
     std::string* err_out = nullptr) {
@@ -244,7 +245,7 @@ static bool parse_mouse_spec(const std::string& spec,
         }
         uint16_t    mod = 0;
         std::string mod_err;
-        if (!parse_binding_modifier_token(token, config, mod, &mod_err)) {
+        if (!parse_binding_modifier_token(token, mod_mask, mod, &mod_err)) {
             if (err_out)
                 *err_out = mod_err.empty() ? ("unknown token '" + token + "'") : mod_err;
             return false;
@@ -256,7 +257,9 @@ static bool parse_mouse_spec(const std::string& spec,
     return btn_out != 0;
 }
 
-static bool load_mouse_bind_list(Config& config,
+static bool load_mouse_bind_list(LuaHost& host,
+    TypedSetting<std::vector<MouseBinding>>& mouse_bindings,
+    const TypedSetting<std::optional<uint16_t>>& mod_mask,
     LuaContext& lua,
     int table_idx,
     const char* origin,
@@ -308,13 +311,13 @@ static bool load_mouse_bind_list(Config& config,
         uint16_t    mods = 0;
         uint32_t    btn  = 0;
         std::string spec_err;
-        if (!parse_mouse_spec(spec, config, mods, btn, &spec_err)) {
+        if (!parse_mouse_spec(spec, mod_mask, mods, btn, &spec_err)) {
             mark_error(std::string(origin) + "[" + std::to_string(i) + "]: " + spec_err);
             lua.pop();
             continue;
         }
 
-        Config::MouseBinding mb;
+        MouseBinding mb;
         mb.mods   = mods;
         mb.button = btn;
 
@@ -341,9 +344,9 @@ static bool load_mouse_bind_list(Config& config,
         if (handler_idx != 0 && lua.is_string(handler_idx)) {
             std::string action = lua.to_string(handler_idx);
             lua.pop();
-            if (action == "move")        mb.builtin = Config::MouseAction::Move;
-            else if (action == "resize") mb.builtin = Config::MouseAction::Resize;
-            else if (action == "float")  mb.builtin = Config::MouseAction::Float;
+            if (action == "move")        mb.builtin = MouseAction::Move;
+            else if (action == "resize") mb.builtin = MouseAction::Resize;
+            else if (action == "float")  mb.builtin = MouseAction::Float;
             else {
                 mark_error(std::string(origin) + "[" + std::to_string(i) + "]: unknown builtin action '" + action +
                     "' (use \"move\", \"resize\", \"float\")");
@@ -351,7 +354,7 @@ static bool load_mouse_bind_list(Config& config,
                 continue;
             }
         } else if (handler_idx != 0 && lua.is_function(handler_idx)) {
-            mb.press_callback = config.lua().ref_function(handler_idx);
+            mb.press_callback = host.ref_function(handler_idx);
             lua.pop();
         } else {
             int callback_table_idx = handler_idx ? handler_idx : entry_idx;
@@ -365,26 +368,26 @@ static bool load_mouse_bind_list(Config& config,
 
             lua.get_field(callback_table_idx, "press");
             if (lua.is_function(-1))
-                mb.press_callback = config.lua().ref_function(-1);
+                mb.press_callback = host.ref_function(-1);
             lua.pop();
 
             lua.get_field(callback_table_idx, "release");
             if (lua.is_function(-1))
-                mb.release_callback = config.lua().ref_function(-1);
+                mb.release_callback = host.ref_function(-1);
             lua.pop();
 
             if (handler_idx != 0)
                 lua.pop();
         }
 
-        if (mb.builtin == Config::MouseAction::None &&
+        if (mb.builtin == MouseAction::None &&
             !mb.press_callback.valid() && !mb.release_callback.valid()) {
             mark_error(std::string(origin) + "[" + std::to_string(i) + "]: missing callback");
             lua.pop();
             continue;
         }
 
-        config.add_mouse_binding(std::move(mb));
+        mouse_bindings.get_mut().push_back(std::move(mb));
         lua.pop();
     }
 
@@ -395,7 +398,7 @@ static bool load_mouse_bind_list(Config& config,
 
 static void install_mouse_grabs_for_window(backend::InputPort& input,
     WindowId win,
-    const Config& config) {
+    const std::vector<MouseBinding>& bindings) {
     std::vector<std::pair<uint8_t, uint16_t>> grabs;
     auto                                      push_unique = [&](uint32_t button, uint16_t mods) {
             uint8_t b = (uint8_t)button;
@@ -404,7 +407,7 @@ static void install_mouse_grabs_for_window(backend::InputPort& input,
             grabs.push_back({ b, mods });
         };
 
-    for (auto& mb : config.get_mouse_bindings())
+    for (auto& mb : bindings)
         push_unique(mb.button, mb.mods);
 
     for (auto& g : grabs)
@@ -413,28 +416,28 @@ static void install_mouse_grabs_for_window(backend::InputPort& input,
 
 static void reinstall_mouse_grabs_for_all_windows(backend::InputPort& input,
     Core& core,
-    const Config& config) {
+    const std::vector<MouseBinding>& bindings) {
     for (auto win : core.all_window_ids()) {
         input.ungrab_all_buttons(win);
-        install_mouse_grabs_for_window(input, win, config);
+        install_mouse_grabs_for_window(input, win, bindings);
     }
     input.flush();
 }
 
 void KeybindingsModule::on_init() {
-    config().register_runtime_setting("modifier", RuntimeSettingSpec{
-        .expected_type = RuntimeValueType::String,
-        .validate      = validate_modifier_value,
-        .apply         = [this](const RuntimeValue& value) {
+    mod_mask_.set_parse(
+        [](const RuntimeValue& value, std::optional<uint16_t>& out) -> std::optional<std::string> {
             const auto* s = value.as_string();
             if (!s)
-                return;
-            uint16_t mask = parse_physical_modifier(*s);
-            if (!mask)
-                return;
-            config().set_mod_mask(mask);
+                return std::string("must be a string");
+            auto err = validate_modifier_value(value);
+            if (err) return err;
+            out = parse_physical_modifier(*s);
+            return std::nullopt;
         },
-    });
+        RuntimeValueType::String);
+    store().register_setting("modifier", mod_mask_);
+    store().register_setting("mouse_bindings", mouse_bindings_);
 }
 
 void KeybindingsModule::on_lua_init() {
@@ -442,47 +445,47 @@ void KeybindingsModule::on_lua_init() {
     pending_binds_ = {};
     pending_mouse_ = {};
 
-    auto& lua = config().lua();
-    auto  ctx = lua.context();
+    auto& host = lua();
+    auto  ctx  = host.context();
 
     // Module table: __newindex stores refs, applied after siren.modifier is set.
     ctx.new_table(); // module table (proxy)
     ctx.new_table(); // metatable
 
-    lua.push_callback([](LuaContext& lctx, void* ud) -> int {
+    host.push_callback([](LuaContext& lctx, void* ud) -> int {
             if (!lctx.is_string(2) || !lctx.is_table(3))
                 return 0;
             auto*       mod = static_cast<KeybindingsModule*>(ud);
             std::string key = lctx.to_string(2);
             if (key == "binds")
-                mod->pending_binds_ = mod->config().lua().ref_value(3);
+                mod->pending_binds_ = mod->lua().ref_value(3);
             else if (key == "mouse")
-                mod->pending_mouse_ = mod->config().lua().ref_value(3);
+                mod->pending_mouse_ = mod->lua().ref_value(3);
             return 0;
         }, this);
     ctx.set_field(-2, "__newindex");
 
     ctx.set_metatable(-2);
-    lua.set_module_table("keybindings");
+    host.set_module_table("keybindings");
 }
 
 void KeybindingsModule::apply_pending() {
-    auto& lua = config().lua();
+    auto& host = lua();
     if (pending_binds_.valid()) {
-        if (lua.push_ref(pending_binds_)) {
-            auto  ctx = lua.context();
+        if (host.push_ref(pending_binds_)) {
+            auto  ctx = host.context();
             std::string err;
-            if (!load_bind_list(core(), config(), ctx, -1, "kb.binds", err))
+            if (!load_bind_list(core(), host, mod_mask_, ctx, -1, "kb.binds", err))
                 LOG_ERR("keybindings: kb.binds: %s", err.c_str());
             ctx.pop();
         }
         pending_binds_ = {};
     }
     if (pending_mouse_.valid()) {
-        if (lua.push_ref(pending_mouse_)) {
-            auto  ctx = lua.context();
+        if (host.push_ref(pending_mouse_)) {
+            auto  ctx = host.context();
             std::string err;
-            if (!load_mouse_bind_list(config(), ctx, -1, "kb.mouse", err))
+            if (!load_mouse_bind_list(host, mouse_bindings_, mod_mask_, ctx, -1, "kb.mouse", err))
                 LOG_ERR("keybindings: kb.mouse: %s", err.c_str());
             ctx.pop();
         }
@@ -547,12 +550,11 @@ void KeybindingsModule::on_reload() {
     stop_drag();
     input_->ungrab_all_keys();
     on_start();
-    reinstall_mouse_grabs_for_all_windows(*input_, core(), config());
+    reinstall_mouse_grabs_for_all_windows(*input_, core(), mouse_bindings_.get());
 }
 
-static void call_mouse_ref(Config& config, const LuaRegistryRef& callback, const event::ButtonEv& ev) {
-    auto& lua = config.lua();
-    lua.call_ref_with_int_fields(callback, {
+static void call_mouse_ref(LuaHost& host, const LuaRegistryRef& callback, const event::ButtonEv& ev) {
+    host.call_ref_with_int_fields(callback, {
         { "window", ev.window },
         { "root_x", ev.root_pos.x() },
         { "root_y", ev.root_pos.y() },
@@ -569,13 +571,13 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     if (!ev.release && ev.window != focused_window_ && input_)
         input_->allow_events(true);
 
-    for (auto& mb : config().get_mouse_bindings()) {
+    for (auto& mb : mouse_bindings_.get()) {
         if (mb.button != ev.button || mb.mods != mods)
             continue;
         if (ev.release)
-            call_mouse_ref(config(), mb.release_callback, ev);
+            call_mouse_ref(lua(), mb.release_callback, ev);
         else
-            call_mouse_ref(config(), mb.press_callback, ev);
+            call_mouse_ref(lua(), mb.press_callback, ev);
     }
 
     if (ev.release) {
@@ -603,15 +605,15 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     }
 
     // Find matching builtin binding for this button+mods combo.
-    Config::MouseAction builtin = Config::MouseAction::None;
-    for (const auto& mb : config().get_mouse_bindings()) {
-        if (mb.builtin != Config::MouseAction::None &&
+    MouseAction builtin = MouseAction::None;
+    for (const auto& mb : mouse_bindings_.get()) {
+        if (mb.builtin != MouseAction::None &&
             mb.button == ev.button && mb.mods == mods) {
             builtin = mb.builtin;
             break;
         }
     }
-    if (builtin == Config::MouseAction::None)
+    if (builtin == MouseAction::None)
         return;
 
     auto window = core().window_state(ev.window);
@@ -622,7 +624,7 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     if (window->fullscreen || window->borderless)
         return;
 
-    if (builtin == Config::MouseAction::Float) {
+    if (builtin == MouseAction::Float) {
         (void)core().dispatch(command::ToggleWindowFloating{ ev.window });
         (void)core().dispatch(command::ReconcileNow{});
         return;
@@ -632,7 +634,7 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     drag.start_root     = { (int)ev.root_pos.x(), (int)ev.root_pos.y() };
     drag.start_win_pos  = window->pos();
     drag.start_win_size = window->size();
-    drag.op             = (builtin == Config::MouseAction::Move) ? DragOp::Move : DragOp::Resize;
+    drag.op             = (builtin == MouseAction::Move) ? DragOp::Move : DragOp::Resize;
 
     if (!core().is_window_floating(ev.window)) {
         (void)core().dispatch(command::SetWindowFloating{ ev.window, true });
@@ -697,7 +699,7 @@ void KeybindingsModule::on(event::FocusChanged ev) {
     // WM action grabs (mod+button) remain in place.
     if (ev.window != NO_WINDOW) {
         input_->ungrab_all_buttons(ev.window);
-        install_mouse_grabs_for_window(*input_, ev.window, config());
+        install_mouse_grabs_for_window(*input_, ev.window, mouse_bindings_.get());
     }
     input_->flush();
 }
@@ -706,7 +708,7 @@ void KeybindingsModule::on(event::WindowMapped ev) {
     if (!input_)
         return;
     input_->ungrab_all_buttons(ev.window);
-    install_mouse_grabs_for_window(*input_, ev.window, config());
+    install_mouse_grabs_for_window(*input_, ev.window, mouse_bindings_.get());
     // Newly mapped windows are unfocused — add click-to-focus grab.
     if (ev.window != focused_window_)
         input_->grab_button_any(ev.window);

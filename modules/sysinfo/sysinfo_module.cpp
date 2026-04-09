@@ -2,7 +2,7 @@
 
 #include <backend/backend.hpp>
 #include <backend/keyboard_port.hpp>
-#include <config.hpp>
+#include <lua_host.hpp>
 #include <log.hpp>
 #include <module_registry.hpp>
 
@@ -447,7 +447,7 @@ void SysinfoModule::on_start() {
 void SysinfoModule::on_lua_init() {
     g_instance = this;
 
-    auto& lua = config().lua();
+    auto& lua = this->lua();
     auto  ctx = lua.context();
 
     ctx.new_table();

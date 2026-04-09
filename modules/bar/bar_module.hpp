@@ -2,6 +2,7 @@
 
 #include <module.hpp>
 #include <bar_config.hpp>
+#include <runtime_store.hpp>
 #include <bar/bar_state.hpp>
 #include <bar/widgets/bar_widgets.hpp>
 #include <backend/render_port.hpp>
@@ -50,6 +51,10 @@ class BarModule : public Module {
         void on(event::KeyboardLayoutChanged) override { redraw(); }
 
     private:
+        // Owned settings registered in RuntimeStore.
+        TypedSetting<std::optional<BarConfig>> top_bar_setting_;
+        TypedSetting<std::optional<BarConfig>> bottom_bar_setting_;
+
         BarConfig top_cfg;
         BarConfig bottom_cfg;
 

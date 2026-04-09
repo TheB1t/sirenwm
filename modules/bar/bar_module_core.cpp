@@ -4,7 +4,6 @@
 #include <backend/backend.hpp>
 #include <backend/events.hpp>
 #include <core.hpp>
-#include <config.hpp>
 #include <log.hpp>
 #include <runtime.hpp>
 #include <algorithm>
@@ -17,7 +16,7 @@
 // Accepts:
 //   { __builtin = "tags"|"title"|"tray" }
 //   { fn = function [, interval = N] }
-static bool parse_slot(LuaContext& lua, Config& config, int val_idx,
+static bool parse_slot(LuaContext& lua, LuaHost& host, int val_idx,
     BarSlot& out, const std::string& ctx, std::string* err_out) {
     val_idx = lua.abs_index(val_idx);
     if (!lua.is_table(val_idx)) {
@@ -60,7 +59,7 @@ static bool parse_slot(LuaContext& lua, Config& config, int val_idx,
         return false;
     }
 
-    auto widget_ref = config.lua().ref_value(val_idx);
+    auto widget_ref = host.ref_value(val_idx);
     if (!widget_ref.valid()) {
         if (err_out)
             *err_out = ctx + ": failed to ref Widget object";
@@ -83,7 +82,7 @@ static bool parse_slot(LuaContext& lua, Config& config, int val_idx,
 }
 
 // Parse a zone list: array of slot tables.
-static bool parse_zone(LuaContext& lua, Config& config,
+static bool parse_zone(LuaContext& lua, LuaHost& host,
     int table_idx, std::vector<BarSlot>& out,
     const std::string& ctx, std::string* err_out) {
     table_idx = lua.abs_index(table_idx);
@@ -92,7 +91,7 @@ static bool parse_zone(LuaContext& lua, Config& config,
         lua.raw_geti(table_idx, i);
         BarSlot     slot;
         std::string slot_ctx = ctx + "[" + std::to_string(i) + "]";
-        if (!parse_slot(lua, config, lua.abs_index(-1), slot, slot_ctx, err_out)) {
+        if (!parse_slot(lua, host, lua.abs_index(-1), slot, slot_ctx, err_out)) {
             LOG_WARN("bar: skipping %s: %s", slot_ctx.c_str(),
                 err_out ? err_out->c_str() : "invalid widget");
             if (err_out) err_out->clear();
@@ -106,7 +105,8 @@ static bool parse_zone(LuaContext& lua, Config& config,
 }
 
 static bool parse_bar_config_from_lua(LuaContext& lua,
-    Config& config,
+    LuaHost& host,
+    const ThemeConfig& theme,
     int table_idx,
     BarPosition pos,
     BarConfig& cfg,
@@ -129,7 +129,7 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
 
     read_str("font",   cfg.font);
     if (cfg.font.empty())
-        cfg.font = config.get_theme().font;
+        cfg.font = theme.font;
 
     lua.get_field(table_idx, "height");
     if (!lua.is_nil(-1) && !lua.is_integer(-1)) {
@@ -143,7 +143,6 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
     lua.pop();
 
     // Colors: start from theme base colors, then apply per-bar overrides.
-    const ThemeConfig& theme = config.get_theme();
     cfg.colors.normal_bg  = theme.alt_bg;
     cfg.colors.normal_fg  = theme.fg;
     cfg.colors.focused_bg = theme.accent;
@@ -188,7 +187,7 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
                 return false;
             }
             std::string ctx = std::string(bar_name) + "." + zone_keys[z];
-            if (!parse_zone(lua, config, lua.abs_index(-1), *zones[z], ctx, err_out)) {
+            if (!parse_zone(lua, host, lua.abs_index(-1), *zones[z], ctx, err_out)) {
                 lua.pop();
                 return false;
             }
@@ -199,7 +198,10 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
     return true;
 }
 
-static bool load_bar_assignment(Config& config, LuaContext& lua, int table_idx, std::string& err) {
+static bool load_bar_assignment(LuaHost& host, const ThemeConfig& theme,
+    TypedSetting<std::optional<BarConfig>>& top_setting,
+    TypedSetting<std::optional<BarConfig>>& bottom_setting,
+    LuaContext& lua, int table_idx, std::string& err) {
     table_idx = lua.abs_index(table_idx);
     if (!lua.is_table(table_idx)) {
         err = "siren.bar: expected table";
@@ -215,12 +217,12 @@ static bool load_bar_assignment(Config& config, LuaContext& lua, int table_idx, 
         }
         BarConfig   cfg;
         std::string parse_err;
-        if (!parse_bar_config_from_lua(lua, config, lua.abs_index(-1), BarPosition::TOP, cfg, &parse_err)) {
+        if (!parse_bar_config_from_lua(lua, host, theme, lua.abs_index(-1), BarPosition::TOP, cfg, &parse_err)) {
             lua.pop();
             err = parse_err;
             return false;
         }
-        config.set_bar_config(std::move(cfg));
+        top_setting.set(std::move(cfg));
     }
     lua.pop();
 
@@ -233,12 +235,12 @@ static bool load_bar_assignment(Config& config, LuaContext& lua, int table_idx, 
         }
         BarConfig   cfg;
         std::string parse_err;
-        if (!parse_bar_config_from_lua(lua, config, lua.abs_index(-1), BarPosition::BOTTOM, cfg, &parse_err)) {
+        if (!parse_bar_config_from_lua(lua, host, theme, lua.abs_index(-1), BarPosition::BOTTOM, cfg, &parse_err)) {
             lua.pop();
             err = parse_err;
             return false;
         }
-        config.set_bottom_bar_config(std::move(cfg));
+        bottom_setting.set(std::move(cfg));
     }
     lua.pop();
 
@@ -278,10 +280,15 @@ void BarModule::rebuild_bars() {
 }
 
 bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {
-    return load_bar_assignment(config(), lua, table_idx, err);
+    const ThemeConfig& theme = core().current_settings().theme;
+    return load_bar_assignment(this->lua(), theme,
+        top_bar_setting_, bottom_bar_setting_, lua, table_idx, err);
 }
 
 void BarModule::on_init() {
+    store().register_setting("bar",        top_bar_setting_);
+    store().register_setting("bottom_bar", bottom_bar_setting_);
+
     state_provider = [this](int mon_idx) -> BarState {
             BarState    s;
             const auto& monitors = core().monitor_states();
@@ -320,13 +327,13 @@ void BarModule::on_init() {
 }
 
 void BarModule::on_lua_init() {
-    auto& lua = config().lua();
-    auto  ctx = lua.context();
+    auto& host = this->lua();
+    auto  ctx = host.context();
 
     // Proxy table: bar.settings = {...} triggers parse_setup immediately.
     ctx.new_table();   // proxy
     ctx.new_table();   // metatable
-    lua.push_callback([](LuaContext& lctx, void* ud) -> int {
+    host.push_callback([](LuaContext& lctx, void* ud) -> int {
             // __newindex(proxy, key, value)
             std::string key = lctx.is_string(2) ? lctx.to_string(2) : "";
             if (key == "settings") {
@@ -340,7 +347,7 @@ void BarModule::on_lua_init() {
     ctx.set_field(-2, "__newindex");
     ctx.set_metatable(-2);
 
-    lua.set_module_table("bar");
+    host.set_module_table("bar");
 }
 
 void BarModule::on(event::ExposeWindow ev) {
@@ -432,12 +439,12 @@ void BarModule::on(event::ButtonEv ev) {
 }
 
 void BarModule::on_reload() {
-    if (auto& bc = config().get_bar_config(); bc.has_value())
+    if (auto& bc = top_bar_setting_.get(); bc.has_value())
         top_cfg = *bc;
-    if (auto& bc = config().get_bottom_bar_config(); bc.has_value())
+    if (auto& bc = bottom_bar_setting_.get(); bc.has_value())
         bottom_cfg = *bc;
 
-    const ThemeConfig& th = config().get_theme();
+    const ThemeConfig& th = core().current_settings().theme;
     auto apply_theme = [&](BarConfig& cfg) {
         if (cfg.font.empty())              cfg.font              = th.font;
         if (cfg.colors.bar_bg.empty())     cfg.colors.bar_bg     = th.bg;
@@ -558,13 +565,13 @@ void BarModule::on_start() {
         LOG_ERR("Bar: backend render port is unavailable");
         return;
     }
-    if (auto& bc = config().get_bar_config(); bc.has_value())
+    if (auto& bc = top_bar_setting_.get(); bc.has_value())
         top_cfg = *bc;
-    if (auto& bc = config().get_bottom_bar_config(); bc.has_value())
+    if (auto& bc = bottom_bar_setting_.get(); bc.has_value())
         bottom_cfg = *bc;
 
     // Theme is parsed after bar.settings in post-exec — patch colors/font now.
-    const ThemeConfig& th = config().get_theme();
+    const ThemeConfig& th = core().current_settings().theme;
     auto apply_theme = [&](BarConfig& cfg) {
         if (cfg.font.empty())
             cfg.font = th.font;
@@ -578,12 +585,12 @@ void BarModule::on_start() {
     apply_theme(top_cfg);
     apply_theme(bottom_cfg);
 
-    if (top_cfg.height <= 0 && !config().get_bar_config().has_value())
+    if (top_cfg.height <= 0 && !top_bar_setting_.get().has_value())
         top_cfg.height = 0;
     else if (top_cfg.height <= 0)
         top_cfg.height = 18;
 
-    if (bottom_cfg.height <= 0 && config().get_bottom_bar_config().has_value())
+    if (bottom_cfg.height <= 0 && bottom_bar_setting_.get().has_value())
         bottom_cfg.height = 18;
 
     rebuild_bars();

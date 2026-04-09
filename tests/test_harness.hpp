@@ -30,7 +30,7 @@ struct TestHarness {
             : std::move(monitors))
         , core(runtime.core())
     {
-        runtime.config().lua().init();
+        runtime.lua().init();
         runtime.bind_backend(backend);
         // Init core with fake monitors so tests can dispatch commands
         // before calling start().

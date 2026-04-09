@@ -1,10 +1,26 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include <lua_host.hpp>
 #include <module.hpp>
+#include <runtime_store.hpp>
 #include <vec.hpp>
 
 namespace backend { class InputPort; }
+
+// Mouse binding types — owned by KeybindingsModule.
+enum class MouseAction { None, Move, Resize, Float };
+
+struct MouseBinding {
+    uint16_t       mods;
+    uint32_t       button;
+    MouseAction    builtin = MouseAction::None;
+    LuaRegistryRef press_callback;
+    LuaRegistryRef release_callback;
+};
 
 class KeybindingsModule : public Module {
     public:
@@ -24,6 +40,10 @@ class KeybindingsModule : public Module {
         void on(event::WindowUnmapped) override;
         void on(event::DestroyNotify) override;
         ~KeybindingsModule() override;
+
+        // Access for cross-module reads.
+        const TypedSetting<std::optional<uint16_t>>& mod_mask_setting() const { return mod_mask_; }
+        const TypedSetting<std::vector<MouseBinding>>& mouse_bindings_setting() const { return mouse_bindings_; }
 
     private:
         enum class DragOp { None, Move, Resize };
@@ -45,6 +65,10 @@ class KeybindingsModule : public Module {
         LuaRegistryRef pending_mouse_;
 
         void apply_pending();
+
+        // Owned settings registered in RuntimeStore.
+        TypedSetting<std::optional<uint16_t>>    mod_mask_;
+        TypedSetting<std::vector<MouseBinding>>  mouse_bindings_;
 
         backend::InputPort* input_          = nullptr;
         WindowId            focused_window_ = NO_WINDOW;

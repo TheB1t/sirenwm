@@ -9,11 +9,11 @@
 class Backend;
 class Core;
 class Runtime;
-class Config;
+class RuntimeStore;
+class LuaHost;
 
 struct ModuleDeps {
     Runtime& runtime;
-    Config&  config;
     Core&    core;
 };
 
@@ -62,8 +62,8 @@ class Module : public IEventReceiver {
         const Core& core() const { return deps_.core; }
         Runtime& runtime() { return deps_.runtime; }
         const Runtime& runtime() const { return deps_.runtime; }
-        Config& config() { return deps_.config; }
-        const Config& config() const { return deps_.config; }
+        RuntimeStore& store();
+        LuaHost&      lua();
         Backend& backend() {
             if (!backend_) {
                 LOG_ERR("backend() called before on_start() (runtime state: %s)",

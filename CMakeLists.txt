@@ -43,7 +43,6 @@ include(GNUInstallDirs)
 set(SIRENWM_LUA_DIR "${CMAKE_INSTALL_FULL_DATADIR}/sirenwm/lua")
 
 add_library(sirenwm_core STATIC
-    core/src/config.cpp
     core/src/config_loader.cpp
     core/src/lua_host.cpp
     core/src/module.cpp
@@ -53,6 +52,7 @@ add_library(sirenwm_core STATIC
     core/src/runtime/config_runtime.cpp
     core/src/runtime/runtime_config.cpp
     core/src/runtime/runtime.cpp
+    core/src/runtime_store.cpp
 )
 
 target_include_directories(sirenwm_core PUBLIC

@@ -2,7 +2,7 @@
 
 #include <backend/backend.hpp>
 #include <backend/keyboard_port.hpp>
-#include <config.hpp>
+
 #include <log.hpp>
 #include <module_registry.hpp>
 #include <runtime.hpp>
@@ -82,7 +82,7 @@ void KeyboardModule::apply() {
 void KeyboardModule::on_init() {}
 
 void KeyboardModule::on_lua_init() {
-    auto& lua = config().lua();
+    auto& lua = this->lua();
     auto  ctx = lua.context();
 
     // Proxy table: kbd.settings = {...} triggers parse_setup immediately.

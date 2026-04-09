@@ -2,13 +2,18 @@
 
 #include <backend/backend.hpp>
 #include <backend/keyboard_port.hpp>
-#include <config.hpp>
-#include <runtime/config_runtime.hpp>
+#include <core_config.hpp>
 #include <core.hpp>
 #include <log.hpp>
 #include <lua_helpers.hpp>
 #include <module_registry.hpp>
 #include <runtime.hpp>
+#include <runtime_store.hpp>
+
+extern "C" {
+#include <lua.h>
+#include <lauxlib.h>
+}
 
 #include <cerrno>
 #include <cstdlib>
@@ -21,19 +26,15 @@
 
 namespace {
 
-Config& loader_config(void* userdata) {
+Runtime& loader_runtime(void* userdata) {
     if (!userdata) {
         LOG_ERR("config loader context is not set"); std::abort();
     }
-    return *static_cast<Config*>(userdata);
+    return *static_cast<Runtime*>(userdata);
 }
 
 Core& loader_core(void* userdata) {
-    return loader_config(userdata).bound_core();
-}
-
-Runtime& loader_runtime(void* userdata) {
-    return loader_config(userdata).bound_runtime();
+    return loader_runtime(userdata).core();
 }
 
 // package.preload loader for a C++ module: require("bar") → module API table.
@@ -42,11 +43,10 @@ static int lua_module_preload(LuaContext& lua, void* userdata) {
     if (!lua.is_string(1))
         return 0;
     const std::string name    = lua.to_string(1);
-    auto&             config  = loader_config(userdata);
-    auto&             runtime = loader_runtime(userdata);
+    auto& runtime = loader_runtime(userdata);
     runtime.use(name);
     runtime.emit_lua_init();
-    if (config.lua().push_module_table(name))
+    if (runtime.lua().push_module_table(name))
         return 1;
     // Module registered no table — return true as a sentinel so require() succeeds.
     lua.push_bool(true);
@@ -161,7 +161,7 @@ static int lua_root_spawn(LuaContext& lua, void* userdata) {
     }
 
     // Build and return a ProcessHandle userdata.
-    auto& host = loader_config(userdata).lua();
+    auto& host = loader_runtime(userdata).lua();
     ensure_process_metatable(lua, host);
 
     auto* handle = static_cast<ProcessHandle*>(lua.new_userdata(sizeof(ProcessHandle)));
@@ -211,7 +211,7 @@ static int lua_monitor_focused(LuaContext& lua, void* userdata) {
         lua.push_nil();
         return 1;
     }
-    const auto&        aliases = loader_config(userdata).get_monitor_aliases();
+    const auto&        aliases = loader_runtime(userdata).core_config().monitors.get();
     const std::string& output  = mon->name;
     std::string        name    = output;
     for (const auto& a : aliases)
@@ -235,7 +235,7 @@ static int lua_monitor_focused(LuaContext& lua, void* userdata) {
 // name   = logical alias (e.g. "primary") if configured; falls back to output name
 static int lua_monitor_list(LuaContext& lua, void* userdata) {
     const auto& mons    = loader_core(userdata).monitor_states();
-    const auto& aliases = loader_config(userdata).get_monitor_aliases();
+    const auto& aliases = loader_runtime(userdata).core_config().monitors.get();
     lua.new_table();
     for (int i = 0; i < (int)mons.size(); i++) {
         // mons[i].name is the RandR output name; find its logical alias if any.
@@ -366,7 +366,7 @@ static int lua_layout_inc_master(LuaContext& lua, void* userdata) {
 static int lua_layout_register(LuaContext& lua, void* userdata) {
     std::string    name = lua.check_string(1);
     lua.check_function(2);
-    LuaHost&       host = loader_config(userdata).lua();
+    LuaHost&       host = loader_runtime(userdata).lua();
     LuaRegistryRef ref  = host.ref_function(2);
     loader_core(userdata).register_lua_layout(name, std::move(ref));
     return 0;
@@ -397,7 +397,7 @@ static int lua_layout_place(LuaContext& lua, void* userdata) {
 static int lua_siren_on(LuaContext& lua, void* userdata) {
     std::string    event = lua.check_string(1);
     lua.check_function(2);
-    LuaHost&       host = loader_config(userdata).lua();
+    LuaHost&       host = loader_runtime(userdata).lua();
     LuaRegistryRef ref  = host.ref_function(2);
     host.register_handler(event, std::move(ref));
     return 0;
@@ -407,8 +407,7 @@ static int lua_siren_on(LuaContext& lua, void* userdata) {
 
 namespace config_loader {
 
-bool load(Config& config, const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, bool reset_lua_vm) {
-    config.bind_runtime_handles(runtime, lua);
+bool load(const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, bool reset_lua_vm) {
     core.set_config_path(path);
     core.bind_lua_host(lua);
     if (reset_lua_vm || !lua.initialized())
@@ -416,8 +415,9 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
     else
         lua.reset_root_table();
 
-    // Built-in declarative runtime settings (monitors/workspaces/...).
-    config_runtime::register_builtin_runtime_settings(config);
+    // Note: core settings (monitors/compose/workspaces/theme) are registered
+    // in RuntimeStore at Runtime construction time. Legacy Config-based settings
+    // still use register_builtin_runtime_settings until full migration.
 
     // Reset the lua_init guard so on_lua_init() runs fresh for this VM epoch.
     runtime.reset_lua_init();
@@ -430,7 +430,7 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
             if (!name || !fn)
                 return;
             ctx.get_global("siren");
-            lua.push_callback(fn, &config);
+            lua.push_callback(fn, &runtime);
             ctx.set_field(-2, name);
             ctx.pop();
         };
@@ -446,7 +446,7 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
                 ctx.push_value(-1);
                 ctx.set_field(-3, ns);
             }
-            lua.push_callback(fn, &config);
+            lua.push_callback(fn, &runtime);
             ctx.set_field(-2, name);
             ctx.pop();
             ctx.pop();
@@ -571,7 +571,7 @@ bool load(Config& config, const std::string& path, Core& core, Runtime& runtime,
             ctx.get_field(-1, "preload");
             if (ctx.is_table(-1)) {
                 for (const auto& name : runtime.module_registry().module_names()) {
-                    lua.push_callback(lua_module_preload, &config);
+                    lua.push_callback(lua_module_preload, &runtime);
                     ctx.set_field(-2, name.c_str());
                 }
             }
@@ -629,101 +629,30 @@ setmetatable(Vec2, {__call = function(_, x, y) return Vec2.new(x, y) end})
         return false;
 
     // -----------------------------------------------------------------------
-    // Post-exec: read declarative field assignments from the siren table.
-    // These can't be processed during exec because they're simple assignments,
-    // not function calls.
+    // Post-exec: apply declarative field assignments from the siren table.
+    // RuntimeStore handles iteration, RuntimeValue conversion, and apply.
     // -----------------------------------------------------------------------
 
     ctx.get_global("siren");
+    int siren_idx = ctx.abs_index(-1);
 
-    // siren.theme = { dpi=, cursor_size=, cursor_theme=, bg=, fg=, alt_bg=, accent= }
-    ctx.get_field(-1, "theme");
-    if (ctx.is_table(-1)) {
-        ThemeConfig tc;
-        int         theme_idx = ctx.abs_index(-1);
-
-        auto        rn = [&](const char* k, int& v) {
-                ctx.get_field(theme_idx, k);
-                if (ctx.is_number(-1)) v = (int)ctx.to_number(-1);
-                ctx.pop();
-            };
-        auto rs = [&](const char* k, std::string& v) {
-                ctx.get_field(theme_idx, k);
-                if (ctx.is_string(-1)) v = ctx.to_string(-1);
-                ctx.pop();
-            };
-
-        rn("dpi",         tc.dpi);
-        rn("cursor_size", tc.cursor_size);
-        rs("cursor_theme", tc.cursor_theme);
-        rs("font",   tc.font);
-        rs("bg",     tc.bg);
-        rs("fg",     tc.fg);
-        rs("alt_bg", tc.alt_bg);
-        rs("alt_fg", tc.alt_fg);
-        rs("accent", tc.accent);
-
-        // siren.theme.gap
-        ctx.get_field(theme_idx, "gap");
-        if (ctx.is_number(-1)) tc.gap = (int)ctx.to_number(-1);
-        ctx.pop();
-
-        // siren.theme.border = { thickness=, focused=, unfocused= }
-        ctx.get_field(theme_idx, "border");
-        if (ctx.is_table(-1)) {
-            int border_idx = ctx.abs_index(-1);
-            ctx.get_field(border_idx, "thickness");
-            if (ctx.is_number(-1)) tc.border_thickness = (int)ctx.to_number(-1);
-            ctx.pop();
-            ctx.get_field(border_idx, "focused");
-            if (ctx.is_string(-1)) tc.border_focused = ctx.to_string(-1);
-            ctx.pop();
-            ctx.get_field(border_idx, "unfocused");
-            if (ctx.is_string(-1)) tc.border_unfocused = ctx.to_string(-1);
-            ctx.pop();
-        }
-        ctx.pop();
-
-        config.set_theme(tc);
-    }
-    ctx.pop();
-
-    // Typed runtime settings (registered by modules), e.g. siren.rules = {...}
-    bool runtime_ok = true;
-    for (const auto& key : config.runtime_setting_keys()) {
-        ctx.get_field(-1, key.c_str());
-        if (ctx.is_nil(-1)) {
-            ctx.pop();
-            continue;
-        }
-        if (ctx.is_function(-1)) {
-            // Key still points to Lua API function (e.g. siren.rules()) and
-            // was not overridden by declarative assignment.
-            ctx.pop();
-            continue;
-        }
-
-        RuntimeValue rv;
-        if (!runtime_value_from_lua(ctx, -1, rv)) {
-            LOG_ERR("Config: setting '%s' has unsupported Lua value type", key.c_str());
-            ctx.pop();
-            runtime_ok = false;
-            continue;
-        }
-
-        std::string err;
-        if (!config.apply_runtime_setting(key, rv, err)) {
-            LOG_ERR("Config: setting '%s' is invalid: %s", key.c_str(), err.c_str());
-            ctx.pop();
-            runtime_ok = false;
-            continue;
-        }
-
-        ctx.pop();
-    }
+    bool store_ok = runtime.store().apply_from_lua(ctx, siren_idx);
 
     ctx.pop();
-    return runtime_ok;
+    return store_ok;
+}
+
+bool check_syntax(const std::string& path) {
+    lua_State* L = luaL_newstate();
+    if (!L)
+        return false;
+    int rc = luaL_loadfile(L, path.c_str());
+    if (rc != LUA_OK) {
+        const char* err = lua_tostring(L, -1);
+        LOG_ERR("config syntax check failed: %s", err ? err : "<unknown>");
+    }
+    lua_close(L);
+    return rc == LUA_OK;
 }
 
 } // namespace config_loader

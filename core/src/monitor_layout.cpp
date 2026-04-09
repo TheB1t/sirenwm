@@ -1,5 +1,4 @@
 #include <monitor_layout.hpp>
-#include <config.hpp>
 #include <log.hpp>
 #include <algorithm>
 #include <limits>
@@ -162,12 +161,11 @@ PositionMap compose_positions(const std::vector<MonitorAlias>& aliases,
 
 namespace monitor_layout {
 
-std::vector<backend::MonitorLayout> build(const Config& config) {
-    const auto& aliases = config.get_monitor_aliases();
+std::vector<backend::MonitorLayout> build(
+    const std::vector<MonitorAlias>& aliases,
+    const MonitorCompose& compose) {
     if (aliases.empty())
         return {};
-
-    const auto&                         compose   = config.get_monitor_compose();
     auto                                positions = compose_positions(aliases, compose);
 
     std::vector<backend::MonitorLayout> result;
