@@ -68,8 +68,15 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     seat_       = wlr_seat_create(display_, "seat0");
     cursor_     = wlr_cursor_create();
     xcursor_mgr_ = wlr_xcursor_manager_create(nullptr, 24);
-    wlr_cursor_attach_output_layout(cursor_, output_layout_);
     wlr_xcursor_manager_load(xcursor_mgr_, 1.0f);
+    // Attach cursor to output layout after xcursor theme is loaded.
+    // Under WLR_BACKENDS=x11 (pixman renderer, no DRM) skip the attachment:
+    // wlr_output_commit_state would trigger wlr_output_cursor_set_buffer which
+    // asserts renderer != NULL.  X11 backend draws the cursor via XFixes, so
+    // no wlr_cursor attachment is needed.
+    software_renderer_ = (wlr_renderer_get_drm_fd(renderer_) < 0);
+    if (!software_renderer_)
+        wlr_cursor_attach_output_layout(cursor_, output_layout_);
 
     // Wire top-level backend signals
     on_new_output_.connect(&backend_->events.new_output, [this](void* data) {
@@ -519,6 +526,17 @@ void WaylandBackend::on(event::WindowAdopted ev) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 void WaylandBackend::set_cursor(const char* name) {
+    // wlr_cursor_set_xcursor uploads cursor textures to each output via the
+    // output's software cursor path.  When running nested under X11
+    // (WLR_BACKENDS=x11) wlroots uses a pixman (software) renderer with no
+    // DRM device, and wlr_output_cursor_set_buffer asserts that a renderer is
+    // present for buffer upload — which fails.
+    //
+    // Detect the software-renderer case by checking wlr_renderer_get_drm_fd.
+    // Returns -1 when there is no backing DRM device (pixman/software path).
+    // In that case skip the xcursor call: the host X11 window provides its
+    // own cursor decoration.
+    if (wlr_renderer_get_drm_fd(renderer_) < 0) return;
     wlr_cursor_set_xcursor(cursor_, xcursor_mgr_, name);
 }
 
