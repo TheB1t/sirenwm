@@ -121,7 +121,7 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
 
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(output_layout_, runtime_);
-    render_port_impl_   = backend::wl::create_render_port(scene_root(), renderer_);
+    render_port_impl_   = backend::wl::create_render_port(scene_root(), renderer_, allocator_);
     input_port_impl_    = backend::wl::create_input_port(seat_, cursor_);
     keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_);
 

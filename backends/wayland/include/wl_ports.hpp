@@ -18,6 +18,7 @@ extern "C" {
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/render/allocator.h>
 }
 
 class Runtime;
@@ -25,7 +26,8 @@ class Runtime;
 namespace backend::wl {
 
 std::unique_ptr<MonitorPort>   create_monitor_port(wlr_output_layout* layout, Runtime& rt);
-std::unique_ptr<RenderPort>    create_render_port(wlr_scene_tree* root, wlr_renderer* renderer);
+std::unique_ptr<RenderPort>    create_render_port(wlr_scene_tree* root, wlr_renderer* renderer,
+                                                   wlr_allocator* allocator);
 std::unique_ptr<InputPort>     create_input_port(wlr_seat* seat, wlr_cursor* cursor);
 std::unique_ptr<KeyboardPort>  create_keyboard_port(wlr_seat* seat);
 
