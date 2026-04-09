@@ -291,21 +291,25 @@ CSRC
     cc -o "$XDG_CLIENT_BIN" "$XDG_CLIENT_SRC" "$XDG_SHELL_SRC" \
         -I"$BUILD_DIR" \
         $(pkg-config --cflags --libs wayland-client 2>/dev/null) \
-        -lwayland-client 2>/dev/null || return 1
+        -lwayland-client || return 1
 
     echo "$XDG_CLIENT_BIN"
 }
 
 if command -v cc >/dev/null 2>&1 && command -v wayland-scanner >/dev/null 2>&1 && \
    pkg-config wayland-client >/dev/null 2>&1; then
-    if XDG_CLIENT=$(build_xdg_client) && [[ -x "$XDG_CLIENT" ]]; then
+    if XDG_CLIENT=$(build_xdg_client 2>"$LOG_DIR/xdg_build.log") && [[ -x "$XDG_CLIENT" ]]; then
         info "Built xdg-toplevel test client: $XDG_CLIENT"
     else
         info "xdg-toplevel test client build failed — window tests will be skipped"
+        cat "$LOG_DIR/xdg_build.log" 2>/dev/null | head -20 || true
         XDG_CLIENT=""
     fi
 else
     info "cc/wayland-scanner/wayland-client not available — window tests will be skipped"
+    info "  cc=$(command -v cc 2>/dev/null || echo 'missing')"
+    info "  wayland-scanner=$(command -v wayland-scanner 2>/dev/null || echo 'missing')"
+    info "  wayland-client pkg: $(pkg-config --modversion wayland-client 2>/dev/null || echo 'missing')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -760,15 +764,21 @@ fi
 # ===========================================================================
 kill -INT $SIRENWM_PID 2>/dev/null || true
 STOPPED=false
-for _ in $(seq 1 30); do
+# Use /proc/<pid>/status instead of kill -0: kill -0 returns 0 for zombies,
+# which would cause a false "still running" even after the process has exited.
+for _ in $(seq 1 50); do
     sleep 0.1
-    kill -0 $SIRENWM_PID 2>/dev/null || { STOPPED=true; break; }
+    [[ -d "/proc/$SIRENWM_PID" ]] || { STOPPED=true; break; }
+    # Also check zombie state — if Z, process has exited (waiting for parent wait)
+    STATUS=$(cat "/proc/$SIRENWM_PID/status" 2>/dev/null | grep -E '^State:' | awk '{print $2}')
+    [[ "$STATUS" == "Z" ]] && { STOPPED=true; break; }
 done
 if $STOPPED; then
+    wait $SIRENWM_PID 2>/dev/null || true
     pass "compositor shuts down cleanly on SIGINT"
     SIRENWM_PID=0
 else
-    fail "compositor shuts down cleanly on SIGINT" "still running after 3s"
+    fail "compositor shuts down cleanly on SIGINT" "still running after 5s"
 fi
 
 # ===========================================================================

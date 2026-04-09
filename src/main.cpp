@@ -88,16 +88,16 @@ int main(int argc, char** argv) {
         log_path = std::string(home) + "/runtime.log";
     log_init(log_path);
 
+    std::string exec_path    = resolve_exec_path(argc, argv);
+    std::string cfg_path     = resolve_user_config_path();
+    std::string default_path = resolve_default_config_path();
+
     ModuleRegistry module_registry;
     module_registry_static::apply_static_registrations(module_registry);
     RuntimeOf<ActiveBackend> runtime(module_registry);
     g_signal_runtime = &runtime;
     signal(SIGINT,  signal_handler);
     signal(SIGHUP,  signal_handler);
-
-    std::string exec_path    = resolve_exec_path(argc, argv);
-    std::string cfg_path     = resolve_user_config_path();
-    std::string default_path = resolve_default_config_path();
 
     runtime.run(cfg_path, default_path);
 
@@ -111,6 +111,6 @@ int main(int argc, char** argv) {
         return 1;
     }
     g_signal_runtime = nullptr;
-
+    LOG_INFO("main: exit");
     return 0;
 }

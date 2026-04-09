@@ -470,6 +470,8 @@ void Runtime::start() {
 
 void Runtime::stop(bool is_exec_restart) {
     emit(event::RuntimeStopping{ is_exec_restart });
+    if (backend_)
+        backend_->shutdown();
     for (auto it = modules.rbegin(); it != modules.rend(); ++it)
         (*it)->on_stop(is_exec_restart);
     teardown_sigchld_pipe();

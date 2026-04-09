@@ -215,14 +215,14 @@ WaylandBackend::~WaylandBackend() {
     pending_.clear();
     surfaces_.clear();
 
-    if (xcursor_mgr_)  wlr_xcursor_manager_destroy(xcursor_mgr_);
-    if (cursor_)       wlr_cursor_destroy(cursor_);
+    if (xcursor_mgr_)   wlr_xcursor_manager_destroy(xcursor_mgr_);
+    if (cursor_)        wlr_cursor_destroy(cursor_);
     // seat, compositor, xdg_shell are destroyed via wl_display_destroy
     if (output_layout_) wlr_output_layout_destroy(output_layout_);
-    if (allocator_)    wlr_allocator_destroy(allocator_);
-    if (renderer_)     wlr_renderer_destroy(renderer_);
-    if (backend_)      wlr_backend_destroy(backend_);
-    if (display_)      wl_display_destroy(display_);
+    if (allocator_)     wlr_allocator_destroy(allocator_);
+    if (renderer_)      wlr_renderer_destroy(renderer_);
+    if (backend_)       wlr_backend_destroy(backend_);
+    if (display_)       wl_display_destroy(display_);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,8 +237,8 @@ void WaylandBackend::on_start(Core& core) {
 }
 
 void WaylandBackend::shutdown() {
-    if (display_)
-        wl_display_terminate(display_);
+    // Nothing to do — cleanup happens in the destructor.
+    // Backends that override this (e.g. DRM) may need to stop the frame loop here.
 }
 
 void WaylandBackend::prepare_exec_restart() {
