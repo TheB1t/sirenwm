@@ -171,6 +171,10 @@ private:
     // Current modifier state (accumulated across all keyboards)
     uint32_t mod_state_ = 0;
 
+    // True when running on a software (pixman) renderer with no DRM device.
+    // In this mode cursor attachment and xcursor upload must be skipped.
+    bool software_renderer_ = false;
+
     // Backend-level signal listeners
     WlListener on_new_output_;
     WlListener on_new_input_;
