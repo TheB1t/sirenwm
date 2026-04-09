@@ -16,6 +16,12 @@ extern "C" {
 #endif
 }
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#include <string>
+
 // ---------------------------------------------------------------------------
 // wlroots log bridge
 // ---------------------------------------------------------------------------
@@ -132,14 +138,54 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     if (!wlr_backend_start(backend_))
         LOG_ERR("WaylandBackend: wlr_backend_start failed");
 
-    // Create the Wayland socket so clients can connect.
-    // wl_display_add_socket_auto() picks "wayland-N" and sets WAYLAND_DISPLAY.
-    const char* socket = wl_display_add_socket_auto(display_);
-    if (!socket) {
-        LOG_ERR("WaylandBackend: wl_display_add_socket_auto failed");
+    // Create (or inherit) the Wayland display socket.
+    // On exec-restart SIRENWM_WL_SOCKET_FD carries the already-bound fd and
+    // SIRENWM_WL_SOCKET_NAME carries the socket name — adopt them directly so
+    // existing clients survive the compositor restart without reconnecting.
+    const char* inherited_fd_str   = std::getenv("SIRENWM_WL_SOCKET_FD");
+    const char* inherited_name_str = std::getenv("SIRENWM_WL_SOCKET_NAME");
+
+    if (inherited_fd_str && inherited_name_str) {
+        int inherited_fd = std::atoi(inherited_fd_str);
+        // Restore O_CLOEXEC now that we've consumed the fd.
+        fcntl(inherited_fd, F_SETFD, FD_CLOEXEC);
+        if (wl_display_add_socket_fd(display_, inherited_fd) == 0) {
+            socket_fd_   = inherited_fd;
+            socket_name_ = inherited_name_str;
+            setenv("WAYLAND_DISPLAY", socket_name_.c_str(), 1);
+            LOG_INFO("WaylandBackend: inherited socket fd=%d name=%s",
+                inherited_fd, socket_name_.c_str());
+        } else {
+            LOG_ERR("WaylandBackend: wl_display_add_socket_fd(%d) failed", inherited_fd);
+        }
     } else {
-        setenv("WAYLAND_DISPLAY", socket, 1);
-        LOG_INFO("WaylandBackend: listening on %s", socket);
+        const char* socket_name = wl_display_add_socket_auto(display_);
+        if (!socket_name) {
+            LOG_ERR("WaylandBackend: wl_display_add_socket_auto failed");
+        } else {
+            socket_name_ = socket_name;
+            // Find the socket fd so we can pass it across exec-restart.
+            // libwayland does not expose the fd directly; locate it via
+            // /proc/self/fd by matching the socket path.
+            const char* xdg_runtime = std::getenv("XDG_RUNTIME_DIR");
+            if (xdg_runtime) {
+                std::string sock_path = std::string(xdg_runtime) + "/" + socket_name_;
+                char link_buf[256];
+                for (int fd = 3; fd < 1024; ++fd) {
+                    std::string proc_fd = "/proc/self/fd/" + std::to_string(fd);
+                    ssize_t n = readlink(proc_fd.c_str(), link_buf, sizeof(link_buf) - 1);
+                    if (n > 0) {
+                        link_buf[n] = '\0';
+                        if (sock_path == link_buf) {
+                            socket_fd_ = fd;
+                            break;
+                        }
+                    }
+                }
+            }
+            setenv("WAYLAND_DISPLAY", socket_name_.c_str(), 1);
+            LOG_INFO("WaylandBackend: listening on %s (fd=%d)", socket_name_.c_str(), socket_fd_);
+        }
     }
 
     LOG_INFO("WaylandBackend: initialised");
@@ -190,6 +236,24 @@ void WaylandBackend::on_start(Core& core) {
 void WaylandBackend::shutdown() {
     if (display_)
         wl_display_terminate(display_);
+}
+
+void WaylandBackend::prepare_exec_restart() {
+    if (socket_fd_ < 0 || socket_name_.empty()) {
+        LOG_WARN("WaylandBackend: prepare_exec_restart: no socket fd tracked, clients will die");
+        return;
+    }
+    // Drop O_CLOEXEC so the fd survives execv().
+    int flags = fcntl(socket_fd_, F_GETFD);
+    if (flags < 0 || fcntl(socket_fd_, F_SETFD, flags & ~FD_CLOEXEC) < 0) {
+        LOG_ERR("WaylandBackend: prepare_exec_restart: fcntl failed: %s", std::strerror(errno));
+        return;
+    }
+    // Pass fd number and socket name to the new process via environment.
+    setenv("SIRENWM_WL_SOCKET_FD",   std::to_string(socket_fd_).c_str(),  1);
+    setenv("SIRENWM_WL_SOCKET_NAME", socket_name_.c_str(), 1);
+    LOG_INFO("WaylandBackend: socket fd=%d name=%s will survive exec",
+        socket_fd_, socket_name_.c_str());
 }
 
 void WaylandBackend::on_reload_applied() {
