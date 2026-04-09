@@ -31,13 +31,14 @@ jobs:
           WLROOTS_PKG=$(apt-cache search '^libwlroots' | awk '{print $1}' | grep '\-dev$' | head -1)
           echo "Using wlroots package: $WLROOTS_PKG"
           apt-get install -y --no-install-recommends \
-            cmake make pkg-config g++ git ca-certificates \
+            cmake make pkg-config gcc g++ git ca-certificates \
+            binutils \
             liblua5.4-dev libspdlog-dev \
             libcairo2-dev libpango1.0-dev \
             libfontconfig1-dev libfreetype-dev libpng-dev \
             fonts-dejavu-core \
             $WLROOTS_PKG \
-            libwayland-dev wayland-protocols \
+            libwayland-dev libwayland-bin wayland-protocols \
             libxkbcommon-dev libpixman-1-dev \
             libdrm-dev libgbm-dev libegl-dev \
             libinput-dev libudev-dev libseat-dev \
@@ -56,7 +57,7 @@ jobs:
           echo "--- wlroots packages available ---"
           pacman -Ss wlroots || true
           pacman -S --noconfirm \
-            cmake make pkgconf gcc git \
+            cmake make pkgconf gcc git binutils \
             lua spdlog \
             cairo pango fontconfig freetype2 libpng \
             ttf-dejavu \
