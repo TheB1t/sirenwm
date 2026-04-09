@@ -61,6 +61,28 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     raw->on_set_app_id_.connect(&toplevel->events.set_app_id, [this, raw](void*) {
         runtime_.emit(event::PropertyNotify{ raw->id, 1 });
     });
+
+    // Client-requested fullscreen toggle.
+    raw->on_request_fullscreen_.connect(&toplevel->events.request_fullscreen, [this, raw](void*) {
+        bool want = raw->toplevel()->requested.fullscreen;
+        core_.dispatch(command::SetWindowFullscreen{ raw->id, want, false });
+    });
+
+    // Client-requested maximize: treat as fullscreen for tiling WMs.
+    raw->on_request_maximize_.connect(&toplevel->events.request_maximize, [this, raw](void*) {
+        bool want = raw->toplevel()->requested.maximized;
+        core_.dispatch(command::SetWindowFullscreen{ raw->id, want, false });
+    });
+
+    // Client-requested interactive move/resize (e.g. title-bar drag).
+    // We acknowledge but don't initiate — mouse bindings handle pointer-driven
+    // move/resize in Core.  Send an empty configure so the client doesn't hang.
+    raw->on_request_move_.connect(&toplevel->events.request_move, [raw](void*) {
+        wlr_xdg_surface_schedule_configure(raw->xdg_surface());
+    });
+    raw->on_request_resize_.connect(&toplevel->events.request_resize, [raw](void*) {
+        wlr_xdg_surface_schedule_configure(raw->xdg_surface());
+    });
 }
 
 // ---------------------------------------------------------------------------

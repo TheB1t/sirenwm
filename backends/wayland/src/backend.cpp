@@ -477,6 +477,18 @@ void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
     } else {
         wlr_seat_pointer_notify_enter(seat_, surface, sx, sy);
         wlr_seat_pointer_notify_motion(seat_, time_ms, sx, sy);
+
+        // Focus-follows-mouse: find the managed window under the cursor and
+        // dispatch a FocusWindow command to Core (mirrors X11 EnterNotify).
+        // wlr_xdg_surface_try_from_wlr_surface returns nullptr for non-xdg surfaces.
+        if (wlr_xdg_surface* xdg = wlr_xdg_surface_try_from_wlr_surface(surface)) {
+            for (auto& [id, wls] : surfaces_) {
+                if (wls && wls->xdg_surface() == xdg) {
+                    core_.dispatch(command::FocusWindow{ id });
+                    break;
+                }
+            }
+        }
     }
 }
 

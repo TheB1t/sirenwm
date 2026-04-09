@@ -80,6 +80,7 @@ cp -r "$REPO_ROOT/lua/." "$TEST_HOME/.config/sirenwm/"
 
 cat >"$TEST_CONFIG" <<'LUA'
 require("keybindings")
+local bar = require("bar")
 
 siren.modifier = "mod1"
 
@@ -119,6 +120,14 @@ siren.workspaces = {
   { name = "[1]", monitor = "primary" },
   { name = "[2]", monitor = "primary" },
   { name = "[3]", monitor = "primary" },
+}
+
+bar.settings = {
+  top = {
+    height = 18,
+    left   = { siren.load("widgets.tags") },
+    center = { siren.load("widgets.title") },
+  },
 }
 LUA
 

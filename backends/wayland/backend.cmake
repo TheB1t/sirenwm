@@ -131,8 +131,13 @@ else()
     message(STATUS "wlr_scene::tree is a value (using &scene_->tree)")
 endif()
 
-# Detect whether wlr_buffer_impl is public (0.17) or opaque (0.18+)
+# Detect whether wlr_buffer_impl is public (0.17 style) or opaque (0.18+ style).
+# Keep CMAKE_REQUIRED_DEFINITIONS from the previous probe (WLR_USE_UNSTABLE) and
+# add the patched include path so the probe sees the same headers as the build.
+set(CMAKE_REQUIRED_INCLUDES ${CMAKE_BINARY_DIR}/wl_patched ${WLROOTS_INCLUDE_DIRS})
+set(CMAKE_REQUIRED_DEFINITIONS -DWLR_USE_UNSTABLE)
 check_c_source_compiles("
+#define WLR_USE_UNSTABLE
 #include <wlr/types/wlr_buffer.h>
 int main(void) {
     struct wlr_buffer_impl impl = {0};
