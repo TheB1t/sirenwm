@@ -72,17 +72,25 @@ target_link_libraries(sirenwm_core PUBLIC
 # ---------------------------------------------------------------------------
 # Backend
 # ---------------------------------------------------------------------------
-set(SIRENWM_BACKEND "x11" CACHE STRING "Backend to build (currently only x11)")
+set(SIRENWM_BACKEND "x11" CACHE STRING "Backend to build: x11 or wayland")
 
 set(SIRENWM_BACKEND_SOURCES)
 set(SIRENWM_BACKEND_INCLUDE_DIRS)
 set(SIRENWM_BACKEND_LINK_LIBS spdlog::spdlog)
+set(SIRENWM_BACKEND_COMPILE_DEFS)
 
 if(SIRENWM_BACKEND STREQUAL "x11")
     include(backends/x11/backend.cmake)
+    list(APPEND SIRENWM_BACKEND_LINK_LIBS xkbcommon)
+    set(SIRENWM_BACKEND_DEFINE "SIRENWM_BACKEND_X11")
+elseif(SIRENWM_BACKEND STREQUAL "wayland")
+    include(backends/wayland/backend.cmake)
+    set(SIRENWM_BACKEND_DEFINE "SIRENWM_BACKEND_WAYLAND")
 else()
-    message(FATAL_ERROR "Unknown SIRENWM_BACKEND: ${SIRENWM_BACKEND}")
+    message(FATAL_ERROR "Unknown SIRENWM_BACKEND: ${SIRENWM_BACKEND} (valid: x11, wayland)")
 endif()
+
+message(STATUS "Building with backend: ${SIRENWM_BACKEND}")
 
 add_library(sirenwm_backend STATIC ${SIRENWM_BACKEND_SOURCES})
 target_include_directories(sirenwm_backend PRIVATE
@@ -92,6 +100,10 @@ target_include_directories(sirenwm_backend PRIVATE
 target_link_libraries(sirenwm_backend PUBLIC
     sirenwm_core
     ${SIRENWM_BACKEND_LINK_LIBS}
+)
+target_compile_definitions(sirenwm_backend PUBLIC
+    ${SIRENWM_BACKEND_DEFINE}
+    ${SIRENWM_BACKEND_COMPILE_DEFS}
 )
 if(SIRENWM_DEBUG_UI)
     target_compile_definitions(sirenwm_backend PUBLIC SIRENWM_DEBUG_UI)
@@ -105,6 +117,11 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 target_include_directories(${PROJECT_NAME} PRIVATE
     modules
     ${SIRENWM_BACKEND_INCLUDE_DIRS}
+)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    ${SIRENWM_BACKEND_DEFINE}
+    ${SIRENWM_BACKEND_COMPILE_DEFS}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

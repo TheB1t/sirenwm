@@ -1,16 +1,6 @@
 find_package(PkgConfig REQUIRED)
 
-# wlroots pkg-config module name varies by distro/version:
-#   Arch/Ubuntu: "wlroots"
-#   Debian trixie: "wlroots-0.18"
-pkg_check_modules(WLROOTS wlroots)
-if(NOT WLROOTS_FOUND)
-    pkg_check_modules(WLROOTS wlroots-0.18)
-endif()
-if(NOT WLROOTS_FOUND)
-    message(FATAL_ERROR "wlroots not found (tried: wlroots, wlroots-0.18)")
-endif()
-message(STATUS "Found wlroots: ${WLROOTS_VERSION}")
+pkg_check_modules(WLROOTS   REQUIRED wlroots)
 pkg_check_modules(WAYLAND   REQUIRED wayland-server)
 pkg_check_modules(XKBCOMMON REQUIRED xkbcommon)
 pkg_check_modules(CAIRO     REQUIRED cairo)

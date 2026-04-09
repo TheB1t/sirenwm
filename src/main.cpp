@@ -8,9 +8,16 @@
 #include <string>
 #include <log.hpp>
 
-#include <x11_backend.hpp>
 #include <module_registry.hpp>
 #include <runtime.hpp>
+
+#if defined(SIRENWM_BACKEND_WAYLAND)
+#  include <wl_backend.hpp>
+using ActiveBackend = WaylandBackend;
+#else
+#  include <x11_backend.hpp>
+using ActiveBackend = X11Backend;
+#endif
 
 // Static modules are linked with --whole-archive from CMake, so registration
 // initializers are retained without explicit header includes here.
@@ -79,7 +86,7 @@ int main(int argc, char** argv) {
 
     ModuleRegistry module_registry;
     module_registry_static::apply_static_registrations(module_registry);
-    RuntimeOf<X11Backend> runtime(module_registry);
+    RuntimeOf<ActiveBackend> runtime(module_registry);
     g_signal_runtime = &runtime;
     signal(SIGINT, signal_handler);
 
