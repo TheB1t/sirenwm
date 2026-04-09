@@ -1,6 +1,23 @@
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(WLROOTS   REQUIRED wlroots)
+# wlroots pkg-config module name varies by distro/version:
+#   Arch/Ubuntu: "wlroots"
+#   Debian trixie: "wlroots-0.18"
+# wlroots pkg-config module name varies by distro/version:
+#   Arch wlroots0.17: "wlroots-0.17"
+#   Arch wlroots0.18: "wlroots-0.18"
+#   Debian trixie:    "wlroots-0.18"
+#   Ubuntu 24.04:     "wlroots"
+foreach(_wlr_name wlroots wlroots-0.18 wlroots-0.17)
+    pkg_check_modules(WLROOTS ${_wlr_name})
+    if(WLROOTS_FOUND)
+        break()
+    endif()
+endforeach()
+if(NOT WLROOTS_FOUND)
+    message(FATAL_ERROR "wlroots not found (tried: wlroots, wlroots-0.18, wlroots-0.17)")
+endif()
+message(STATUS "Found wlroots: ${WLROOTS_VERSION}")
 pkg_check_modules(WAYLAND   REQUIRED wayland-server)
 pkg_check_modules(XKBCOMMON REQUIRED xkbcommon)
 pkg_check_modules(CAIRO     REQUIRED cairo)
@@ -28,14 +45,21 @@ if(NOT _wl_result EQUAL 0)
 endif()
 
 # wlr-layer-shell-unstable-v1 (from wlroots protocols dir)
+set(LAYER_SHELL_XML "")
+# Try pkgdatadir from wlroots pkg first
 if(WLROOTS_PROTOCOLS_DIR)
-    set(LAYER_SHELL_XML "${WLROOTS_PROTOCOLS_DIR}/wlr-layer-shell-unstable-v1.xml")
-else()
-    # Fallback: look in common locations
+    if(EXISTS "${WLROOTS_PROTOCOLS_DIR}/wlr-layer-shell-unstable-v1.xml")
+        set(LAYER_SHELL_XML "${WLROOTS_PROTOCOLS_DIR}/wlr-layer-shell-unstable-v1.xml")
+    endif()
+endif()
+# Fallback: common filesystem locations
+if(NOT LAYER_SHELL_XML)
     foreach(_dir
+        /usr/share/wlroots/protocol
         /usr/share/wlroots/protocols
-        /usr/local/share/wlroots/protocols
+        /usr/local/share/wlroots/protocol
         /usr/share/wlr-protocols
+        /usr/local/share/wlr-protocols
     )
         if(EXISTS "${_dir}/wlr-layer-shell-unstable-v1.xml")
             set(LAYER_SHELL_XML "${_dir}/wlr-layer-shell-unstable-v1.xml")
@@ -59,6 +83,70 @@ else()
     list(APPEND SIRENWM_BACKEND_COMPILE_DEFS SIRENWM_NO_LAYER_SHELL)
 endif()
 
+# ---------------------------------------------------------------------------
+# Patch wlroots headers: replace C99 [static N] (invalid in C++) with [N].
+# wlroots still uses this syntax as of 0.18 (it's a C library).
+# ---------------------------------------------------------------------------
+macro(patch_wlr_header _rel_path)
+    set(_orig "")
+    foreach(_inc_dir ${WLROOTS_INCLUDE_DIRS} /usr/include)
+        if(EXISTS "${_inc_dir}/${_rel_path}")
+            set(_orig "${_inc_dir}/${_rel_path}")
+            break()
+        endif()
+    endforeach()
+    if(_orig)
+        get_filename_component(_dir "${CMAKE_BINARY_DIR}/wl_patched/${_rel_path}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_dir}")
+        file(READ "${_orig}" _content)
+        string(REGEX REPLACE "\\[static [0-9]+" "[" _content "${_content}")
+        file(WRITE "${CMAKE_BINARY_DIR}/wl_patched/${_rel_path}" "${_content}")
+        message(STATUS "Patched ${_rel_path} → ${CMAKE_BINARY_DIR}/wl_patched/${_rel_path}")
+    else()
+        message(WARNING "patch_wlr_header: ${_rel_path} not found in include dirs")
+    endif()
+endmacro()
+
+patch_wlr_header("wlr/types/wlr_scene.h")
+patch_wlr_header("wlr/render/wlr_renderer.h")
+
+# Detect whether wlr_scene::tree is a pointer or a value.
+# This changed between wlroots versions.
+include(CheckCSourceCompiles)
+set(CMAKE_REQUIRED_INCLUDES ${CMAKE_BINARY_DIR}/wl_patched ${WLROOTS_INCLUDE_DIRS})
+set(CMAKE_REQUIRED_DEFINITIONS -DWLR_USE_UNSTABLE)
+check_c_source_compiles("
+#include <wlr/types/wlr_scene.h>
+int main(void) {
+    struct wlr_scene *s = 0;
+    struct wlr_scene_tree *t = s->tree;
+    (void)t;
+    return 0;
+}
+" WLR_SCENE_TREE_IS_POINTER)
+if(WLR_SCENE_TREE_IS_POINTER)
+    message(STATUS "wlr_scene::tree is a pointer")
+    list(APPEND SIRENWM_BACKEND_COMPILE_DEFS WLR_SCENE_TREE_IS_POINTER)
+else()
+    message(STATUS "wlr_scene::tree is a value (using &scene_->tree)")
+endif()
+
+# Detect whether wlr_buffer_impl is public (0.17) or opaque (0.18+)
+check_c_source_compiles("
+#include <wlr/types/wlr_buffer.h>
+int main(void) {
+    struct wlr_buffer_impl impl = {0};
+    (void)impl;
+    return 0;
+}
+" WLR_BUFFER_IMPL_PUBLIC)
+if(WLR_BUFFER_IMPL_PUBLIC)
+    message(STATUS "wlr_buffer_impl is public (0.17 style)")
+else()
+    message(STATUS "wlr_buffer_impl is opaque (0.18+ style) — using wl_shm buffer")
+    list(APPEND SIRENWM_BACKEND_COMPILE_DEFS WLR_BUFFER_IMPL_OPAQUE)
+endif()
+
 list(APPEND SIRENWM_BACKEND_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/backend.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/loop.cpp
@@ -72,6 +160,7 @@ list(APPEND SIRENWM_BACKEND_SOURCES
 )
 
 list(APPEND SIRENWM_BACKEND_INCLUDE_DIRS
+    ${CMAKE_BINARY_DIR}/wl_patched    # patched wlr headers (C++ compatible)
     ${CMAKE_BINARY_DIR}/wl_gen        # generated protocol headers
     ${CMAKE_CURRENT_LIST_DIR}/include
     ${WLROOTS_INCLUDE_DIRS}

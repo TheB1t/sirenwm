@@ -21,7 +21,9 @@ extern "C" {
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
-#include <wlr/types/wlr_layer_shell_v1.h>
+#ifndef SIRENWM_NO_LAYER_SHELL
+#  include <wlr/types/wlr_layer_shell_v1.h>
+#endif
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
@@ -110,6 +112,16 @@ public:
     wlr_seat*          seat()        const { return seat_; }
     wlr_cursor*        cursor()      const { return cursor_; }
 
+    // wlr_scene::tree is wlr_scene_tree* in some versions and wlr_scene_tree in others.
+    // This helper always returns wlr_scene_tree*.
+    wlr_scene_tree* scene_root() const {
+#if defined(WLR_SCENE_TREE_IS_POINTER)
+        return scene_->tree;
+#else
+        return &scene_->tree;
+#endif
+    }
+
 private:
     Core&    core_;
     Runtime& runtime_;
@@ -129,7 +141,9 @@ private:
     wlr_cursor*           cursor_        = nullptr;
     wlr_xcursor_manager*  xcursor_mgr_   = nullptr;
     wlr_xdg_shell*        xdg_shell_     = nullptr;
+#ifndef SIRENWM_NO_LAYER_SHELL
     wlr_layer_shell_v1*   layer_shell_   = nullptr;
+#endif
     wlr_data_device_manager* data_dev_mgr_ = nullptr;
 
     // Port implementations
@@ -161,7 +175,9 @@ private:
     WlListener on_new_output_;
     WlListener on_new_input_;
     WlListener on_new_xdg_surface_;
+#ifndef SIRENWM_NO_LAYER_SHELL
     WlListener on_new_layer_surface_;
+#endif
     WlListener on_cursor_motion_;
     WlListener on_cursor_motion_abs_;
     WlListener on_cursor_button_;
@@ -174,7 +190,9 @@ private:
     void handle_new_output(wlr_output* output);
     void handle_new_input(wlr_input_device* device);
     void handle_new_xdg_surface(wlr_xdg_surface* surface);
+#ifndef SIRENWM_NO_LAYER_SHELL
     void handle_new_layer_surface(wlr_layer_surface_v1* surface);
+#endif
     void handle_output_frame(WlOutput* out);
     void handle_output_destroy(WlOutput* out);
     void handle_cursor_motion(wlr_pointer_motion_event* ev);

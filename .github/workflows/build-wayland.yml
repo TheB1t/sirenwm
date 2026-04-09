@@ -59,11 +59,11 @@ jobs:
             lua spdlog \
             cairo pango fontconfig freetype2 libpng \
             ttf-dejavu \
-            wlroots \
+            wlroots0.18 \
             wayland wayland-protocols \
             libxkbcommon pixman \
             libdrm mesa libinput seatd \
-            libxcb xcb-util-keysyms xcb-util-icccm \
+            libxcb xcb-util-keysyms xcb-util-wm \
             libx11 libxfixes
 
       - name: Build

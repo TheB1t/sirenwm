@@ -18,7 +18,7 @@
 void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     if (xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
         // Popup: insert into scene automatically; no Core management.
-        wlr_scene_xdg_surface_create(scene_->tree, xdg_surface);
+        wlr_scene_xdg_surface_create(scene_root(), xdg_surface);
         return;
     }
 
@@ -28,7 +28,7 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
         toplevel->title  ? toplevel->title  : "");
 
     // Create scene tree node for this surface.
-    wlr_scene_tree* scene_tree = wlr_scene_xdg_surface_create(scene_->tree, xdg_surface);
+    wlr_scene_tree* scene_tree = wlr_scene_xdg_surface_create(scene_root(), xdg_surface);
 
     // Allocate a WindowId and pre-create the WlSurface.
     WindowId id = alloc_window_id();
@@ -42,10 +42,11 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     pending_[id] = std::move(surf);
 
     // Wire xdg_surface lifecycle signals.
-    raw->on_map_.connect(&xdg_surface->events.map, [this, raw](void*) {
+    // In wlroots 0.18 map/unmap moved from xdg_surface to xdg_surface->surface.
+    raw->on_map_.connect(&xdg_surface->surface->events.map, [this, raw](void*) {
         handle_surface_map(raw);
     });
-    raw->on_unmap_.connect(&xdg_surface->events.unmap, [this, raw](void*) {
+    raw->on_unmap_.connect(&xdg_surface->surface->events.unmap, [this, raw](void*) {
         handle_surface_unmap(raw);
     });
     raw->on_destroy_.connect(&xdg_surface->events.destroy, [this, raw](void*) {
