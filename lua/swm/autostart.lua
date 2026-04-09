@@ -62,7 +62,7 @@ local function parse(raw_list)
     return out
 end
 
-siren.on("start", function()
+siren.on("wm.started", function()
     started = true
     local list = M._settings and parse(M._settings) or {}
     entries = list
@@ -73,7 +73,7 @@ siren.on("start", function()
     end
 end)
 
-siren.on("child_exit", function(ev)
+siren.on("process.exited", function(ev)
     for _, e in ipairs(entries) do
         if e.pid == ev.pid then
             e.running = false
@@ -89,7 +89,7 @@ siren.on("child_exit", function(ev)
     end
 end)
 
-siren.on("stop", function(ev)
+siren.on("wm.stopping", function(ev)
     for _, e in ipairs(entries) do
         if not (ev.exec_restart and e.policy == "once") then
             kill_entry(e)

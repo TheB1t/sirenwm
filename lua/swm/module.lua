@@ -1,6 +1,6 @@
 -- swm.module — base class for configuration modules (autostart, rules, wallpaper…).
 --
--- Automatically wires siren.on("reload") to re-call on_settings_update
+-- Automatically wires siren.on("wm.reloaded") to re-call on_settings_update
 -- with the last assigned settings.
 --
 -- Usage:
@@ -15,7 +15,7 @@ local Module = Base:extend()
 function Module:new(opts)
     local inst = Base.new(self, opts)
 
-    siren.on("reload", function()
+    siren.on("wm.reloaded", function()
         if inst._settings then
             inst:on_settings_update(inst._settings)
         end

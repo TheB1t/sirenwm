@@ -31,6 +31,7 @@ class BarModule : public Module {
         ~BarModule();
 
         void on_reload() override;
+        using Module::on;
         void on(event::RuntimeStarted) override { refresh_widgets(); redraw(); }
         void on(event::WindowMapped) override { redraw(); }
         void on(event::WindowUnmapped) override;

@@ -37,11 +37,10 @@ class Config {
         std::optional<uint16_t>   mod_mask;
         ThemeConfig theme_;
         std::unordered_map<std::string, RuntimeSettingSpec> runtime_settings;
-        LuaHost lua_host;
         // Non-owning. Set by bind_runtime_handles() before any Lua load.
         // Null until bound; checked at access via bound_core()/bound_runtime().
-        // Core is accessed via bound_runtime_->core().
         Runtime* bound_runtime_ = nullptr;
+        LuaHost* lua_host_      = nullptr;  // owned by Runtime, bound via bind_runtime_handles()
 
     public:
         enum class MouseAction { None, Move, Resize, Float };
@@ -77,8 +76,9 @@ class Config {
         // Returns true if the file has no syntax errors.
         static bool check_syntax(const std::string& path);
 
-        void bind_runtime_handles(Runtime& runtime) {
+        void bind_runtime_handles(Runtime& runtime, LuaHost& lua) {
             bound_runtime_ = &runtime;
+            lua_host_      = &lua;
         }
 
         Core& bound_core() const;
@@ -144,8 +144,8 @@ class Config {
             theme_            = snap.theme;
         }
 
-        LuaHost& lua() { return lua_host; }
-        const LuaHost& lua() const { return lua_host; }
+        LuaHost& lua() { return *lua_host_; }
+        const LuaHost& lua() const { return *lua_host_; }
 
         void register_runtime_setting(const std::string& key,
             RuntimeSettingSpec spec) {

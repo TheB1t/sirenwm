@@ -3,7 +3,6 @@
 #include <backend/input_port.hpp>
 #include <core.hpp>
 #include <config.hpp>
-#include <lua_events.hpp>
 #include <runtime.hpp>
 #include <module_registry.hpp>
 #include <log.hpp>

@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include <event_receiver.hpp>
+
 class Core;
 
 class LuaContext {
@@ -91,9 +93,10 @@ class LuaRegistryRef {
         int raw_ref() const { return ref_; }
 };
 
-class LuaHost {
+class LuaHost : public IEventReceiver {
     void*    state_    = nullptr;
     uint64_t vm_epoch_ = 0;
+    Core&    core_;
 
     // siren.on handlers: event name → list of Lua function refs
     std::unordered_map<std::string, std::vector<LuaRegistryRef>> event_handlers_;
@@ -102,8 +105,8 @@ class LuaHost {
     std::unordered_map<std::string, LuaRegistryRef> module_tables_;
 
     public:
-        LuaHost() = default;
-        ~LuaHost();
+        explicit LuaHost(Core& core) : core_(core) {}
+        ~LuaHost() override;
 
         LuaHost(const LuaHost&)            = delete;
         LuaHost& operator=(const LuaHost&) = delete;
@@ -113,8 +116,26 @@ class LuaHost {
         void     reset_root_table();
         LuaContext context() const { return LuaContext(state_); }
 
+        // Bring all base on() overloads into scope so the overrides below
+        // don't hide them.
+        using IEventReceiver::on;
+
+        // IEventReceiver overrides — Lua-exposed events
+        void on(event::WindowMapped ev)              override;
+        void on(event::WindowUnmapped ev)            override;
+        void on(event::FocusChanged ev)              override;
+        void on(event::WorkspaceSwitched ev)         override;
+        void on(event::ApplyWindowRules ev)          override;
+        void on(event::DisplayTopologyChanged ev)    override;
+        void on(event::RuntimeStarted ev)            override;
+        void on(event::RuntimeStopping ev)           override;
+        void on(event::ConfigReloaded ev)            override;
+        void on(event::ChildExited ev)               override;
+        void on(event::WindowAssignedToWorkspace ev) override;
+        void on(event::KeyboardLayoutChanged ev)     override;
+
         // Register siren.on(event, fn) from Lua — called by the C++ siren.on binding.
-        void on(const std::string& event, LuaRegistryRef handler);
+        void register_handler(const std::string& event, LuaRegistryRef handler);
         // Clear all handlers — call before reload so refs don't accumulate.
         void clear_handlers();
         // Emit event to Lua handlers. push_fn pushes arguments onto the stack.

@@ -75,6 +75,7 @@ class DebugUIModule : public Module {
         void on_stop(bool is_exec_restart) override;
 
         // Event handlers — feed the event log.
+        using Module::on;
         void on(event::WindowMapped ev)            override;
         void on(event::WindowUnmapped ev)          override;
         void on(event::FocusChanged ev)            override;

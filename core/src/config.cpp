@@ -175,7 +175,7 @@ Core& Config::bound_core() const {
 }
 
 bool Config::load(const std::string& path, Runtime& runtime, bool reset_lua_vm) {
-    return config_loader::load(*this, path, runtime.core(), runtime, reset_lua_vm);
+    return config_loader::load(*this, path, runtime.core(), runtime, runtime.lua(), reset_lua_vm);
 }
 
 bool Config::check_syntax(const std::string& path) {

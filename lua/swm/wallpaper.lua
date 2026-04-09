@@ -31,21 +31,21 @@ local function apply(entries)
     end
 end
 
-siren.on("start", function()
+siren.on("wm.started", function()
     if M._settings then apply(M._settings) end
 end)
 
-siren.on("display_change", function()
+siren.on("display.changed", function()
     if M._settings then apply(M._settings) end
 end)
 
 function M:on_settings_update(s)
     -- Only apply during reload if already started; on first start the
-    -- siren.on("start") handler above fires instead.
+    -- siren.on("wm.started") handler above fires instead.
 end
 
 -- Manual re-application hook wired to reload.
-siren.on("reload", function()
+siren.on("wm.reloaded", function()
     if M._settings then apply(M._settings) end
 end)
 

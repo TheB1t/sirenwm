@@ -205,20 +205,51 @@ Registers `fn` as a callback for the named event. Multiple callbacks per
 event are supported. All handlers are cleared on hot-reload and re-registered
 by re-running `init.lua`.
 
-| Event               | Callback args                                          | When fired                                      |
-| ------------------- | ------------------------------------------------------ | ----------------------------------------------- |
-| `"start"`           | —                                                      | After runtime start; monitors and windows ready |
-| `"reload"`          | —                                                      | At the start of a hot-reload cycle              |
-| `"stop"`            | `{ exec_restart }`                                     | Before shutdown or exec-restart                 |
-| `"child_exit"`      | `{ pid, exit_code }`                                   | A spawned child process exited                  |
-| `"display_change"`  | —                                                      | Monitor topology changed (hotplug)              |
-| `"window_rules"`    | `{id, class, instance, workspace, type, from_restart}` | Before rules applied to a new window            |
-| `"window_map"`      | `{id, class, instance, workspace}`                     | Window mapped (shown)                           |
-| `"window_unmap"`    | `{id, withdrawn}`                                      | Window unmapped (hidden or closed)              |
-| `"focus_change"`    | `{id}`                                                 | Focus changed (`id=0` means focus cleared)      |
-| `"workspace_switch"`| `{workspace}`                                          | Active workspace changed (1-indexed)            |
+Event names use dot-separated `category.action` convention:
 
-`window_rules` fields:
+**Lifecycle (`wm.*`)**
+
+| Event               | Callback args          | When fired                                      |
+| ------------------- | ---------------------- | ----------------------------------------------- |
+| `"wm.started"`      | —                      | After runtime start; monitors and windows ready |
+| `"wm.reloaded"`     | —                      | After hot-reload completes                      |
+| `"wm.stopping"`     | `{ exec_restart }`     | Before shutdown or exec-restart                 |
+
+**Window (`window.*`)**
+
+| Event                       | Callback args                                          | When fired                                 |
+| --------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `"window.mapped"`           | `{id, class, instance, workspace}`                     | Window mapped (shown)                      |
+| `"window.unmapped"`         | `{id, withdrawn}`                                      | Window unmapped (hidden or closed)         |
+| `"window.focused"`          | `{id}`                                                 | Focus changed (`id=0` means focus cleared) |
+| `"window.rules"`            | `{id, class, instance, workspace, type, from_restart}` | Before rules applied to a new window       |
+| `"window.workspace_changed"`| `{id, workspace}`                                      | Window moved to a different workspace      |
+
+**Workspace (`workspace.*`)**
+
+| Event                  | Callback args   | When fired                           |
+| ---------------------- | --------------- | ------------------------------------ |
+| `"workspace.switched"` | `{workspace}`   | Active workspace changed (1-indexed) |
+
+**Display (`display.*`)**
+
+| Event              | Callback args | When fired                       |
+| ------------------ | ------------- | -------------------------------- |
+| `"display.changed"`| —             | Monitor topology changed (hotplug) |
+
+**Input (`keyboard.*`)**
+
+| Event                      | Callback args | When fired                    |
+| -------------------------- | ------------- | ----------------------------- |
+| `"keyboard.layout_changed"`| `{layout}`    | Active keyboard layout changed |
+
+**Process (`process.*`)**
+
+| Event              | Callback args        | When fired                     |
+| ------------------ | -------------------- | ------------------------------ |
+| `"process.exited"` | `{pid, exit_code}`   | A spawned child process exited |
+
+`window.rules` fields:
 
 - `type` ∈ `"normal"`, `"dialog"`, `"utility"`, `"splash"`, `"modal"`
 - `from_restart` — `true` when window was restored from a restart snapshot;

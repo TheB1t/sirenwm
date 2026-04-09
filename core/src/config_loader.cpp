@@ -399,7 +399,7 @@ static int lua_siren_on(LuaContext& lua, void* userdata) {
     lua.check_function(2);
     LuaHost&       host = loader_config(userdata).lua();
     LuaRegistryRef ref  = host.ref_function(2);
-    host.on(event, std::move(ref));
+    host.register_handler(event, std::move(ref));
     return 0;
 }
 
@@ -407,12 +407,10 @@ static int lua_siren_on(LuaContext& lua, void* userdata) {
 
 namespace config_loader {
 
-bool load(Config& config, const std::string& path, Core& core, Runtime& runtime, bool reset_lua_vm) {
-    config.bind_runtime_handles(runtime);
+bool load(Config& config, const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, bool reset_lua_vm) {
+    config.bind_runtime_handles(runtime, lua);
     core.set_config_path(path);
-    core.bind_lua_host(config.lua());
-
-    auto& lua = config.lua();
+    core.bind_lua_host(lua);
     if (reset_lua_vm || !lua.initialized())
         lua.init();
     else

@@ -2,7 +2,6 @@
 
 #include <core.hpp>
 #include <log.hpp>
-#include <lua_events.hpp>
 #include <runtime.hpp>
 #include <xconn.hpp>
 

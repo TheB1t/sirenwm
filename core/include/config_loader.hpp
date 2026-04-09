@@ -4,10 +4,11 @@
 
 class Config;
 class Core;
+class LuaHost;
 class Runtime;
 
 namespace config_loader {
 
-bool load(Config& config, const std::string& path, Core& core, Runtime& runtime, bool reset_lua_vm);
+bool load(Config& config, const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, bool reset_lua_vm);
 
 } // namespace config_loader

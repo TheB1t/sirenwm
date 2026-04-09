@@ -86,4 +86,10 @@ struct BorderlessActivated { WindowId window; int monitor_index; };
 // Emitted when no borderless window is active on any monitor.
 struct BorderlessDeactivated {};
 
+// Lifecycle events — previously ad-hoc string-based emit_to_lua() calls,
+// now proper type-safe structs dispatched through IEventReceiver.
+struct RuntimeStopping { bool exec_restart = false; };
+struct ConfigReloaded {};
+struct ChildExited { int pid = 0; int exit_code = 0; };
+
 } // namespace event

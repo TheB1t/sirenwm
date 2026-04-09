@@ -12,24 +12,16 @@
 #include <backend/events.hpp>
 #include <config.hpp>
 #include <core.hpp>
+#include <event_emitter.hpp>
 #include <lua_host.hpp>
 #include <module.hpp>
-
-// ---------------------------------------------------------------------------
-// Lua event trait — specialise in lua_events.hpp to expose events to Lua.
-// Default: no Lua emission.
-// ---------------------------------------------------------------------------
-template<typename Ev>
-struct LuaEvent {
-    static constexpr const char* name = nullptr;
-};
 
 #include <runtime_state.hpp>
 
 class Backend;
 class ModuleRegistry;
 
-class Runtime {
+class Runtime : public IEventEmitter {
     private:
         enum class ReloadRequest {
             None,
@@ -40,6 +32,7 @@ class Runtime {
         Config config_;
         ModuleRegistry& module_registry_;
         Core     core_;
+        LuaHost  lua_host_{core_};   // must be declared after core_
         Backend* backend_ = nullptr;  // non-null between start() and stop()
 
         std::vector<std::unique_ptr<Module>> modules;
@@ -67,7 +60,10 @@ class Runtime {
 
     public:
         explicit Runtime(ModuleRegistry& module_registry)
-            : module_registry_(module_registry) {}
+            : module_registry_(module_registry)
+        {
+            config_.bind_runtime_handles(*this, lua_host_);
+        }
 
         // Non-copyable, non-movable (address stability for references).
         Runtime(const Runtime&)            = delete;
@@ -133,16 +129,18 @@ class Runtime {
         ModuleRegistry& module_registry() { return module_registry_; }
         const ModuleRegistry& module_registry() const { return module_registry_; }
 
-        void emit_to_lua(const char* event,
-            LuaEventPushFn push_args,
-            const void* ev);
+        // IEventEmitter
+        void add_receiver(IEventReceiver* receiver) override;
+        void remove_receiver(IEventReceiver* receiver) override;
+
+        LuaHost& lua() { return lua_host_; }
+        const LuaHost& lua() const { return lua_host_; }
 
         template<typename Ev>
         void emit(Ev ev) {
             for (auto& m : modules)
                 m->on(ev);
-            if constexpr (LuaEvent<Ev>::name != nullptr)
-                emit_to_lua(LuaEvent<Ev>::name, LuaEvent<Ev>::push_args, &ev);
+            lua_host_.on(ev);
         }
 
         template<typename Ev>

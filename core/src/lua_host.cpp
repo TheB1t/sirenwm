@@ -409,7 +409,7 @@ bool LuaHost::call_ref_with_int_fields(const LuaRegistryRef& ref,
 // sys event bus
 // ---------------------------------------------------------------------------
 
-void LuaHost::on(const std::string& event, LuaRegistryRef handler) {
+void LuaHost::register_handler(const std::string& event, LuaRegistryRef handler) {
     if (handler.valid())
         event_handlers_[event].push_back(std::move(handler));
 }
@@ -432,4 +432,201 @@ void LuaHost::emit_to_lua(const std::string& event,
         int nargs = (push_args && core) ? push_args(ctx, ev, *core) : 0;
         pcall(nargs, 0, ("siren.on(\"" + event + "\")").c_str());
     }
+}
+
+// ---------------------------------------------------------------------------
+// IEventReceiver — bridge C++ events to Lua siren.on() handlers.
+//
+// Event naming convention: "category.past_participle"
+//   window.*     — window lifecycle
+//   workspace.*  — workspace changes
+//   wm.*         — runtime lifecycle
+//   display.*    — monitor topology
+//   keyboard.*   — input device state
+//   process.*    — child process lifecycle
+// ---------------------------------------------------------------------------
+
+#include <core.hpp>
+#include <window_state.hpp>
+
+// -- window.mapped --------------------------------------------------------
+
+static int push_window_mapped(LuaContext& lua, const void* ev_ptr, Core& core) {
+    auto* ev = static_cast<const event::WindowMapped*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->window);
+    lua.set_field(-2, "id");
+    auto ws = core.window_state_any(ev->window);
+    if (ws) {
+        lua.push_string(ws->wm_class);
+        lua.set_field(-2, "class");
+        lua.push_string(ws->wm_instance);
+        lua.set_field(-2, "instance");
+        int ws_id = core.workspace_of_window(ev->window);
+        lua.push_integer(ws_id >= 0 ? ws_id + 1 : 0);
+        lua.set_field(-2, "workspace");
+    }
+    return 1;
+}
+
+void LuaHost::on(event::WindowMapped ev) {
+    emit_to_lua("window.mapped", push_window_mapped, &ev, &core_);
+}
+
+// -- window.unmapped ------------------------------------------------------
+
+static int push_window_unmapped(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::WindowUnmapped*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->window);
+    lua.set_field(-2, "id");
+    lua.push_bool(ev->withdrawn);
+    lua.set_field(-2, "withdrawn");
+    return 1;
+}
+
+void LuaHost::on(event::WindowUnmapped ev) {
+    emit_to_lua("window.unmapped", push_window_unmapped, &ev, &core_);
+}
+
+// -- window.focused -------------------------------------------------------
+
+static int push_focus_changed(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::FocusChanged*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->window);
+    lua.set_field(-2, "id");
+    return 1;
+}
+
+void LuaHost::on(event::FocusChanged ev) {
+    emit_to_lua("window.focused", push_focus_changed, &ev, &core_);
+}
+
+// -- workspace.switched ---------------------------------------------------
+
+static int push_workspace_switched(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::WorkspaceSwitched*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->workspace_id + 1);
+    lua.set_field(-2, "workspace");
+    return 1;
+}
+
+void LuaHost::on(event::WorkspaceSwitched ev) {
+    emit_to_lua("workspace.switched", push_workspace_switched, &ev, &core_);
+}
+
+// -- window.rules ---------------------------------------------------------
+
+static int push_window_rules(LuaContext& lua, const void* ev_ptr, Core& core) {
+    auto* ev = static_cast<const event::ApplyWindowRules*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->window);
+    lua.set_field(-2, "id");
+    lua.push_bool(ev->from_restart);
+    lua.set_field(-2, "from_restart");
+    auto ws = core.window_state_any(ev->window);
+    if (ws) {
+        lua.push_string(ws->wm_class);
+        lua.set_field(-2, "class");
+        lua.push_string(ws->wm_instance);
+        lua.set_field(-2, "instance");
+        int ws_id = core.workspace_of_window(ev->window);
+        lua.push_integer(ws_id >= 0 ? ws_id + 1 : 0);
+        lua.set_field(-2, "workspace");
+        const char* type_str = "normal";
+        switch (ws->type) {
+            case WindowType::Dialog:  type_str = "dialog";  break;
+            case WindowType::Utility: type_str = "utility"; break;
+            case WindowType::Splash:  type_str = "splash";  break;
+            case WindowType::Modal:   type_str = "modal";   break;
+            default: break;
+        }
+        lua.push_string(type_str);
+        lua.set_field(-2, "type");
+    }
+    return 1;
+}
+
+void LuaHost::on(event::ApplyWindowRules ev) {
+    emit_to_lua("window.rules", push_window_rules, &ev, &core_);
+}
+
+// -- display.changed ------------------------------------------------------
+
+void LuaHost::on(event::DisplayTopologyChanged) {
+    emit_to_lua("display.changed", nullptr, nullptr, &core_);
+}
+
+// -- wm.started -----------------------------------------------------------
+
+void LuaHost::on(event::RuntimeStarted) {
+    emit_to_lua("wm.started", nullptr, nullptr, &core_);
+}
+
+// -- wm.stopping ----------------------------------------------------------
+
+static int push_stopping(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::RuntimeStopping*>(ev_ptr);
+    lua.new_table();
+    lua.push_bool(ev->exec_restart);
+    lua.set_field(-2, "exec_restart");
+    return 1;
+}
+
+void LuaHost::on(event::RuntimeStopping ev) {
+    emit_to_lua("wm.stopping", push_stopping, &ev, &core_);
+}
+
+// -- wm.reloaded ----------------------------------------------------------
+
+void LuaHost::on(event::ConfigReloaded) {
+    emit_to_lua("wm.reloaded", nullptr, nullptr, &core_);
+}
+
+// -- process.exited -------------------------------------------------------
+
+static int push_child_exited(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::ChildExited*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->pid);
+    lua.set_field(-2, "pid");
+    lua.push_integer(ev->exit_code);
+    lua.set_field(-2, "exit_code");
+    return 1;
+}
+
+void LuaHost::on(event::ChildExited ev) {
+    emit_to_lua("process.exited", push_child_exited, &ev, &core_);
+}
+
+// -- window.workspace_changed ---------------------------------------------
+
+static int push_window_workspace_changed(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::WindowAssignedToWorkspace*>(ev_ptr);
+    lua.new_table();
+    lua.push_integer(ev->window);
+    lua.set_field(-2, "id");
+    lua.push_integer(ev->workspace_id + 1);
+    lua.set_field(-2, "workspace");
+    return 1;
+}
+
+void LuaHost::on(event::WindowAssignedToWorkspace ev) {
+    emit_to_lua("window.workspace_changed", push_window_workspace_changed, &ev, &core_);
+}
+
+// -- keyboard.layout_changed ----------------------------------------------
+
+static int push_keyboard_layout(LuaContext& lua, const void* ev_ptr, Core&) {
+    auto* ev = static_cast<const event::KeyboardLayoutChanged*>(ev_ptr);
+    lua.new_table();
+    lua.push_string(ev->layout);
+    lua.set_field(-2, "layout");
+    return 1;
+}
+
+void LuaHost::on(event::KeyboardLayoutChanged ev) {
+    emit_to_lua("keyboard.layout_changed", push_keyboard_layout, &ev, &core_);
 }

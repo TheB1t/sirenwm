@@ -4,7 +4,6 @@
 #include <backend/commands.hpp>
 #include <config.hpp>
 #include <core.hpp>
-#include <lua_events.hpp>
 #include <module_registry.hpp>
 #include <monitor_layout.hpp>
 #include <log.hpp>
@@ -60,30 +59,6 @@ static void sigchld_handler(int) {
         (void)write(g_sigchld_pipe_wr, &b, 1);
     }
 }
-
-namespace {
-
-struct ChildExitInfo { pid_t pid; int exit_code; };
-
-int push_child_exit_args(LuaContext& lua, const void* ev, Core&) {
-    auto* info = static_cast<const ChildExitInfo*>(ev);
-    lua.new_table();
-    lua.push_integer(info->pid);
-    lua.set_field(-2, "pid");
-    lua.push_integer(info->exit_code);
-    lua.set_field(-2, "exit_code");
-    return 1;
-}
-
-int push_stop_args(LuaContext& lua, const void* ev, Core&) {
-    bool exec_restart = *static_cast<const bool*>(ev);
-    lua.new_table();
-    lua.push_bool(exec_restart);
-    lua.set_field(-2, "exec_restart");
-    return 1;
-}
-
-} // namespace
 
 namespace {
 
@@ -308,7 +283,7 @@ void Runtime::start() {
 }
 
 void Runtime::stop(bool is_exec_restart) {
-    emit_to_lua("stop", push_stop_args, &is_exec_restart);
+    emit(event::RuntimeStopping{ is_exec_restart });
     for (auto it = modules.rbegin(); it != modules.rend(); ++it)
         (*it)->on_stop(is_exec_restart);
     teardown_sigchld_pipe();
@@ -320,10 +295,12 @@ void Runtime::reload() {
         mod->on_reload();
 }
 
-void Runtime::emit_to_lua(const char* event,
-    LuaEventPushFn push_args,
-    const void* ev) {
-    config_.lua().emit_to_lua(event, push_args, ev, &core_);
+void Runtime::add_receiver(IEventReceiver* /*receiver*/) {
+    // Module registration goes through use<T>(); external receivers not yet needed.
+}
+
+void Runtime::remove_receiver(IEventReceiver* /*receiver*/) {
+    // Module deregistration handled by module lifecycle.
 }
 
 void Runtime::apply_and_refresh_monitors() {
@@ -392,10 +369,9 @@ void Runtime::reap_children() {
     int   status;
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        int           exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-        ChildExitInfo info { pid, exit_code };
+        int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
         if (backend_)
-            emit_to_lua("child_exit", push_child_exit_args, &info);
+            emit(event::ChildExited{ pid, exit_code });
     }
 }
 
@@ -721,7 +697,7 @@ bool Runtime::process_pending_reload() {
         if (!any)
             (void)core_.dispatch(command::ReconcileNow{});
 
-        emit_to_lua("reload", nullptr, nullptr);
+        emit(event::ConfigReloaded{});
     }
 
     return true;

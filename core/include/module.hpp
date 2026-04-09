@@ -2,7 +2,7 @@
 
 #include <cstdlib>
 #include <string>
-#include <backend/events.hpp>
+#include <event_receiver.hpp>
 #include <log.hpp>
 #include <runtime_state.hpp>
 
@@ -17,7 +17,7 @@ struct ModuleDeps {
     Core&    core;
 };
 
-class Module {
+class Module : public IEventReceiver {
     public:
         explicit Module(ModuleDeps deps) : deps_(deps) {}
         virtual ~Module()                = default;
@@ -52,34 +52,10 @@ class Module {
         // Called after init.lua has been re-executed (hot-reload).
         virtual void on_reload() {}
 
-        // C++ doesn't support virtual template methods, so we use one overloaded
-        // name (`on`) with distinct event types.
-
-        virtual void on(event::WindowMapped) {}
-        virtual void on(event::WindowUnmapped) {}
-        virtual void on(event::FocusChanged) {}
-        virtual void on(event::WorkspaceSwitched) {}
-        virtual void on(event::ExposeWindow) {}
-        virtual void on(event::RaiseDocks) {}
-        virtual void on(event::DisplayTopologyChanged) {}
-        virtual void on(event::RuntimeStarted) {}
-        virtual void on(event::ButtonEv) {}
-        virtual void on(event::MotionEv) {}
-        virtual void on(event::KeyPressEv) {}
-        virtual void on(event::ManageWindowQuery&) {}
-        virtual void on(event::ApplyWindowRules) {}
-        virtual void on(event::DestroyNotify) {}
-        virtual void on(event::ConfigureNotify) {}
-        virtual void on(event::PropertyNotify) {}
-        virtual void on(event::WindowAssignedToWorkspace) {}
-        virtual void on(event::TrayIconDocked) {}
-        virtual void on(event::KeyboardLayoutChanged) {}
-        virtual void on(event::BorderlessActivated) {}
-        virtual void on(event::BorderlessDeactivated) {}
-
-        // Returns true if the event was handled (stops further dispatch).
-        virtual bool on(event::ClientMessageEv) { return false; }
-        virtual bool on(event::CloseWindowRequest) { return false; }
+        // Event handlers are inherited from IEventReceiver.
+        // Bring all base on() overloads into scope so partial overrides
+        // in concrete modules don't hide the rest.
+        using IEventReceiver::on;
 
     protected:
         Core&    core()    { return deps_.core; }

@@ -115,7 +115,7 @@ bar.settings = {
   },
 }
 
-siren.on("window_rules", function(win)
+siren.on("window.rules", function(win)
   if win.from_restart then return end
   if win.class == "XTerm" then
     siren.win.move_to(win.id, 2)

@@ -45,7 +45,7 @@ local function apply(rules_list, win)
     end
 end
 
-siren.on("window_rules", function(win)
+siren.on("window.rules", function(win)
     if M._settings then apply(M._settings, win) end
 end)
 

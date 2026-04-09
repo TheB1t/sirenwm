@@ -15,6 +15,7 @@ class KeybindingsModule : public Module {
         void on_start()  override;
         void on_stop(bool is_exec_restart = false) override;
         void on_reload() override;
+        using Module::on;
         void on(event::KeyPressEv) override;
         void on(event::ButtonEv) override;
         void on(event::MotionEv) override;
