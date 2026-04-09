@@ -71,6 +71,9 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     xdg_shell_ = wlr_xdg_shell_create(display_, 3);
 #ifndef SIRENWM_NO_LAYER_SHELL
     layer_shell_ = wlr_layer_shell_v1_create(display_, 4);
+    LOG_INFO("WaylandBackend: layer-shell enabled");
+#else
+    LOG_INFO("WaylandBackend: layer-shell disabled (xml not found at build time)");
 #endif
     data_dev_mgr_ = wlr_data_device_manager_create(display_);
 

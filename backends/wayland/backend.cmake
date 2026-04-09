@@ -8,16 +8,18 @@ find_package(PkgConfig REQUIRED)
 #   Arch wlroots0.18: "wlroots-0.18"
 #   Debian trixie:    "wlroots-0.18"
 #   Ubuntu 24.04:     "wlroots"
+set(WLROOTS_PKG_NAME "")
 foreach(_wlr_name wlroots wlroots-0.18 wlroots-0.17)
     pkg_check_modules(WLROOTS ${_wlr_name})
     if(WLROOTS_FOUND)
+        set(WLROOTS_PKG_NAME "${_wlr_name}")
         break()
     endif()
 endforeach()
 if(NOT WLROOTS_FOUND)
     message(FATAL_ERROR "wlroots not found (tried: wlroots, wlroots-0.18, wlroots-0.17)")
 endif()
-message(STATUS "Found wlroots: ${WLROOTS_VERSION}")
+message(STATUS "Found wlroots: ${WLROOTS_VERSION} (pkg: ${WLROOTS_PKG_NAME})")
 pkg_check_modules(WAYLAND   REQUIRED wayland-server)
 pkg_check_modules(XKBCOMMON REQUIRED xkbcommon)
 pkg_check_modules(CAIRO     REQUIRED cairo)
@@ -29,7 +31,7 @@ pkg_check_modules(PIXMAN    REQUIRED pixman-1)
 # ---------------------------------------------------------------------------
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
-pkg_get_variable(WLROOTS_PROTOCOLS_DIR wlroots pkgdatadir)
+pkg_get_variable(WLROOTS_PROTOCOLS_DIR ${WLROOTS_PKG_NAME} pkgdatadir)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/wl_gen")
 
@@ -57,7 +59,12 @@ if(NOT LAYER_SHELL_XML)
     foreach(_dir
         /usr/share/wlroots/protocol
         /usr/share/wlroots/protocols
+        /usr/share/wlroots-0.18/protocol
+        /usr/share/wlroots-0.18/protocols
+        /usr/share/wlroots-0.17/protocol
+        /usr/share/wlroots-0.17/protocols
         /usr/local/share/wlroots/protocol
+        /usr/local/share/wlroots-0.18/protocol
         /usr/share/wlr-protocols
         /usr/local/share/wlr-protocols
     )
@@ -66,6 +73,14 @@ if(NOT LAYER_SHELL_XML)
             break()
         endif()
     endforeach()
+endif()
+# Final fallback: bundled copy in the repository
+if(NOT LAYER_SHELL_XML)
+    set(_bundled "${CMAKE_CURRENT_LIST_DIR}/protocols/wlr-layer-shell-unstable-v1.xml")
+    if(EXISTS "${_bundled}")
+        set(LAYER_SHELL_XML "${_bundled}")
+        message(STATUS "Using bundled wlr-layer-shell-unstable-v1.xml")
+    endif()
 endif()
 
 if(LAYER_SHELL_XML AND EXISTS "${LAYER_SHELL_XML}")
@@ -77,6 +92,13 @@ if(LAYER_SHELL_XML AND EXISTS "${LAYER_SHELL_XML}")
     if(NOT _wl_result EQUAL 0)
         message(FATAL_ERROR "wayland-scanner failed to generate wlr-layer-shell-unstable-v1-protocol.h")
     endif()
+    # Patch generated header: "namespace" is a C++ reserved keyword used as a param name.
+    file(READ "${LAYER_SHELL_HDR}" _ls_content)
+    string(REPLACE " *namespace," " *namespace_," _ls_content "${_ls_content}")
+    string(REPLACE " *namespace)" " *namespace_)" _ls_content "${_ls_content}")
+    string(REPLACE ", namespace," ", namespace_," _ls_content "${_ls_content}")
+    string(REPLACE ", namespace)" ", namespace_)" _ls_content "${_ls_content}")
+    file(WRITE "${LAYER_SHELL_HDR}" "${_ls_content}")
     message(STATUS "Generated wlr-layer-shell-unstable-v1-protocol.h from ${LAYER_SHELL_XML}")
 else()
     message(WARNING "wlr-layer-shell-unstable-v1.xml not found — layer-shell support disabled")
@@ -100,6 +122,9 @@ macro(patch_wlr_header _rel_path)
         file(MAKE_DIRECTORY "${_dir}")
         file(READ "${_orig}" _content)
         string(REGEX REPLACE "\\[static [0-9]+" "[" _content "${_content}")
+        # "namespace" is a C++ reserved keyword used as a field name in some wlroots headers.
+        string(REPLACE " *namespace;" " *namespace_;" _content "${_content}")
+        string(REPLACE " *namespace " " *namespace_ " _content "${_content}")
         file(WRITE "${CMAKE_BINARY_DIR}/wl_patched/${_rel_path}" "${_content}")
         message(STATUS "Patched ${_rel_path} → ${CMAKE_BINARY_DIR}/wl_patched/${_rel_path}")
     else()
