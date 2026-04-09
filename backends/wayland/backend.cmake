@@ -148,7 +148,7 @@ int main(void) {
 if(WLR_BUFFER_IMPL_PUBLIC)
     message(STATUS "wlr_buffer_impl is public (0.17 style)")
 else()
-    message(STATUS "wlr_buffer_impl is opaque (0.18+ style) — using wl_shm buffer")
+    message(STATUS "wlr_buffer_impl is opaque (0.18+ style) — using allocator+data_ptr path")
     list(APPEND SIRENWM_BACKEND_COMPILE_DEFS WLR_BUFFER_IMPL_OPAQUE)
 endif()
 
