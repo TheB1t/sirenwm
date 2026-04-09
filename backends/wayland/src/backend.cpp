@@ -59,8 +59,10 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     scene_         = wlr_scene_create();
     wlr_scene_attach_output_layout(scene_, output_layout_);
 
-    xdg_shell_   = wlr_xdg_shell_create(display_, 3);
+    xdg_shell_ = wlr_xdg_shell_create(display_, 3);
+#ifndef SIRENWM_NO_LAYER_SHELL
     layer_shell_ = wlr_layer_shell_v1_create(display_, 4);
+#endif
     data_dev_mgr_ = wlr_data_device_manager_create(display_);
 
     seat_       = wlr_seat_create(display_, "seat0");
@@ -79,9 +81,11 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     on_new_xdg_surface_.connect(&xdg_shell_->events.new_surface, [this](void* data) {
         handle_new_xdg_surface(static_cast<wlr_xdg_surface*>(data));
     });
+#ifndef SIRENWM_NO_LAYER_SHELL
     on_new_layer_surface_.connect(&layer_shell_->events.new_surface, [this](void* data) {
         handle_new_layer_surface(static_cast<wlr_layer_surface_v1*>(data));
     });
+#endif
 
     // Cursor signals
     on_cursor_motion_.connect(&cursor_->events.motion, [this](void* data) {
@@ -110,7 +114,7 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
 
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(output_layout_, runtime_);
-    render_port_impl_   = backend::wl::create_render_port(scene_, renderer_);
+    render_port_impl_   = backend::wl::create_render_port(scene_root(), renderer_);
     input_port_impl_    = backend::wl::create_input_port(seat_, cursor_);
     keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_);
 
@@ -126,7 +130,9 @@ WaylandBackend::~WaylandBackend() {
     on_new_output_.disconnect();
     on_new_input_.disconnect();
     on_new_xdg_surface_.disconnect();
+#ifndef SIRENWM_NO_LAYER_SHELL
     on_new_layer_surface_.disconnect();
+#endif
     on_cursor_motion_.disconnect();
     on_cursor_motion_abs_.disconnect();
     on_cursor_button_.disconnect();
@@ -259,16 +265,23 @@ bool WaylandBackend::close_window(WindowId id) {
 void WaylandBackend::handle_new_output(wlr_output* output) {
     LOG_INFO("WaylandBackend: new output '%s'", output->name);
 
-    // Configure the output with its preferred mode.
+    // Bind the renderer and allocator to this output before first commit.
+    wlr_output_init_render(output, allocator_, renderer_);
+
+    // Configure the output with its preferred mode (wlroots 0.18 API).
+    wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, true);
     if (!wl_list_empty(&output->modes)) {
         wlr_output_mode* mode = wlr_output_preferred_mode(output);
-        wlr_output_set_mode(output, mode);
+        wlr_output_state_set_mode(&state, mode);
     }
-    wlr_output_enable(output, true);
-    if (!wlr_output_commit(output)) {
+    if (!wlr_output_commit_state(output, &state)) {
         LOG_ERR("WaylandBackend: failed to commit initial mode for '%s'", output->name);
+        wlr_output_state_finish(&state);
         return;
     }
+    wlr_output_state_finish(&state);
 
     auto* out_state   = new WlOutput();
     out_state->output = output;
@@ -391,10 +404,6 @@ void WaylandBackend::handle_keyboard_modifiers(WlKeyboard* kb) {
 }
 
 void WaylandBackend::handle_keyboard_destroy(WlKeyboard* kb) {
-    if (kb->state) {
-        xkb_state_unref(kb->state);
-        kb->state = nullptr;
-    }
     keyboards_.erase(std::remove_if(keyboards_.begin(), keyboards_.end(),
         [kb](const auto& p) { return p.get() == kb; }), keyboards_.end());
 }
@@ -403,12 +412,12 @@ void WaylandBackend::handle_keyboard_destroy(WlKeyboard* kb) {
 // Cursor handlers
 // ---------------------------------------------------------------------------
 void WaylandBackend::handle_cursor_motion(wlr_pointer_motion_event* ev) {
-    wlr_cursor_move(cursor_, ev->device, ev->delta_x, ev->delta_y);
+    wlr_cursor_move(cursor_, &ev->pointer->base, ev->delta_x, ev->delta_y);
     process_cursor_motion(ev->time_msec);
 }
 
 void WaylandBackend::handle_cursor_motion_abs(wlr_pointer_motion_absolute_event* ev) {
-    wlr_cursor_warp_absolute(cursor_, ev->device, ev->x, ev->y);
+    wlr_cursor_warp_absolute(cursor_, &ev->pointer->base, ev->x, ev->y);
     process_cursor_motion(ev->time_msec);
 }
 
@@ -425,7 +434,7 @@ void WaylandBackend::handle_cursor_button(wlr_pointer_button_event* ev) {
 
 void WaylandBackend::handle_cursor_axis(wlr_pointer_axis_event* ev) {
     wlr_seat_pointer_notify_axis(seat_, ev->time_msec, ev->orientation,
-        ev->delta, ev->delta_discrete, ev->source);
+        ev->delta, ev->delta_discrete, ev->source, ev->relative_direction);
 }
 
 void WaylandBackend::handle_cursor_frame() {
@@ -445,7 +454,7 @@ void WaylandBackend::handle_request_set_selection(
 void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
     // Find surface under cursor; notify seat
     double sx = 0, sy = 0;
-    wlr_scene_node*    node    = wlr_scene_node_at(&scene_->tree->node, cursor_->x, cursor_->y, &sx, &sy);
+    wlr_scene_node*    node    = wlr_scene_node_at(&scene_root()->node, cursor_->x, cursor_->y, &sx, &sy);
     wlr_scene_surface* ss      = nullptr;
     wlr_surface*       surface = nullptr;
 
@@ -559,7 +568,7 @@ void WaylandBackend::apply_core_backend_effects() {
                 if (!ws)
                     break;
                 if (auto flush = core_.take_window_flush(e.window)) {
-                    auto* state = core_.window_state_any(e.window);
+                    auto state = core_.window_state_any(e.window);
                     if (state)
                         ws->set_geometry(state->x(), state->y(), state->width(), state->height());
                 }
@@ -585,13 +594,13 @@ void WaylandBackend::apply_core_backend_effects() {
     }
 }
 
+#ifndef SIRENWM_NO_LAYER_SHELL
 // ---------------------------------------------------------------------------
 // Layer shell (bar surfaces from external clients — not used for internal bar)
 // ---------------------------------------------------------------------------
 void WaylandBackend::handle_new_layer_surface(wlr_layer_surface_v1* surface) {
-    // Internal bar uses RenderPort, not layer-shell.
-    // External layer-shell clients (e.g. waybar) are accepted but managed minimally.
     LOG_INFO("WaylandBackend: layer-shell surface (namespace='%s')",
         surface->namespace_ ? surface->namespace_ : "");
     // TODO: full layer-shell surface management (position, exclusion zones)
 }
+#endif

@@ -1,6 +1,8 @@
 #include <wl_backend.hpp>
 #include <log.hpp>
 
+#include <core.hpp>
+
 extern "C" {
 #include <wlr/types/wlr_output.h>
 }
@@ -37,7 +39,7 @@ void WaylandBackend::render_frame() {
         if (auto flush = core_.take_window_flush(win)) {
             auto* ws = wl_surface(win);
             if (!ws) continue;
-            auto* state = core_.window_state_any(win);
+            auto state = core_.window_state_any(win);
             if (state)
                 ws->set_geometry(state->x(), state->y(), state->width(), state->height());
         }
@@ -50,7 +52,7 @@ void WaylandBackend::render_frame() {
 void WaylandBackend::handle_output_frame(WlOutput* out) {
     if (!out->scene_output) return;
 
-    wlr_scene_output_commit(out->scene_output);
+    wlr_scene_output_commit(out->scene_output, nullptr);
 
     // Send frame-done to surfaces visible on this output
     struct timespec now;

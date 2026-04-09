@@ -38,12 +38,13 @@ public:
             int ow = 0, oh = 0;
             wlr_output_effective_resolution(o, &ow, &oh);
 
-            wlr_box obox{};
-            wlr_output_layout_get_box(layout_, o, &obox);
+            wlr_box box_val{};
+            wlr_output_layout_get_box(layout_, o, &box_val);
+            wlr_box* box = &box_val;
 
             Monitor mon(idx++,
                 o->name ? o->name : "unknown",
-                obox.x, obox.y,
+                box ? box->x : 0, box ? box->y : 0,
                 ow, oh);
 
             result.push_back(std::move(mon));
@@ -54,11 +55,13 @@ public:
 
     bool apply_monitor_layout(const std::vector<MonitorLayout>& layouts) override {
         for (const auto& ml : layouts) {
-            // Find matching output by name
+            // Find matching output by name.
+            // "default" is a special alias for the first available output.
             wlr_output* target = nullptr;
             wlr_output_layout_output* lo;
             wl_list_for_each(lo, &layout_->outputs, link) {
-                if (lo->output && ml.output == lo->output->name) {
+                if (!lo->output) continue;
+                if (ml.output == "default" || ml.output == lo->output->name) {
                     target = lo->output;
                     break;
                 }
@@ -68,12 +71,18 @@ public:
                 continue;
             }
 
+            wlr_output_state state;
+            wlr_output_state_init(&state);
+
             if (!ml.enabled) {
-                wlr_output_enable(target, false);
-                if (!wlr_output_commit(target))
+                wlr_output_state_set_enabled(&state, false);
+                if (!wlr_output_commit_state(target, &state))
                     LOG_ERR("WlMonitorPort: failed to disable '%s'", ml.output.c_str());
+                wlr_output_state_finish(&state);
                 continue;
             }
+
+            wlr_output_state_set_enabled(&state, true);
 
             // Find closest matching mode
             wlr_output_mode* best_mode = nullptr;
@@ -91,9 +100,8 @@ public:
                 }
             }
 
-            wlr_output_enable(target, true);
             if (best_mode)
-                wlr_output_set_mode(target, best_mode);
+                wlr_output_state_set_mode(&state, best_mode);
             else
                 LOG_ERR("WlMonitorPort: no %dx%d mode for '%s', using preferred",
                     ml.size.x(), ml.size.y(), ml.output.c_str());
@@ -103,24 +111,22 @@ public:
             if (ml.rotation == "left")     xform = WL_OUTPUT_TRANSFORM_90;
             if (ml.rotation == "right")    xform = WL_OUTPUT_TRANSFORM_270;
             if (ml.rotation == "inverted") xform = WL_OUTPUT_TRANSFORM_180;
-            wlr_output_set_transform(target, xform);
+            wlr_output_state_set_transform(&state, xform);
 
-            if (!wlr_output_commit(target))
+            if (!wlr_output_commit_state(target, &state))
                 LOG_ERR("WlMonitorPort: failed to commit mode for '%s'", ml.output.c_str());
 
+            wlr_output_state_finish(&state);
+
             // Position in layout
-            wlr_output_layout_move(layout_, target, ml.pos.x(), ml.pos.y());
+            wlr_output_layout_add(layout_, target, ml.pos.x(), ml.pos.y());
             LOG_INFO("WlMonitorPort: applied %dx%d+%d+%d to '%s'",
                 ml.size.x(), ml.size.y(), ml.pos.x(), ml.pos.y(), ml.output.c_str());
         }
         return true;
     }
 
-    void select_change_events() override {
-        // Output change events are dispatched via wlr_backend::events::new_output
-        // and wlr_output::events::destroy — already wired in WaylandBackend.
-    }
-
+    void select_change_events() override {}
     void flush() override {}
 
 private:

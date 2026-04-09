@@ -9,16 +9,43 @@ extern "C" {
 }
 
 // ---------------------------------------------------------------------------
-// wlr_buffer_impl
+// wlr_buffer_impl — only available in wlroots < 0.18
 // ---------------------------------------------------------------------------
 
+#ifndef WLR_BUFFER_IMPL_OPAQUE
+
 const wlr_buffer_impl WlCpuBuffer::impl = {
-    .destroy              = WlCpuBuffer::destroy_impl,
-    .get_dmabuf           = nullptr,
-    .get_shm              = nullptr,
+    .destroy               = WlCpuBuffer::destroy_impl,
+    .get_dmabuf            = nullptr,
+    .get_shm               = nullptr,
     .begin_data_ptr_access = WlCpuBuffer::begin_data_ptr,
-    .end_data_ptr_access  = WlCpuBuffer::end_data_ptr,
+    .end_data_ptr_access   = WlCpuBuffer::end_data_ptr,
 };
+
+void WlCpuBuffer::destroy_impl(wlr_buffer* b) {
+    auto* self = reinterpret_cast<WlCpuBuffer*>(b);
+    if (self->cairo_ctx)     cairo_destroy(self->cairo_ctx);
+    if (self->cairo_surface) cairo_surface_destroy(self->cairo_surface);
+    std::free(self->pixels);
+    delete self;
+}
+
+bool WlCpuBuffer::begin_data_ptr(wlr_buffer* b, uint32_t /*flags*/,
+                                  void** data, uint32_t* fmt, size_t* stride) {
+    auto* self = reinterpret_cast<WlCpuBuffer*>(b);
+    *data   = self->pixels;
+    *fmt    = DRM_FORMAT_ARGB8888;
+    *stride = (size_t)self->stride;
+    return true;
+}
+
+void WlCpuBuffer::end_data_ptr(wlr_buffer* /*b*/) {}
+
+#endif // !WLR_BUFFER_IMPL_OPAQUE
+
+// ---------------------------------------------------------------------------
+// create / destroy
+// ---------------------------------------------------------------------------
 
 WlCpuBuffer* WlCpuBuffer::create(int w, int h) {
     if (w <= 0 || h <= 0)
@@ -34,7 +61,9 @@ WlCpuBuffer* WlCpuBuffer::create(int w, int h) {
         return nullptr;
     }
 
+#ifndef WLR_BUFFER_IMPL_OPAQUE
     wlr_buffer_init(&buf->base, &WlCpuBuffer::impl, w, h);
+#endif
 
     buf->cairo_surface = cairo_image_surface_create_for_data(
         buf->pixels, CAIRO_FORMAT_ARGB32, w, h, buf->stride);
@@ -49,23 +78,10 @@ WlCpuBuffer* WlCpuBuffer::create(int w, int h) {
     return buf;
 }
 
-void WlCpuBuffer::destroy_impl(wlr_buffer* b) {
-    auto* self = reinterpret_cast<WlCpuBuffer*>(b);
-    if (self->cairo_ctx)    cairo_destroy(self->cairo_ctx);
-    if (self->cairo_surface) cairo_surface_destroy(self->cairo_surface);
-    std::free(self->pixels);
-    delete self;
-}
-
-bool WlCpuBuffer::begin_data_ptr(wlr_buffer* b, uint32_t /*flags*/,
-                                  void** data, uint32_t* fmt, size_t* stride) {
-    auto* self = reinterpret_cast<WlCpuBuffer*>(b);
-    *data   = self->pixels;
-    *fmt    = DRM_FORMAT_ARGB8888;
-    *stride = (size_t)self->stride;
-    return true;
-}
-
-void WlCpuBuffer::end_data_ptr(wlr_buffer* /*b*/) {
-    // No-op: CPU buffer, no flush needed.
+void WlCpuBuffer::destroy(WlCpuBuffer* buf) {
+    if (!buf) return;
+    if (buf->cairo_ctx)     cairo_destroy(buf->cairo_ctx);
+    if (buf->cairo_surface) cairo_surface_destroy(buf->cairo_surface);
+    std::free(buf->pixels);
+    delete buf;
 }
