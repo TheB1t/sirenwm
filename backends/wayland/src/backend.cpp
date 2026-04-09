@@ -11,6 +11,9 @@
 
 extern "C" {
 #include <wlr/util/log.h>
+#ifndef SIRENWM_NO_LAYER_SHELL
+#  include <wlr/types/wlr_scene.h>  // wlr_scene_layer_surface_v1_create
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -636,11 +639,95 @@ void WaylandBackend::apply_core_backend_effects() {
 
 #ifndef SIRENWM_NO_LAYER_SHELL
 // ---------------------------------------------------------------------------
-// Layer shell (bar surfaces from external clients — not used for internal bar)
+// Layer shell — external clients (waybar, swaybar, mako, etc.)
 // ---------------------------------------------------------------------------
+
+// Recalculate usable area for an output and send configure to all mapped
+// layer surfaces on that output.
+void WaylandBackend::arrange_layers(wlr_output* output) {
+    struct wlr_box usable{};
+    wlr_output_effective_resolution(output, &usable.width, &usable.height);
+
+    // Process layers from bottom to top; background/bottom/top/overlay.
+    // Only BOTTOM and TOP layers typically set exclusive zones.
+    static const zwlr_layer_shell_v1_layer layer_order[] = {
+        ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
+        ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+        ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+    };
+
+    for (auto layer : layer_order) {
+        for (auto& ls : layer_surfaces_) {
+            if (!ls->surface || !ls->surface->output || ls->surface->output != output)
+                continue;
+            if (ls->surface->current.layer != layer)
+                continue;
+            wlr_scene_layer_surface_v1_configure(ls->scene_layer, nullptr, &usable);
+        }
+    }
+}
+
 void WaylandBackend::handle_new_layer_surface(wlr_layer_surface_v1* surface) {
-    LOG_INFO("WaylandBackend: layer-shell surface (namespace='%s')",
+    LOG_INFO("WaylandBackend: new layer-shell surface layer=%u namespace='%s'",
+        (unsigned)surface->current.layer,
         surface->namespace_ ? surface->namespace_ : "");
-    // TODO: full layer-shell surface management (position, exclusion zones)
+
+    // Assign output: use the client's requested output or fall back to first.
+    if (!surface->output) {
+        if (!outputs_.empty())
+            surface->output = outputs_.front()->output;
+        else {
+            LOG_WARN("WaylandBackend: layer surface with no output available, closing");
+            wlr_layer_surface_v1_destroy(surface);
+            return;
+        }
+    }
+
+    auto ls = std::make_unique<WlLayerSurface>();
+    ls->surface = surface;
+
+    // Place in scene graph at the appropriate layer.
+    ls->scene_layer = wlr_scene_layer_surface_v1_create(scene_root(), surface);
+
+    WlLayerSurface* raw = ls.get();
+    layer_surfaces_.push_back(std::move(ls));
+
+    raw->on_map_.connect(&surface->surface->events.map, [this, raw](void*) {
+        LOG_INFO("WaylandBackend: layer surface mapped");
+        arrange_layers(raw->surface->output);
+        wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, true);
+    });
+
+    raw->on_unmap_.connect(&surface->surface->events.unmap, [this, raw](void*) {
+        LOG_INFO("WaylandBackend: layer surface unmapped");
+        wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, false);
+        arrange_layers(raw->surface->output);
+    });
+
+    raw->on_commit_.connect(&surface->surface->events.commit, [this, raw](void*) {
+        // Re-arrange if the exclusive zone or anchor changed.
+        if (raw->surface->output)
+            arrange_layers(raw->surface->output);
+    });
+
+    raw->on_destroy_.connect(&surface->events.destroy, [this, raw](void*) {
+        handle_layer_surface_destroy(raw);
+    });
+
+    // Send initial configure so the client knows its dimensions.
+    arrange_layers(surface->output);
+}
+
+void WaylandBackend::handle_layer_surface_destroy(WlLayerSurface* ls) {
+    LOG_INFO("WaylandBackend: layer surface destroyed");
+    wlr_output* output = ls->surface ? ls->surface->output : nullptr;
+
+    layer_surfaces_.erase(
+        std::remove_if(layer_surfaces_.begin(), layer_surfaces_.end(),
+            [ls](const auto& p) { return p.get() == ls; }),
+        layer_surfaces_.end());
+
+    if (output) arrange_layers(output);
 }
 #endif
