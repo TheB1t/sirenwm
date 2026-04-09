@@ -129,6 +129,16 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     if (!wlr_backend_start(backend_))
         LOG_ERR("WaylandBackend: wlr_backend_start failed");
 
+    // Create the Wayland socket so clients can connect.
+    // wl_display_add_socket_auto() picks "wayland-N" and sets WAYLAND_DISPLAY.
+    const char* socket = wl_display_add_socket_auto(display_);
+    if (!socket) {
+        LOG_ERR("WaylandBackend: wl_display_add_socket_auto failed");
+    } else {
+        setenv("WAYLAND_DISPLAY", socket, 1);
+        LOG_INFO("WaylandBackend: listening on %s", socket);
+    }
+
     LOG_INFO("WaylandBackend: initialised");
 }
 

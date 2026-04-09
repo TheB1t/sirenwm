@@ -45,7 +45,8 @@ jobs:
             libxcb-xfixes0-dev libxcb-xinput-dev \
             libxcb-randr0-dev libxcb-icccm4-dev \
             libx11-dev libx11-xcb-dev \
-            libxcb-keysyms1-dev libxkbfile-dev libxfixes-dev
+            libxcb-keysyms1-dev libxkbfile-dev libxfixes-dev \
+            xvfb x11-utils wayland-utils weston
 
       - name: Install dependencies (Arch)
         if: startsWith(matrix.distro, 'archlinux')
@@ -64,7 +65,8 @@ jobs:
             libxkbcommon pixman \
             libdrm mesa libinput seatd \
             libxcb xcb-util-keysyms xcb-util-wm \
-            libx11 libxfixes
+            libx11 libxfixes \
+            xorg-server-xvfb xorg-xdpyinfo wayland-utils weston
 
       - name: Build
         run: |
@@ -75,11 +77,18 @@ jobs:
             -DSIRENWM_BACKEND=wayland
           cmake --build build -j$(nproc)
 
+      - name: Integration tests (Wayland nested in Xvfb)
+        run: |
+          bash tests/integration/run_tests_wayland.sh
+        timeout-minutes: 2
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wayland-build-${{ strategy.job-index }}
-          path: output/
+          path: |
+            output/
+            /tmp/sirenwm-wl-itest/
           if-no-files-found: ignore
           retention-days: 7
