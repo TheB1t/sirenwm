@@ -292,6 +292,125 @@ static int lua_sys_loadavg(LuaContext& lua) {
 }
 
 // ---------------------------------------------------------------------------
+// Battery — /sys/class/power_supply/BAT*
+// ---------------------------------------------------------------------------
+
+static int g_bat_cap_fd    = -1;
+static int g_bat_status_fd = -1;
+
+static void open_battery_fds() {
+    if (g_bat_cap_fd >= 0) return; // already open
+    for (int i = 0; i < 4; ++i) {
+        std::string base = "/sys/class/power_supply/BAT" + std::to_string(i);
+        std::string type_path = base + "/type";
+        int fd = open(type_path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (fd < 0) continue;
+        char buf[32];
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (n <= 0) continue;
+        buf[n] = '\0';
+        if (strncmp(buf, "Battery", 7) != 0) continue;
+        g_bat_cap_fd    = open((base + "/capacity").c_str(), O_RDONLY | O_CLOEXEC);
+        g_bat_status_fd = open((base + "/status").c_str(),   O_RDONLY | O_CLOEXEC);
+        break;
+    }
+}
+
+static void close_battery_fds() {
+    if (g_bat_cap_fd >= 0)    { close(g_bat_cap_fd);    g_bat_cap_fd = -1; }
+    if (g_bat_status_fd >= 0) { close(g_bat_status_fd); g_bat_status_fd = -1; }
+}
+
+static int lua_sys_battery(LuaContext& lua) {
+    lua.new_table();
+
+    char buf[64];
+    bool present = (g_bat_cap_fd >= 0);
+    lua.push_bool(present);  lua.set_field(-2, "present");
+
+    int capacity = 0;
+    if (present && read_fd(g_bat_cap_fd, buf, sizeof(buf)) > 0)
+        capacity = std::atoi(buf);
+    lua.push_integer(capacity); lua.set_field(-2, "capacity");
+
+    std::string status = "Unknown";
+    if (present && read_fd(g_bat_status_fd, buf, sizeof(buf)) > 0) {
+        status = buf;
+        // strip trailing newline
+        while (!status.empty() && status.back() == '\n') status.pop_back();
+    }
+    lua.push_string(status.c_str()); lua.set_field(-2, "status");
+
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Brightness — /sys/class/backlight/*
+// ---------------------------------------------------------------------------
+
+static int g_bl_cur_fd = -1;
+static int g_bl_max_fd = -1;
+
+static void open_backlight_fds() {
+    if (g_bl_cur_fd >= 0) return;
+    // Try common names first, then fall back to scanning
+    static const char* names[] = {
+        "intel_backlight", "amdgpu_bl0", "amdgpu_bl1",
+        "nvidia_0", "acpi_video0", "acpi_video1", nullptr
+    };
+    auto try_open = [](const std::string& base) -> bool {
+        int max_fd = open((base + "/max_brightness").c_str(), O_RDONLY | O_CLOEXEC);
+        if (max_fd < 0) return false;
+        int cur_fd = open((base + "/brightness").c_str(), O_RDONLY | O_CLOEXEC);
+        if (cur_fd < 0) { close(max_fd); return false; }
+        g_bl_cur_fd = cur_fd;
+        g_bl_max_fd = max_fd;
+        return true;
+    };
+    for (int i = 0; names[i]; ++i) {
+        if (try_open(std::string("/sys/class/backlight/") + names[i]))
+            return;
+    }
+    // Fallback: scan directory
+    FILE* f = popen("ls /sys/class/backlight/ 2>/dev/null", "r");
+    if (f) {
+        char name[128];
+        while (fgets(name, sizeof(name), f)) {
+            size_t len = strlen(name);
+            if (len > 0 && name[len - 1] == '\n') name[len - 1] = '\0';
+            if (name[0] && try_open(std::string("/sys/class/backlight/") + name))
+                break;
+        }
+        pclose(f);
+    }
+}
+
+static void close_backlight_fds() {
+    if (g_bl_cur_fd >= 0) { close(g_bl_cur_fd); g_bl_cur_fd = -1; }
+    if (g_bl_max_fd >= 0) { close(g_bl_max_fd); g_bl_max_fd = -1; }
+}
+
+static int lua_sys_brightness(LuaContext& lua) {
+    lua.new_table();
+
+    bool present = (g_bl_cur_fd >= 0 && g_bl_max_fd >= 0);
+    lua.push_bool(present); lua.set_field(-2, "present");
+
+    int percent = 0;
+    if (present) {
+        char buf[32];
+        int cur = 0, max = 0;
+        if (read_fd(g_bl_cur_fd, buf, sizeof(buf)) > 0) cur = std::atoi(buf);
+        if (read_fd(g_bl_max_fd, buf, sizeof(buf)) > 0) max = std::atoi(buf);
+        if (max > 0) percent = (int)((double)cur / max * 100.0 + 0.5);
+    }
+    lua.push_integer(percent); lua.set_field(-2, "percent");
+
+    return 1;
+}
+
+// ---------------------------------------------------------------------------
 // kbd_layout — needs backend access via static module pointer
 // ---------------------------------------------------------------------------
 
@@ -321,6 +440,8 @@ void SysinfoModule::on_init() {
 
 void SysinfoModule::on_start() {
     open_fds();
+    open_battery_fds();
+    open_backlight_fds();
 }
 
 void SysinfoModule::on_lua_init() {
@@ -338,7 +459,9 @@ void SysinfoModule::on_lua_init() {
         { "loadavg",    lua_sys_loadavg    },
         { "net_ip",     lua_sys_net_ip     },
         { "disks",      lua_sys_disks      },
-        { "kbd_layout", lua_sys_kbd_layout },
+        { "kbd_layout",  lua_sys_kbd_layout  },
+        { "battery",     lua_sys_battery     },
+        { "brightness",  lua_sys_brightness  },
     };
     for (const auto& r : fns) {
         lua.push_callback(r.func);
@@ -350,6 +473,8 @@ void SysinfoModule::on_lua_init() {
 
 void SysinfoModule::on_stop(bool) {
     close_fds();
+    close_battery_fds();
+    close_backlight_fds();
 }
 
 SIRENWM_REGISTER_MODULE("sysinfo", SysinfoModule)
