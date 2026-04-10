@@ -79,6 +79,7 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
         auto it_owner  = ws_owner_mon.find(ws_id);
         int  owner_mon = (it_owner != ws_owner_mon.end()) ? it_owner->second : -1;
 
+        // Score by visibility (100), active workspace on its monitor (10), focused monitor (1).
         int score = 1;
         if (w->is_visible())  score += 100;
         if (owner_mon >= 0 && core().active_workspace_on_monitor(owner_mon) == ws_id)

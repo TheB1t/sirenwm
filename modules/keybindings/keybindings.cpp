@@ -571,9 +571,8 @@ static void call_mouse_ref(LuaHost& host, const LuaRegistryRef& callback, const 
 void KeybindingsModule::on(event::ButtonEv ev) {
     uint16_t mods = ev.state & ~backend::MOD_STRIP_MASK;
 
-    // If this press arrived via the click-to-focus grab (grab_button_any, GrabModeSync),
-    // replay it so the target window also receives the click. This must happen before
-    // any WM processing so the X server unfreezes the pointer regardless of outcome.
+    // GrabModeSync freezes the pointer until AllowEvents is called. Replay the event
+    // unconditionally so the target window receives the click regardless of WM outcome.
     if (!ev.release && ev.window != focused_window_ && input_)
         input_->allow_events(true);
 
@@ -656,8 +655,8 @@ void KeybindingsModule::on(event::ButtonEv ev) {
                 drag.start_win_pos  = cur->pos();
                 drag.start_win_size = cur->size();
             }
-            // Warp to bottom-right corner in root coordinates and sync start_root
-            // so the first MotionEv produces zero delta.
+            // Warp cursor to the window's bottom-right corner and set start_root there,
+            // so the first MotionEv has zero delta and resize begins from the corner.
             Vec2i16 warp = {
                 (int16_t)(drag.start_win_pos.x() + drag.start_win_size.x() - 1),
                 (int16_t)(drag.start_win_pos.y() + drag.start_win_size.y() - 1)

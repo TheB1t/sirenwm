@@ -478,7 +478,7 @@ DISPLAY=$DISPLAY_NUM xterm -title wm-itest-xterm -name wm_itest_xterm &
 XTERM_PID=$!
 
 XTERM_ID=""
-for _ in $(seq 1 50); do
+for _ in $(seq 1 100); do
     XTERM_ID="$(get_window_id "wm-itest-xterm")"
     [[ -n "$XTERM_ID" ]] && break
     sleep 0.1
@@ -1397,34 +1397,30 @@ fi
 #  2. The WM re-reaches Running state (FSM log entry appears).
 # ---------------------------------------------------------------------------
 
-RESTART_STATE_FILE="/run/user/$(id -u)/sirenwm-restart-state.txt"
-rm -f "$RESTART_STATE_FILE"
-
-# Trigger restart via wmctrl client-message to the root window.
-# sirenwm exposes siren.restart() as a Lua call — we invoke it by sending
-# the _SIRENWM_CMD client message (if available) or by using the reload
-# config trick: write a temp config that calls siren.restart() on load and
-# send SIGHUP. Simpler: just send SIGUSR1 if wired, otherwise use xdotool.
-# The most reliable path in tests: write restart into a temp config and reload.
-
 # Write a one-shot reload config that calls siren.restart().
 RESTART_LUA="$TEST_HOME/.config/sirenwm/init.lua"
 cp "$RESTART_LUA" "${RESTART_LUA}.bak"
 cat >>"$RESTART_LUA" <<'LUA'
 -- injected by restart test
-siren.on("started", function() siren.restart() end)
+siren.on("wm.reloaded", function() siren.restart() end)
 LUA
 
 ORIG_PID=$SIRENWM_PID
 
+# Record the log size before triggering so we can detect new entries only.
+LOG_OFFSET_BEFORE=$(wc -l <"$SIRENWM_LOG" 2>/dev/null || echo 0)
+
 # Send SIGHUP to trigger reload (which will run the injected restart call).
 kill -HUP "$SIRENWM_PID" 2>/dev/null || true
 
-# Wait up to 3s for the restart-state file to appear (written before execv).
+# Wait up to 5s for the "restart: replacing process" log entry.
+# The state file is written just before execv() and then immediately deleted
+# by the new process, so we key off the log line instead of the file.
 RESTART_HAPPENED=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 50); do
     sleep 0.1
-    if [[ -f "$RESTART_STATE_FILE" ]]; then
+    if tail -n +"$LOG_OFFSET_BEFORE" "$SIRENWM_LOG" 2>/dev/null \
+            | grep -q "restart: replacing process"; then
         RESTART_HAPPENED=1
         break
     fi
@@ -1435,9 +1431,9 @@ cp "${RESTART_LUA}.bak" "$RESTART_LUA"
 rm -f "${RESTART_LUA}.bak"
 
 if [[ $RESTART_HAPPENED -eq 0 ]]; then
-    fail "exec-restart triggered" "restart-state file never appeared"
+    fail "exec-restart triggered" "log line 'restart: replacing process' never appeared"
 else
-    pass "exec-restart triggered (state file written)"
+    pass "exec-restart triggered (execv log line seen)"
 fi
 
 # The PID is the same after execv — wait for FSM Running log entry.
