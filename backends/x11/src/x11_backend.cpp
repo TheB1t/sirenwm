@@ -197,7 +197,7 @@ void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
     if (mon_idx < 0 || mon_idx >= (int)mons.size())
         return;
 
-    auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(core.monitor_top_inset(), core.monitor_bottom_inset());
+    auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
     int      x1 = phy_pos.x();
     int      y1 = phy_pos.y();
     int      x2 = phy_pos.x() + phy_size.x();

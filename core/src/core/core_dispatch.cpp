@@ -129,7 +129,7 @@ void Core::pin_fullscreen_to_monitor(swm::Window& w, int ws_id) {
     const auto& mons = wsman.all_monitor_states();
     if (mon_idx >= (int)mons.size()) return;
     const auto& mon = mons[(size_t)mon_idx];
-    auto [phy_pos, phy_size] = mon.physical(monitor_top_inset_applied, monitor_bottom_inset_applied);
+    auto [phy_pos, phy_size] = mon.physical();
     // Self-managed clients control their own geometry — only pin non-self-managed.
     if (!w.is_self_managed()) {
         w.pos()  = phy_pos;
@@ -480,7 +480,7 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
         w->border_width = 0;
         mark_window_dirty(cmd.window, WindowFlush::BorderWidth);
         if (!cmd.preserve_geometry && mon) {
-            auto [phy_pos, phy_size] = mon->physical(monitor_top_inset_applied, monitor_bottom_inset_applied);
+            auto [phy_pos, phy_size] = mon->physical();
             w->pos()                 = phy_pos;
             w->size()                = phy_size;
             mark_window_dirty(cmd.window, WindowFlush::Geometry);
@@ -765,8 +765,7 @@ bool Core::dispatch(const command::HideWindow& cmd) {
 
 bool Core::dispatch(const command::ApplyMonitorTopology& cmd) {
     wsman.set_monitors(cmd.monitors);
-    monitor_top_inset_applied    = 0;
-    monitor_bottom_inset_applied = 0;
+    // New monitors come in fresh with top/bottom insets = 0; no reset needed.
     wsman.assign_workspaces(settings.monitor_aliases,
         settings.monitor_compose);
     emit_display_topology_changed();
@@ -775,22 +774,32 @@ bool Core::dispatch(const command::ApplyMonitorTopology& cmd) {
 }
 
 bool Core::dispatch(const command::ApplyMonitorTopInset& cmd) {
-    int delta = cmd.inset_px - monitor_top_inset_applied;
-    if (delta == 0)
-        return true;
-
-    wsman.adjust_monitor_insets(delta, 0);
-    monitor_top_inset_applied = cmd.inset_px;
+    const auto& mons = wsman.all_monitor_states();
+    auto apply_to = [&](int i) {
+        int delta = cmd.inset_px - mons[i].top_inset();
+        if (delta != 0)
+            wsman.adjust_monitor_inset(i, delta, 0);
+    };
+    if (cmd.monitor_idx < 0) {
+        for (int i = 0; i < (int)mons.size(); i++) apply_to(i);
+    } else if (cmd.monitor_idx < (int)mons.size()) {
+        apply_to(cmd.monitor_idx);
+    }
     return true;
 }
 
 bool Core::dispatch(const command::ApplyMonitorBottomInset& cmd) {
-    int delta = cmd.inset_px - monitor_bottom_inset_applied;
-    if (delta == 0)
-        return true;
-
-    wsman.adjust_monitor_insets(0, delta);
-    monitor_bottom_inset_applied = cmd.inset_px;
+    const auto& mons = wsman.all_monitor_states();
+    auto apply_to = [&](int i) {
+        int delta = cmd.inset_px - mons[i].bottom_inset();
+        if (delta != 0)
+            wsman.adjust_monitor_inset(i, 0, delta);
+    };
+    if (cmd.monitor_idx < 0) {
+        for (int i = 0; i < (int)mons.size(); i++) apply_to(i);
+    } else if (cmd.monitor_idx < (int)mons.size()) {
+        apply_to(cmd.monitor_idx);
+    }
     return true;
 }
 

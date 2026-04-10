@@ -78,8 +78,7 @@ void X11Backend::apply_core_backend_effects() {
                         int         mon_idx = core.monitor_of_workspace(ws_id);
                         const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-                            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
-                                core.monitor_top_inset(), core.monitor_bottom_inset());
+                            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
                             (void)core.dispatch(command::SetWindowGeometry{
                                 e.window, phy_pos,
                                 phy_size });
