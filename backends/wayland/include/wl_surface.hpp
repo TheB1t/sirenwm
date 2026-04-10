@@ -36,16 +36,16 @@ class WlSurface final : public swm::Window {
         bool mapped = false;
 
         // Listeners — wired in ctor, auto-disconnected in dtor.
-        WlListener on_map_;
-        WlListener on_unmap_;
-        WlListener on_destroy_;
-        WlListener on_commit_;
-        WlListener on_request_move_;
-        WlListener on_request_resize_;
-        WlListener on_request_fullscreen_;
-        WlListener on_request_maximize_;
-        WlListener on_set_title_;
-        WlListener on_set_app_id_;
+        WlVoidListener on_map_;
+        WlVoidListener on_unmap_;
+        WlVoidListener on_destroy_;
+        WlVoidListener on_commit_;
+        WlVoidListener on_request_move_;
+        WlVoidListener on_request_resize_;
+        WlVoidListener on_request_fullscreen_;
+        WlVoidListener on_request_maximize_;
+        WlVoidListener on_set_title_;
+        WlVoidListener on_set_app_id_;
 
     private:
         wlr_xdg_toplevel* toplevel_       = nullptr;
