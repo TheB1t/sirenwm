@@ -45,11 +45,12 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     , backend_obj_(display_.ev_loop())
     , renderer_(backend_obj_.get(), display_.get())
     , scene_(display_.get())
-    , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software()) {
+    , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software())
+    , xdg_shell_(display_.get(), 3,
+        [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); }) {
     wlr_log_init(WLR_DEBUG, wlr_log_handler);
 
-    // display_, backend_obj_, renderer_, scene_, seat_obj_ initialised by member ctors above.
-    xdg_shell_ = wlr_xdg_shell_create(display_.get(), 3);
+    // display_, backend_obj_, renderer_, scene_, seat_obj_, xdg_shell_ initialised by member ctors.
 #ifndef SIRENWM_NO_LAYER_SHELL
     layer_shell_ = wlr_layer_shell_v1_create(display_.get(), 4);
     LOG_INFO("WaylandBackend: layer-shell enabled");
@@ -63,8 +64,6 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
         [this](wlr_output* o) { handle_new_output(o); });
     on_new_input_.connect(&backend_obj_.new_input_signal(),
         [this](wlr_input_device* d) { handle_new_input(d); });
-    on_new_xdg_surface_.connect(&xdg_shell_->events.new_surface,
-        [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); });
 #ifndef SIRENWM_NO_LAYER_SHELL
     on_new_layer_surface_.connect(&layer_shell_->events.new_surface,
         [this](wlr_layer_surface_v1* s) { handle_new_layer_surface(s); });
@@ -105,7 +104,7 @@ WaylandBackend::~WaylandBackend() {
     // Disconnect all listeners before destroying objects.
     on_new_output_.disconnect();
     on_new_input_.disconnect();
-    on_new_xdg_surface_.disconnect();
+    // xdg_shell_ dtor disconnects its own listener
 #ifndef SIRENWM_NO_LAYER_SHELL
     on_new_layer_surface_.disconnect();
 #endif

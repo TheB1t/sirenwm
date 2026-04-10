@@ -18,7 +18,7 @@
 void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     if (xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
         // Popup: insert into scene automatically; no Core management.
-        wlr_scene_xdg_surface_create(scene_root(), xdg_surface);
+        wlr_scene_xdg_surface_create(scene_.root(), xdg_surface);
         return;
     }
 
@@ -28,7 +28,7 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
         toplevel->title  ? toplevel->title  : "");
 
     // Create scene tree node for this surface.
-    wlr_scene_tree* scene_tree = wlr_scene_xdg_surface_create(scene_root(), xdg_surface);
+    wlr_scene_tree* scene_tree = wlr_scene_xdg_surface_create(scene_.root(), xdg_surface);
 
     // Allocate a WindowId and pre-create the WlSurface.
     WindowId id = alloc_window_id();
