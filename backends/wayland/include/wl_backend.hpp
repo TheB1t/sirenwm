@@ -14,6 +14,7 @@
 #include <wl_scene_graph.hpp>
 #include <wl_seat.hpp>
 #include <wl_surface.hpp>
+#include <wl_xdg_shell.hpp>
 
 #include <memory>
 #include <unordered_map>
@@ -29,7 +30,6 @@ extern "C" {
 #endif
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_xdg_shell.h>
 #include <xkbcommon/xkbcommon.h>
 }
 
@@ -119,9 +119,9 @@ class WaylandBackend final : public Backend {
         // seat + cursor + xcursor_manager
         WlSeat       seat_obj_;
 
-        wlr_xdg_shell*       xdg_shell_     = nullptr;
+        WlXdgShell           xdg_shell_;
 #ifndef SIRENWM_NO_LAYER_SHELL
-        wlr_layer_shell_v1*      layer_shell_ = nullptr;
+        wlr_layer_shell_v1*  layer_shell_ = nullptr;
 #endif
         wlr_data_device_manager* data_dev_mgr_ = nullptr;
 
@@ -165,7 +165,6 @@ class WaylandBackend final : public Backend {
         // Backend-level signal listeners
         WlListener<wlr_output>       on_new_output_;
         WlListener<wlr_input_device> on_new_input_;
-        WlListener<wlr_xdg_surface>  on_new_xdg_surface_;
 #ifndef SIRENWM_NO_LAYER_SHELL
         WlListener<wlr_layer_surface_v1> on_new_layer_surface_;
 #endif
