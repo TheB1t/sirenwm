@@ -40,30 +40,14 @@ static void wlr_log_handler(wlr_log_importance importance, const char* fmt, va_l
 // Constructor / Destructor
 // ---------------------------------------------------------------------------
 WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
-    : core_(core), runtime_(runtime) {
+    : core_(core)
+    , runtime_(runtime)
+    , backend_obj_(display_.ev_loop())
+    , renderer_(backend_obj_.get(), display_.get())
+    , scene_(display_.get()) {
     wlr_log_init(WLR_DEBUG, wlr_log_handler);
 
-    // display_ is constructed before we get here (WlDisplay ctor runs first)
-    backend_ = wlr_backend_autocreate(display_.ev_loop(), nullptr);
-    if (!backend_)
-        LOG_ERR("WaylandBackend: wlr_backend_autocreate failed");
-
-    renderer_ = wlr_renderer_autocreate(backend_);
-    if (!renderer_)
-        LOG_ERR("WaylandBackend: wlr_renderer_autocreate failed");
-
-    wlr_renderer_init_wl_display(renderer_, display_.get());
-
-    allocator_ = wlr_allocator_autocreate(backend_, renderer_);
-    if (!allocator_)
-        LOG_ERR("WaylandBackend: wlr_allocator_autocreate failed");
-
-    compositor_ = wlr_compositor_create(display_.get(), 6, renderer_);
-
-    output_layout_ = wlr_output_layout_create(display_.get());
-    scene_         = wlr_scene_create();
-    wlr_scene_attach_output_layout(scene_, output_layout_);
-
+    // display_, backend_obj_, renderer_, scene_ are initialised by member ctors above.
     xdg_shell_ = wlr_xdg_shell_create(display_.get(), 3);
 #ifndef SIRENWM_NO_LAYER_SHELL
     layer_shell_ = wlr_layer_shell_v1_create(display_.get(), 4);
@@ -82,14 +66,14 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     // wlr_output_commit_state would trigger wlr_output_cursor_set_buffer which
     // asserts renderer != NULL.  X11 backend draws the cursor via XFixes, so
     // no wlr_cursor attachment is needed.
-    software_renderer_ = (wlr_renderer_get_drm_fd(renderer_) < 0);
+    software_renderer_ = renderer_.is_software();
     if (!software_renderer_)
-        wlr_cursor_attach_output_layout(cursor_, output_layout_);
+        wlr_cursor_attach_output_layout(cursor_, scene_.output_layout());
 
     // Wire top-level backend signals
-    on_new_output_.connect(&backend_->events.new_output,
+    on_new_output_.connect(&backend_obj_.new_output_signal(),
         [this](wlr_output* o) { handle_new_output(o); });
-    on_new_input_.connect(&backend_->events.new_input,
+    on_new_input_.connect(&backend_obj_.new_input_signal(),
         [this](wlr_input_device* d) { handle_new_input(d); });
     on_new_xdg_surface_.connect(&xdg_shell_->events.new_surface,
         [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); });
@@ -117,14 +101,13 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
         [this](wlr_seat_request_set_selection_event* ev) { handle_request_set_selection(ev); });
 
     // Create port implementations
-    monitor_port_impl_  = backend::wl::create_monitor_port(output_layout_, runtime_);
-    render_port_impl_   = backend::wl::create_render_port(scene_root(), renderer_, allocator_);
+    monitor_port_impl_  = backend::wl::create_monitor_port(scene_.output_layout(), runtime_);
+    render_port_impl_   = backend::wl::create_render_port(scene_.root(), renderer_.renderer(), renderer_.allocator());
     input_port_impl_    = backend::wl::create_input_port(seat_, cursor_, pointer_grabbed_);
     keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_);
 
     // Start the backend (opens DRM device, creates initial outputs)
-    if (!wlr_backend_start(backend_))
-        LOG_ERR("WaylandBackend: wlr_backend_start failed");
+    backend_obj_.start();
 
     // Socket is already initialised by WlDisplay constructor.
     LOG_INFO("WaylandBackend: initialised on %s", display_.socket_name().c_str());
@@ -154,15 +137,7 @@ WaylandBackend::~WaylandBackend() {
     if (xcursor_mgr_)   wlr_xcursor_manager_destroy(xcursor_mgr_);
     if (cursor_)        wlr_cursor_destroy(cursor_);
     // seat, compositor, xdg_shell are destroyed via wl_display_destroy (in WlDisplay dtor)
-    if (output_layout_) wlr_output_layout_destroy(output_layout_);
-    if (allocator_)     wlr_allocator_destroy(allocator_);
-    if (renderer_)      wlr_renderer_destroy(renderer_);
-    if (backend_)       wlr_backend_destroy(backend_);
-    // display_ dtor runs after this — destroys wl_display
-}
-
-wlr_scene_tree* WaylandBackend::scene_root() const {
-    return wlr_compat::scene_root(scene_);
+    // scene_, renderer_, backend_obj_, display_ dtors run after this in reverse declaration order
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +254,7 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
     LOG_INFO("WaylandBackend: new output '%s'", output->name);
 
     // Bind the renderer and allocator to this output before first commit.
-    wlr_output_init_render(output, allocator_, renderer_);
+    renderer_.init_output(output);
 
     // Configure the output with its preferred mode (wlroots 0.18 API).
     wlr_output_state state;
@@ -300,12 +275,12 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
     out_state->output = output;
 
     // Add to output_layout (auto-placed to the right of existing outputs)
-    wlr_output_layout_add_auto(output_layout_, output);
+    wlr_output_layout_add_auto(scene_.output_layout(), output);
 
     // Create scene output
-    out_state->scene_output = wlr_scene_get_scene_output(scene_, output);
+    out_state->scene_output = wlr_scene_get_scene_output(scene_.scene(), output);
     if (!out_state->scene_output)
-        out_state->scene_output = wlr_scene_output_create(scene_, output);
+        out_state->scene_output = wlr_scene_output_create(scene_.scene(), output);
 
     // Wire frame + destroy signals
     out_state->on_frame_.connect(&output->events.frame, [this, out_state](void*) {
@@ -468,7 +443,7 @@ void WaylandBackend::handle_request_set_selection(
 void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
     // Find surface under cursor; notify seat
     double             sx = 0, sy = 0;
-    wlr_scene_node*    node    = wlr_scene_node_at(&scene_root()->node, cursor_->x, cursor_->y, &sx, &sy);
+    wlr_scene_node*    node    = wlr_scene_node_at(&scene_.root()->node, cursor_->x, cursor_->y, &sx, &sy);
     wlr_scene_surface* ss      = nullptr;
     wlr_surface*       surface = nullptr;
 
@@ -572,12 +547,12 @@ void WaylandBackend::set_cursor(const char* name) {
     // Returns -1 when there is no backing DRM device (pixman/software path).
     // In that case skip the xcursor call: the host X11 window provides its
     // own cursor decoration.
-    if (wlr_renderer_get_drm_fd(renderer_) < 0) return;
+    if (renderer_.is_software()) return;
     wlr_cursor_set_xcursor(cursor_, xcursor_mgr_, name);
 }
 
 WlOutput* WaylandBackend::output_at(double x, double y) {
-    wlr_output* o = wlr_output_layout_output_at(output_layout_, x, y);
+    wlr_output* o = wlr_output_layout_output_at(scene_.output_layout(), x, y);
     if (!o) return nullptr;
     for (auto& out : outputs_)
         if (out->output == o) return out.get();
@@ -701,7 +676,7 @@ void WaylandBackend::handle_new_layer_surface(wlr_layer_surface_v1* surface) {
     ls->surface = surface;
 
     // Place in scene graph at the appropriate layer.
-    ls->scene_layer = wlr_scene_layer_surface_v1_create(scene_root(), surface);
+    ls->scene_layer = wlr_scene_layer_surface_v1_create(scene_.root(), surface);
 
     WlLayerSurface* raw = ls.get();
     layer_surfaces_.push_back(std::move(ls));
