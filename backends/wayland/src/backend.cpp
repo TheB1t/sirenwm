@@ -47,15 +47,19 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     , scene_(display_.get())
     , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software())
     , xdg_shell_(display_.get(), 3,
-        [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); }) {
+        [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); })
+#ifndef SIRENWM_NO_LAYER_SHELL
+    , layer_shell_(display_.get(), 4,
+        [this](wlr_layer_surface_v1* s) { handle_new_layer_surface(s); })
+#endif
+    {
     wlr_log_init(WLR_DEBUG, wlr_log_handler);
 
-    // display_, backend_obj_, renderer_, scene_, seat_obj_, xdg_shell_ initialised by member ctors.
-#ifndef SIRENWM_NO_LAYER_SHELL
-    layer_shell_ = wlr_layer_shell_v1_create(display_.get(), 4);
-    LOG_INFO("WaylandBackend: layer-shell enabled");
-#else
+    // All sub-objects initialised by member ctors above.
+#ifdef SIRENWM_NO_LAYER_SHELL
     LOG_INFO("WaylandBackend: layer-shell disabled (xml not found at build time)");
+#else
+    LOG_INFO("WaylandBackend: layer-shell enabled");
 #endif
     data_dev_mgr_ = wlr_data_device_manager_create(display_.get());
 
@@ -64,10 +68,6 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
         [this](wlr_output* o) { handle_new_output(o); });
     on_new_input_.connect(&backend_obj_.new_input_signal(),
         [this](wlr_input_device* d) { handle_new_input(d); });
-#ifndef SIRENWM_NO_LAYER_SHELL
-    on_new_layer_surface_.connect(&layer_shell_->events.new_surface,
-        [this](wlr_layer_surface_v1* s) { handle_new_layer_surface(s); });
-#endif
 
     // Cursor signals
     on_cursor_motion_.connect(&seat_obj_.cursor()->events.motion,
@@ -104,10 +104,7 @@ WaylandBackend::~WaylandBackend() {
     // Disconnect all listeners before destroying objects.
     on_new_output_.disconnect();
     on_new_input_.disconnect();
-    // xdg_shell_ dtor disconnects its own listener
-#ifndef SIRENWM_NO_LAYER_SHELL
-    on_new_layer_surface_.disconnect();
-#endif
+    // xdg_shell_ and layer_shell_ dtors disconnect their own listeners
     on_cursor_motion_.disconnect();
     on_cursor_motion_abs_.disconnect();
     on_cursor_button_.disconnect();

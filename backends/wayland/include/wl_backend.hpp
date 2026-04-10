@@ -8,6 +8,7 @@
 #include <wl_backend_obj.hpp>
 #include <wl_display.hpp>
 #include <wl_keyboard.hpp>
+#include <wl_layer_shell.hpp>
 #include <wl_listener.hpp>
 #include <wl_output.hpp>
 #include <wl_renderer.hpp>
@@ -25,9 +26,6 @@ extern "C" {
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/types/wlr_data_device.h>
-#ifndef SIRENWM_NO_LAYER_SHELL
-#  include <wlr/types/wlr_layer_shell_v1.h>
-#endif
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
 #include <xkbcommon/xkbcommon.h>
@@ -121,7 +119,7 @@ class WaylandBackend final : public Backend {
 
         WlXdgShell           xdg_shell_;
 #ifndef SIRENWM_NO_LAYER_SHELL
-        wlr_layer_shell_v1*  layer_shell_ = nullptr;
+        WlLayerShell         layer_shell_;
 #endif
         wlr_data_device_manager* data_dev_mgr_ = nullptr;
 
@@ -165,9 +163,6 @@ class WaylandBackend final : public Backend {
         // Backend-level signal listeners
         WlListener<wlr_output>       on_new_output_;
         WlListener<wlr_input_device> on_new_input_;
-#ifndef SIRENWM_NO_LAYER_SHELL
-        WlListener<wlr_layer_surface_v1> on_new_layer_surface_;
-#endif
         WlListener<wlr_pointer_motion_event>          on_cursor_motion_;
         WlListener<wlr_pointer_motion_absolute_event> on_cursor_motion_abs_;
         WlListener<wlr_pointer_button_event>          on_cursor_button_;
