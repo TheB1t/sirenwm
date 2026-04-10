@@ -19,40 +19,55 @@ SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles lay
 
 ## Features
 
-### Window management
+### Generic
+
+#### Window management
 
 - Tile and monocle layouts; custom layouts in Lua with full geometry control
 - Master factor, gap, and border width adjustable at runtime
-- Multi-monitor with RandR hotplug, compose graph, and workspace migration
+- Multi-monitor support with compose graph and workspace migration
 - Per-monitor workspace pools with deterministic topology restore after restart
-- Focus-follows-mouse and click-to-focus; pointer barriers confine cursor to active fullscreen monitor
-- Floating windows with mod+drag move/resize; WM_NORMAL_HINTS size constraints enforced
-- Fullscreen and borderless game support (EWMH, MOTIF, Wine/Proton, SDL2, LibGDK)
+- Focus-follows-mouse and click-to-focus
+- Floating windows with mod+drag move/resize
+- Fullscreen and pseudo-fullscreen modes
 
-### Configuration
+#### Configuration
 
 - Hot config reload (`mod+r`) and exec-restart (`mod+shift+r`) with Lua syntax pre-check
 - Fallback to built-in default config when user config fails to parse
 - `siren.load()` for optional modules — returns a null-object on failure so the config keeps working
 - Window rules, process autostart, per-monitor wallpapers — all via Lua modules
 
-### Status bar
+#### Status bar
 
 - Cairo/Pango bar at top and/or bottom of each monitor
-- Built-in widgets: workspace tags, focused window title, system tray (XEmbed)
 - Lua widget API: write `render()`, set `interval`, drop into any bar zone
+- Built-in widgets: workspace tags, focused window title
 - Urgent workspaces highlighted in the tag strip
 
-### Protocol compliance
-
-- ICCCM: WM_DELETE_WINDOW, WM_TAKE_FOCUS, WM_HINTS (InputHint, UrgencyHint), WM_NORMAL_HINTS
-- EWMH: `_NET_WM_STATE` fullscreen, `_NET_ACTIVE_WINDOW`, `_NET_CLOSE_WINDOW`, client list
-
-### Developer
+#### Developer
 
 - ImGui debug overlay for live WM state inspection (`-DSIRENWM_DEBUG_UI=ON`)
 - Runtime lifecycle FSM (Idle → Configured → Starting → Running → Stopping → Stopped)
 - Typed setting registry with transactional reload and per-setting validation
+
+### X11 backend
+
+- ICCCM: WM_DELETE_WINDOW, WM_TAKE_FOCUS, WM_HINTS (InputHint, UrgencyHint), WM_NORMAL_HINTS
+- EWMH: `_NET_WM_STATE` fullscreen, `_NET_ACTIVE_WINDOW`, `_NET_CLOSE_WINDOW`, client list
+- RandR hotplug — monitors added/removed at runtime without restart
+- Pointer barriers confine cursor to active fullscreen monitor
+- Fullscreen compatibility: MOTIF hints, Wine/Proton, SDL2, LibGDK
+- WM_NORMAL_HINTS size constraints enforced
+- System tray (XEmbed protocol)
+
+### Wayland backend
+
+- xdg-shell toplevels with map/unmap/fullscreen/maximize lifecycle
+- wlr-layer-shell for bars and overlays (when available at build time)
+- wlroots 0.17/0.18 support via compile-time API compatibility layer
+- Runs nested under X11 or another Wayland compositor (useful for development)
+- Direct KMS/DRM launch from TTY via libseat
 
 ## Architecture
 
