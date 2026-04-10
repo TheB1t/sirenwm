@@ -101,6 +101,28 @@ class WlKeyboardPort final : public KeyboardPort {
             original_keymap_str_.clear();
         }
 
+        uint32_t get_group() const override {
+            auto* kb = wlr_seat_get_keyboard(seat_);
+            if (!kb || !kb->xkb_state)
+                return 0;
+            return static_cast<uint32_t>(
+                xkb_state_serialize_layout(kb->xkb_state, XKB_STATE_LAYOUT_EFFECTIVE));
+        }
+
+        void set_group(uint32_t group) override {
+            auto* kb = wlr_seat_get_keyboard(seat_);
+            if (!kb || !kb->keymap)
+                return;
+            if (group >= xkb_keymap_num_layouts(kb->keymap))
+                return;
+            // Notify clients via seat that the modifier/group state changed.
+            // Setting group with zeroed mods switches the layout without
+            // affecting any modifier state.
+            wlr_keyboard_modifiers mods{};
+            mods.group = group;
+            wlr_seat_keyboard_notify_modifiers(seat_, &mods);
+        }
+
     private:
         wlr_seat*   seat_;
         std::string original_keymap_str_; // non-empty once apply() ran
