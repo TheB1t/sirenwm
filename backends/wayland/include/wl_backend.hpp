@@ -10,6 +10,7 @@
 #include <wl_listener.hpp>
 #include <wl_renderer.hpp>
 #include <wl_scene_graph.hpp>
+#include <wl_seat.hpp>
 #include <wl_surface.hpp>
 
 #include <memory>
@@ -20,19 +21,12 @@
 extern "C" {
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
-#include <wlr/render/allocator.h>
-#include <wlr/render/wlr_renderer.h>
-#include <wlr/types/wlr_compositor.h>
-#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
 #ifndef SIRENWM_NO_LAYER_SHELL
 #  include <wlr/types/wlr_layer_shell_v1.h>
 #endif
 #include <wlr/types/wlr_output.h>
-#include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_seat.h>
-#include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <xkbcommon/xkbcommon.h>
 }
@@ -129,8 +123,8 @@ class WaylandBackend final : public Backend {
         wlr_renderer*      renderer()    const { return renderer_.renderer(); }
         wlr_scene*         scene()       const { return scene_.scene(); }
         wlr_output_layout* out_layout()  const { return scene_.output_layout(); }
-        wlr_seat*          seat()        const { return seat_; }
-        wlr_cursor*        cursor()      const { return cursor_; }
+        wlr_seat*          seat()        const { return seat_obj_.seat(); }
+        wlr_cursor*        cursor()      const { return seat_obj_.cursor(); }
         wlr_scene_tree*    scene_root()  const { return scene_.root(); }
 
     private:
@@ -143,11 +137,9 @@ class WaylandBackend final : public Backend {
         WlBackendObj backend_obj_;
         WlRenderer   renderer_;
         WlSceneGraph scene_;
+        // seat + cursor + xcursor_manager
+        WlSeat       seat_obj_;
 
-        // Still raw — will be wrapped in Phase 4 (seat) and later phases
-        wlr_seat*            seat_          = nullptr;
-        wlr_cursor*          cursor_        = nullptr;
-        wlr_xcursor_manager* xcursor_mgr_   = nullptr;
         wlr_xdg_shell*       xdg_shell_     = nullptr;
 #ifndef SIRENWM_NO_LAYER_SHELL
         wlr_layer_shell_v1*      layer_shell_ = nullptr;
@@ -190,10 +182,6 @@ class WaylandBackend final : public Backend {
         // True while a pointer grab is active (mouse drag/resize).
         // Suppresses pointer focus forwarding to clients.
         bool pointer_grabbed_ = false;
-
-        // True when running on a software (pixman) renderer with no DRM device.
-        // In this mode cursor attachment and xcursor upload must be skipped.
-        bool software_renderer_ = false;
 
         // Backend-level signal listeners
         WlListener<wlr_output>       on_new_output_;

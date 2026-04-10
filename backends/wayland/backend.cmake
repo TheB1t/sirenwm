@@ -183,6 +183,7 @@ list(APPEND SIRENWM_BACKEND_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/wl_backend_obj.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/wl_renderer.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/wl_scene_graph.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/wl_seat.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/backend.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/loop.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/xdg_shell.cpp
