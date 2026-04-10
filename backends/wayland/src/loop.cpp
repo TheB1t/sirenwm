@@ -11,18 +11,15 @@ extern "C" {
 // event_fd — used by Runtime's epoll loop to know when to call pump_events()
 // ---------------------------------------------------------------------------
 int WaylandBackend::event_fd() const {
-    return wl_event_loop_get_fd(ev_loop_);
+    return display_.event_fd();
 }
 
 // ---------------------------------------------------------------------------
 // pump_events — drain the Wayland event loop (non-blocking, timeout=0)
 // ---------------------------------------------------------------------------
 void WaylandBackend::pump_events(std::size_t /*max_events_per_tick*/) {
-    // Dispatch all pending events on the wayland event loop (non-blocking)
-    wl_event_loop_dispatch(ev_loop_, 0);
-
-    // Flush pending replies to connected clients
-    wl_display_flush_clients(display_);
+    display_.dispatch_events();
+    display_.flush_clients();
 
     apply_core_backend_effects();
 }
