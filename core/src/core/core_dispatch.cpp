@@ -287,7 +287,13 @@ void Core::arrange() {
                 continue;
             }
             active_lua_sink_ = &place;
-            const auto& ref = lua_layouts.at(active_layout);
+            auto lua_it = lua_layouts.find(active_layout);
+            if (lua_it == lua_layouts.end()) {
+                LOG_ERR("arrange: Lua layout '%s' not found", active_layout.c_str());
+                active_lua_sink_ = nullptr;
+                continue;
+            }
+            const auto& ref = lua_it->second;
             LuaContext  ctx = lua_host().context();
 
             lua_host().push_ref(ref);
@@ -328,7 +334,7 @@ void Core::arrange() {
         // Fullscreen and borderless windows keep border_width=0.
         for (auto& w : ws.windows) {
             if (!w || !w->is_visible() || !w->floating || w->fullscreen || w->borderless) continue;
-            if (w->border_width == settings.theme.border_thickness) continue;
+            if (w->border_width == (uint32_t)settings.theme.border_thickness) continue;
             (void)dispatch(command::SetWindowBorderWidth{ w->id,
                                                           (uint32_t)settings.theme.border_thickness });
             emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);

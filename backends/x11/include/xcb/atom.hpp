@@ -27,7 +27,7 @@ class Atom {
             if (!resolved) {
                 auto r = xcb::reply(xcb_intern_atom_reply(conn,
                         xcb_intern_atom(conn, 0, (uint16_t)strlen(name), name), nullptr));
-                value    = r ? r->atom : XCB_ATOM_NONE;
+                value    = r ? r->atom : (xcb_atom_t)XCB_ATOM_NONE;
                 resolved = true;
             }
             return value;
@@ -49,7 +49,7 @@ intern_batch(xcb_connection_t* conn, std::initializer_list<const char*> names) {
     int                                         i = 0;
     for (auto n : names) {
         auto r = xcb::reply(xcb_intern_atom_reply(conn, cookies[i++], nullptr));
-        result[n] = r ? r->atom : XCB_ATOM_NONE;
+        result[n] = r ? r->atom : (xcb_atom_t)XCB_ATOM_NONE;
     }
     return result;
 }

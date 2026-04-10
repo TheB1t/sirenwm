@@ -17,29 +17,6 @@ struct ConfigureRequestPatch {
     std::vector<uint32_t> values;
 };
 
-static ConfigureRequestPatch pack_configure_request(const xcb_configure_request_event_t* ev) {
-    ConfigureRequestPatch patch;
-    uint16_t              m = ev->value_mask;
-    patch.values.reserve(7);
-
-    auto put = [&](uint16_t flag, uint32_t value) {
-            if (!(m & flag))
-                return;
-            patch.mask |= flag;
-            patch.values.push_back(value);
-        };
-
-    put(XCB_CONFIG_WINDOW_X, static_cast<uint32_t>(ev->x));
-    put(XCB_CONFIG_WINDOW_Y, static_cast<uint32_t>(ev->y));
-    put(XCB_CONFIG_WINDOW_WIDTH, static_cast<uint32_t>(ev->width));
-    put(XCB_CONFIG_WINDOW_HEIGHT, static_cast<uint32_t>(ev->height));
-    put(XCB_CONFIG_WINDOW_BORDER_WIDTH, static_cast<uint32_t>(ev->border_width));
-    put(XCB_CONFIG_WINDOW_SIBLING, static_cast<uint32_t>(ev->sibling));
-    put(XCB_CONFIG_WINDOW_STACK_MODE, static_cast<uint32_t>(ev->stack_mode));
-
-    return patch;
-}
-
 static event::ButtonEv make_button_ev(xcb_button_press_event_t* ev, bool release) {
     return {
         .window    = ev->event,

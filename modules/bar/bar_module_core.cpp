@@ -199,18 +199,17 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
 }
 
 // Parse one bar side (top or bottom) from a MonitorBarConfig table.
-// Semantics of the returned optional<optional<BarConfig>>:
-//   nullopt        — key absent in Lua → remove bar
-//   some(nullopt)  — key = {}         → inherit from default
-//   some(some(cfg))— key = { ... }   → custom config
+// Absent key         → BarSideState::Remove
+// key = {}           → BarSideState::Inherit
+// key = { ... }      → BarSideState::Custom
 static bool parse_bar_side(LuaContext& lua, LuaHost& host,
     const ThemeConfig& theme, int table_idx, const char* key,
-    BarPosition pos, std::optional<std::optional<BarConfig>>& out,
+    BarPosition pos, BarSide& out,
     const std::string& ctx, std::string* err_out) {
     lua.get_field(table_idx, key);
     if (lua.is_nil(-1)) {
         lua.pop();
-        out = std::nullopt; // absent → remove
+        out = { BarSideState::Remove, {} };
         return true;
     }
     if (!lua.is_table(-1)) {
@@ -220,13 +219,12 @@ static bool parse_bar_side(LuaContext& lua, LuaHost& host,
     }
     // Empty table {} → inherit default.
     if (lua.raw_len(lua.abs_index(-1)) == 0) {
-        // Also check no string keys (truly empty).
         lua.push_nil();
         bool has_keys = lua.next(lua.abs_index(-2));
         if (has_keys) lua.pop(2);
         if (!has_keys) {
             lua.pop();
-            out = std::optional<BarConfig>{}; // some(nullopt) → inherit
+            out = { BarSideState::Inherit, {} };
             return true;
         }
     }
@@ -238,7 +236,7 @@ static bool parse_bar_side(LuaContext& lua, LuaHost& host,
         return false;
     }
     lua.pop();
-    out = std::move(cfg); // some(some(cfg)) → custom
+    out = { BarSideState::Custom, std::move(cfg) };
     return true;
 }
 
@@ -248,7 +246,7 @@ static bool parse_monitor_bar_config(LuaContext& lua, LuaHost& host,
     MonitorBarConfig& out, const std::string& ctx, std::string* err_out) {
     table_idx = lua.abs_index(table_idx);
     if (!parse_bar_side(lua, host, theme, table_idx, "top",
-            BarPosition::TOP, out.top, ctx, err_out))
+            BarPosition::TOP,    out.top,    ctx, err_out))
         return false;
     if (!parse_bar_side(lua, host, theme, table_idx, "bottom",
             BarPosition::BOTTOM, out.bottom, ctx, err_out))
@@ -415,36 +413,23 @@ void BarModule::rebuild_bars() {
         int phys_h = monitors[i].height() + cur_top + cur_bottom;
         MonRect m{ i, { monitors[i].x(), phys_y }, monitors[i].size(), alias };
 
-        // After resolve():
-        //   nullopt              → bar removed for this monitor
-        //   some(nullopt)        → should not occur (resolve() expands to default)
-        //   some(some(cfg))      → use this config
         auto has_content = [](const BarConfig& cfg) {
             return cfg.height > 0 || !cfg.left.empty()
                 || !cfg.center.empty() || !cfg.right.empty();
         };
 
-        // Helper: extract BarConfig from optional<optional<BarConfig>>.
-        // Returns nullptr if bar should be removed (outer nullopt).
-        auto effective = [](const std::optional<std::optional<BarConfig>>& v)
-                -> const BarConfig* {
-            if (!v.has_value()) return nullptr;         // absent → remove
-            if (!v->has_value()) return nullptr;        // some(nullopt) → no default set
-            return &(*v).value();
-        };
-
-        if (const BarConfig* top = effective(mcfg.top)) {
-            BarConfig top_cfg = *top;
-            if (top_cfg.height <= 0) top_cfg.height = 18;
+        if (mcfg.top.state == BarSideState::Custom) {
+            BarConfig top_cfg = mcfg.top.cfg;
+            if (top_cfg.height <= 0) top_cfg.height = kBarDefaultHeight;
             if (has_content(top_cfg)) {
                 create_bar_window(m, top_cfg, true);
                 global_top_h = std::max(global_top_h, top_cfg.height);
             }
         }
 
-        if (const BarConfig* bot = effective(mcfg.bottom)) {
-            BarConfig bottom_cfg = *bot;
-            if (bottom_cfg.height <= 0) bottom_cfg.height = 18;
+        if (mcfg.bottom.state == BarSideState::Custom) {
+            BarConfig bottom_cfg = mcfg.bottom.cfg;
+            if (bottom_cfg.height <= 0) bottom_cfg.height = kBarDefaultHeight;
             if (has_content(bottom_cfg)) {
                 MonRect mb{ i, { monitors[i].x(), phys_y + phys_h - bottom_cfg.height },
                             monitors[i].size(), alias };
@@ -542,8 +527,8 @@ static void apply_theme_to_cfg(BarConfig& cfg, const ThemeConfig& th) {
 }
 
 static void apply_theme_to_monitor_cfg(MonitorBarConfig& mcfg, const ThemeConfig& th) {
-    if (mcfg.top    && mcfg.top->has_value())    apply_theme_to_cfg(mcfg.top->value(), th);
-    if (mcfg.bottom && mcfg.bottom->has_value()) apply_theme_to_cfg(mcfg.bottom->value(), th);
+    if (mcfg.top.state    == BarSideState::Custom) apply_theme_to_cfg(mcfg.top.cfg,    th);
+    if (mcfg.bottom.state == BarSideState::Custom) apply_theme_to_cfg(mcfg.bottom.cfg, th);
 }
 
 void BarModule::on(event::ExposeWindow ev) {
@@ -748,15 +733,21 @@ void BarModule::on_start() {
     rebuild_trays();
 
     if (pipe(wakeup_pipe) == 0) {
-        fcntl(wakeup_pipe[0], F_SETFL, O_NONBLOCK);
-        fcntl(wakeup_pipe[0], F_SETFD, FD_CLOEXEC);
-        fcntl(wakeup_pipe[1], F_SETFD, FD_CLOEXEC);
-        runtime().watch_fd(wakeup_pipe[0], [this]() {
-                char buf[64];
-                while (read(wakeup_pipe[0], buf, sizeof(buf)) > 0) {
-                }
-                redraw();
-            });
+        if (fcntl(wakeup_pipe[0], F_SETFL, O_NONBLOCK) < 0 ||
+            fcntl(wakeup_pipe[0], F_SETFD, FD_CLOEXEC) < 0 ||
+            fcntl(wakeup_pipe[1], F_SETFD, FD_CLOEXEC) < 0) {
+            LOG_ERR("bar: fcntl() failed on wakeup pipe");
+            close(wakeup_pipe[0]); wakeup_pipe[0] = -1;
+            close(wakeup_pipe[1]); wakeup_pipe[1] = -1;
+        } else {
+            runtime().watch_fd(wakeup_pipe[0], [this]() {
+                    // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
+                    char    buf[64];
+                    ssize_t n;
+                    do { n = read(wakeup_pipe[0], buf, sizeof(buf)); } while (n > 0 || (n < 0 && errno == EINTR));
+                    redraw();
+                });
+        }
     }
 
     // Collect all Lua slots across all bar configs for timer setup.

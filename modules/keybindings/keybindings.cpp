@@ -240,7 +240,13 @@ static bool parse_mouse_spec(const std::string& spec,
     while (std::getline(ss, token, '+')) {
         auto token_lower = lower_ascii(token);
         if (token_lower.size() > 6 && token_lower.substr(0, 6) == "button") {
-            btn_out = (uint32_t)std::stoul(token_lower.substr(6));
+            try {
+                btn_out = (uint32_t)std::stoul(token_lower.substr(6));
+            } catch (...) {
+                if (err_out)
+                    *err_out = "invalid button number in '" + token + "'";
+                return false;
+            }
             continue;
         }
         uint16_t    mod = 0;
