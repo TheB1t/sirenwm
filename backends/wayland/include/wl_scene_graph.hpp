@@ -14,20 +14,20 @@ extern "C" {
 }
 
 class WlSceneGraph {
-public:
-    explicit WlSceneGraph(wl_display* display);
-    ~WlSceneGraph();
+    public:
+        explicit WlSceneGraph(wl_display* display);
+        ~WlSceneGraph();
 
-    WlSceneGraph(const WlSceneGraph&)            = delete;
-    WlSceneGraph& operator=(const WlSceneGraph&) = delete;
+        WlSceneGraph(const WlSceneGraph&)            = delete;
+        WlSceneGraph& operator=(const WlSceneGraph&) = delete;
 
-    wlr_scene*         scene()        const noexcept { return scene_; }
-    wlr_output_layout* output_layout() const noexcept { return layout_; }
+        wlr_scene*         scene()        const noexcept { return scene_; }
+        wlr_output_layout* output_layout() const noexcept { return layout_; }
 
-    // Returns the root scene tree, hiding the 0.17/0.18 API difference.
-    wlr_scene_tree* root() const noexcept;
+        // Returns the root scene tree, hiding the 0.17/0.18 API difference.
+        wlr_scene_tree* root() const noexcept;
 
-private:
-    wlr_output_layout* layout_ = nullptr;
-    wlr_scene*         scene_  = nullptr;
+    private:
+        wlr_output_layout* layout_ = nullptr;
+        wlr_scene*         scene_  = nullptr;
 };

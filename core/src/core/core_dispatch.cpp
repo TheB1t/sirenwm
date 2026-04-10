@@ -775,11 +775,11 @@ bool Core::dispatch(const command::ApplyMonitorTopology& cmd) {
 
 bool Core::dispatch(const command::ApplyMonitorTopInset& cmd) {
     const auto& mons = wsman.all_monitor_states();
-    auto apply_to = [&](int i) {
-        int delta = cmd.inset_px - mons[i].top_inset();
-        if (delta != 0)
-            wsman.adjust_monitor_inset(i, delta, 0);
-    };
+    auto        apply_to = [&](int i) {
+            int delta = cmd.inset_px - mons[i].top_inset();
+            if (delta != 0)
+                wsman.adjust_monitor_inset(i, delta, 0);
+        };
     if (cmd.monitor_idx < 0) {
         for (int i = 0; i < (int)mons.size(); i++) apply_to(i);
     } else if (cmd.monitor_idx < (int)mons.size()) {
@@ -790,11 +790,11 @@ bool Core::dispatch(const command::ApplyMonitorTopInset& cmd) {
 
 bool Core::dispatch(const command::ApplyMonitorBottomInset& cmd) {
     const auto& mons = wsman.all_monitor_states();
-    auto apply_to = [&](int i) {
-        int delta = cmd.inset_px - mons[i].bottom_inset();
-        if (delta != 0)
-            wsman.adjust_monitor_inset(i, 0, delta);
-    };
+    auto        apply_to = [&](int i) {
+            int delta = cmd.inset_px - mons[i].bottom_inset();
+            if (delta != 0)
+                wsman.adjust_monitor_inset(i, 0, delta);
+        };
     if (cmd.monitor_idx < 0) {
         for (int i = 0; i < (int)mons.size(); i++) apply_to(i);
     } else if (cmd.monitor_idx < (int)mons.size()) {

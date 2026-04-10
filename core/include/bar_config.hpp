@@ -66,8 +66,8 @@ struct MonitorBarConfig {
 
 // Full bar settings: a default config and per-monitor alias overrides.
 struct BarSetConfig {
-    MonitorBarConfig                                   default_cfg;
-    std::unordered_map<std::string, MonitorBarConfig>  per_monitor; // key = monitor alias
+    MonitorBarConfig                                  default_cfg;
+    std::unordered_map<std::string, MonitorBarConfig> per_monitor;  // key = monitor alias
 
     // Resolve the effective top/bottom config for a given monitor alias.
     // Per-monitor entry takes precedence; falls back to default_cfg when absent.
@@ -77,17 +77,17 @@ struct BarSetConfig {
             return default_cfg;
 
         const MonitorBarConfig& ov = it->second;
-        MonitorBarConfig result;
+        MonitorBarConfig        result;
 
-        auto resolve_side = [](const BarSide& override_side,
-                                const BarSide& default_side) -> BarSide {
-            switch (override_side.state) {
-            case BarSideState::Remove:  return { BarSideState::Remove, {} };
-            case BarSideState::Inherit: return default_side;
-            case BarSideState::Custom:  return override_side;
-            }
-            return { BarSideState::Remove, {} };
-        };
+        auto                    resolve_side = [](const BarSide& override_side,
+            const BarSide& default_side) -> BarSide {
+                switch (override_side.state) {
+                    case BarSideState::Remove:  return { BarSideState::Remove, {} };
+                    case BarSideState::Inherit: return default_side;
+                    case BarSideState::Custom:  return override_side;
+                }
+                return { BarSideState::Remove, {} };
+            };
 
         result.top    = resolve_side(ov.top,    default_cfg.top);
         result.bottom = resolve_side(ov.bottom, default_cfg.bottom);

@@ -18,11 +18,11 @@ extern "C" {
 // ---------------------------------------------------------------------------
 class WlOutput {
     public:
-        using FrameCb   = std::function<void(WlOutput*)>;
-        using DestroyCb = std::function<void(WlOutput*)>;
+        using FrameCb   = std::function<void (WlOutput*)>;
+        using DestroyCb = std::function<void (WlOutput*)>;
 
         WlOutput(wlr_output* output, wlr_scene_output* scene_output,
-                 FrameCb on_frame, DestroyCb on_destroy);
+            FrameCb on_frame, DestroyCb on_destroy);
         ~WlOutput() = default;
 
         // Non-copyable, non-movable (listeners hold raw this pointer).
@@ -42,7 +42,7 @@ class WlOutput {
     private:
         wlr_output*       output_       = nullptr;
         wlr_scene_output* scene_output_ = nullptr;
-        int               monitor_idx_  = -1;
+        int monitor_idx_                = -1;
 
         WlVoidListener on_frame_;
         WlVoidListener on_destroy_;

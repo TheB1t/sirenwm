@@ -112,8 +112,8 @@ class Core {
         CoreSettings settings;
 
         std::string config_path;
-        LuaHost*    lua_host_                    = nullptr;
-        bool        runtime_started              = false;
+        LuaHost*    lua_host_       = nullptr;
+        bool        runtime_started = false;
 
         void         emit_backend_effect(BackendEffectKind kind, WindowId window = NO_WINDOW);
         void         emit_warp_pointer(Vec2i16 pos);

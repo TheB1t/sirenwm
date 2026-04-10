@@ -41,18 +41,22 @@ static void wlr_log_handler(wlr_log_importance importance, const char* fmt, va_l
 // ---------------------------------------------------------------------------
 WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     : core_(core)
-    , runtime_(runtime)
-    , backend_obj_(display_.ev_loop())
-    , renderer_(backend_obj_.get(), display_.get())
-    , scene_(display_.get())
-    , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software())
-    , xdg_shell_(display_.get(), 3,
-        [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); })
+      , runtime_(runtime)
+      , backend_obj_(display_.ev_loop())
+      , renderer_(backend_obj_.get(), display_.get())
+      , scene_(display_.get())
+      , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software())
+      , xdg_shell_(display_.get(), 3,
+          [this](wlr_xdg_surface* s) {
+              handle_new_xdg_surface(s);
+          })
 #ifndef SIRENWM_NO_LAYER_SHELL
-    , layer_shell_(display_.get(), 4,
-        [this](wlr_layer_surface_v1* s) { handle_new_layer_surface(s); })
+      , layer_shell_(display_.get(), 4,
+          [this](wlr_layer_surface_v1* s) {
+              handle_new_layer_surface(s);
+          })
 #endif
-    {
+{
     wlr_log_init(WLR_DEBUG, wlr_log_handler);
 
     // All sub-objects initialised by member ctors above.
@@ -65,27 +69,45 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
 
     // Wire top-level backend signals
     on_new_output_.connect(&backend_obj_.new_output_signal(),
-        [this](wlr_output* o) { handle_new_output(o); });
+        [this](wlr_output* o) {
+            handle_new_output(o);
+        });
     on_new_input_.connect(&backend_obj_.new_input_signal(),
-        [this](wlr_input_device* d) { handle_new_input(d); });
+        [this](wlr_input_device* d) {
+            handle_new_input(d);
+        });
 
     // Cursor signals
     on_cursor_motion_.connect(&seat_obj_.cursor()->events.motion,
-        [this](wlr_pointer_motion_event* ev) { handle_cursor_motion(ev); });
+        [this](wlr_pointer_motion_event* ev) {
+            handle_cursor_motion(ev);
+        });
     on_cursor_motion_abs_.connect(&seat_obj_.cursor()->events.motion_absolute,
-        [this](wlr_pointer_motion_absolute_event* ev) { handle_cursor_motion_abs(ev); });
+        [this](wlr_pointer_motion_absolute_event* ev) {
+            handle_cursor_motion_abs(ev);
+        });
     on_cursor_button_.connect(&seat_obj_.cursor()->events.button,
-        [this](wlr_pointer_button_event* ev) { handle_cursor_button(ev); });
+        [this](wlr_pointer_button_event* ev) {
+            handle_cursor_button(ev);
+        });
     on_cursor_axis_.connect(&seat_obj_.cursor()->events.axis,
-        [this](wlr_pointer_axis_event* ev) { handle_cursor_axis(ev); });
+        [this](wlr_pointer_axis_event* ev) {
+            handle_cursor_axis(ev);
+        });
     on_cursor_frame_.connect(&seat_obj_.cursor()->events.frame,
-        [this](void*) { handle_cursor_frame(); });
+        [this](void*) {
+            handle_cursor_frame();
+        });
 
     // Seat signals
     on_request_cursor_.connect(&seat_obj_.seat()->events.request_set_cursor,
-        [this](wlr_seat_pointer_request_set_cursor_event* ev) { handle_request_cursor(ev); });
+        [this](wlr_seat_pointer_request_set_cursor_event* ev) {
+            handle_request_cursor(ev);
+        });
     on_request_set_selection_.connect(&seat_obj_.seat()->events.request_set_selection,
-        [this](wlr_seat_request_set_selection_event* ev) { handle_request_set_selection(ev); });
+        [this](wlr_seat_request_set_selection_event* ev) {
+            handle_request_set_selection(ev);
+        });
 
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(scene_.output_layout(), runtime_);
@@ -262,8 +284,12 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
         scene_out = wlr_scene_output_create(scene_.scene(), output);
 
     outputs_.push_back(std::make_unique<WlOutput>(output, scene_out,
-        [this](WlOutput* o) { handle_output_frame(o); },
-        [this](WlOutput* o) { handle_output_destroy(o); }
+        [this](WlOutput* o) {
+            handle_output_frame(o);
+        },
+        [this](WlOutput* o) {
+            handle_output_destroy(o);
+        }
     ));
 
     // Notify runtime that display topology changed.
@@ -278,7 +304,9 @@ void WaylandBackend::handle_output_destroy(WlOutput* out) {
         out->output() ? out->output()->name : "?");
     out->disconnect();
     outputs_.erase(std::remove_if(outputs_.begin(), outputs_.end(),
-        [out](const auto& p) { return p.get() == out; }), outputs_.end());
+        [out](const auto& p) {
+            return p.get() == out;
+        }), outputs_.end());
     runtime_.dispatch_display_change();
 }
 
@@ -302,9 +330,15 @@ void WaylandBackend::handle_new_input(wlr_input_device* device) {
 
 void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
     keyboards_.push_back(std::make_unique<WlKeyboard>(device,
-        [this](WlKeyboard* kb, wlr_keyboard_key_event* ev) { handle_keyboard_key(kb, ev); },
-        [this](WlKeyboard* kb) { handle_keyboard_modifiers(kb); },
-        [this](WlKeyboard* kb) { handle_keyboard_destroy(kb); }
+        [this](WlKeyboard* kb, wlr_keyboard_key_event* ev) {
+            handle_keyboard_key(kb, ev);
+        },
+        [this](WlKeyboard* kb) {
+            handle_keyboard_modifiers(kb);
+        },
+        [this](WlKeyboard* kb) {
+            handle_keyboard_destroy(kb);
+        }
     ));
     WlKeyboard* kb = keyboards_.back().get();
     wlr_seat_set_keyboard(seat_obj_.seat(), kb->keyboard());

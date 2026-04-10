@@ -678,12 +678,12 @@ void WorkspaceManager::adjust_monitor_inset(int mon_idx, int top_delta, int bott
         return;
     auto& mon = monitors[mon_idx];
     if (top_delta != 0) {
-        mon.y()     += top_delta;
-        mon.height() = std::max(0, mon.height() - top_delta);
+        mon.y()        += top_delta;
+        mon.height()    = std::max(0, mon.height() - top_delta);
         mon.top_inset_ += top_delta;
     }
     if (bottom_delta != 0) {
-        mon.height() = std::max(0, mon.height() - bottom_delta);
+        mon.height()       = std::max(0, mon.height() - bottom_delta);
         mon.bottom_inset_ += bottom_delta;
     }
 }

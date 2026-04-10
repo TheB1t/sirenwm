@@ -17,7 +17,7 @@ extern "C" {
 // ---------------------------------------------------------------------------
 class WlXdgShell {
     public:
-        using SurfaceCb = std::function<void(wlr_xdg_surface*)>;
+        using SurfaceCb = std::function<void (wlr_xdg_surface*)>;
 
         WlXdgShell(wl_display* display, uint32_t version, SurfaceCb on_new_surface);
         ~WlXdgShell() = default;
@@ -29,6 +29,6 @@ class WlXdgShell {
         WlXdgShell& operator=(WlXdgShell&&)      = delete;
 
     private:
-        wlr_xdg_shell*                  shell_ = nullptr;
-        WlListener<wlr_xdg_surface>     on_new_surface_;
+        wlr_xdg_shell* shell_ = nullptr;
+        WlListener<wlr_xdg_surface> on_new_surface_;
 };

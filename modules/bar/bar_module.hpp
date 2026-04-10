@@ -59,8 +59,8 @@ class BarModule : public Module {
         // Active bar windows. Each entry carries its resolved config.
         struct BarWindow {
             std::unique_ptr<backend::RenderWindow> window;
-            BarConfig cfg;       // resolved config for this specific monitor
-            bool      is_top;
+            BarConfig                              cfg; // resolved config for this specific monitor
+            bool                                   is_top;
         };
         std::vector<BarWindow> all_bars_;
 
@@ -99,17 +99,17 @@ class BarModule : public Module {
         int                      monitor_for_icon(WindowId icon_win) const;
         // Move icon to the tray on the correct monitor using xcb_reparent_window.
         // Never changes selection ownership.
-        void route_icon_to_monitor(WindowId icon_win, int mon_idx);
-        void rebalance_tray_icons();
-        void rebuild_trays();
+        void        route_icon_to_monitor(WindowId icon_win, int mon_idx);
+        void        rebalance_tray_icons();
+        void        rebuild_trays();
         // Resolve alias for a monitor index using current_settings().monitor_aliases.
         std::string monitor_alias(int mon_idx) const;
         // Create a single bar window and push into all_bars_.
-        void create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top);
-        int  tag_at(WindowId bar_window, int click_x) const;
-        void rebuild_bars();
-        void refresh_widgets();
-        void redraw();
-        void raise_all();
-        void stop_runtime();
+        void        create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top);
+        int         tag_at(WindowId bar_window, int click_x) const;
+        void        rebuild_bars();
+        void        refresh_widgets();
+        void        redraw();
+        void        raise_all();
+        void        stop_runtime();
 };
