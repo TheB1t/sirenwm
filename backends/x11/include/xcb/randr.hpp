@@ -38,8 +38,8 @@ class Crtc {
 
         int16_t  x()                const { return _info() ? _info_cached->x        : 0; }
         int16_t  y()                const { return _info() ? _info_cached->y        : 0; }
-        xcb_randr_mode_t mode()     const { return _info() ? _info_cached->mode     : XCB_NONE; }
-        uint16_t         rotation() const { return _info() ? _info_cached->rotation : XCB_RANDR_ROTATION_ROTATE_0; }
+        xcb_randr_mode_t mode()     const { return _info() ? _info_cached->mode     : (xcb_randr_mode_t)XCB_NONE; }
+        uint16_t         rotation() const { return _info() ? _info_cached->rotation : (uint16_t)XCB_RANDR_ROTATION_ROTATE_0; }
 
         uint8_t configure_status(int16_t x, int16_t y, xcb_randr_mode_t mode,
             uint16_t rotation, xcb_randr_output_t output) {

@@ -68,7 +68,8 @@ static int g_sigchld_pipe_wr = -1;
 static void sigchld_handler(int) {
     if (g_sigchld_pipe_wr >= 0) {
         char b = 1;
-        (void)write(g_sigchld_pipe_wr, &b, 1);
+        ssize_t r;
+        do { r = write(g_sigchld_pipe_wr, &b, 1); } while (r < 0 && errno == EINTR);
     }
 }
 
@@ -522,9 +523,14 @@ void Runtime::setup_sigchld_pipe() {
     }
     sigchld_pipe_rd_ = fds[0];
     sigchld_pipe_wr_ = fds[1];
-    fcntl(sigchld_pipe_rd_, F_SETFL, O_NONBLOCK);
-    fcntl(sigchld_pipe_rd_, F_SETFD, FD_CLOEXEC);
-    fcntl(sigchld_pipe_wr_, F_SETFD, FD_CLOEXEC);
+    if (fcntl(sigchld_pipe_rd_, F_SETFL, O_NONBLOCK) < 0 ||
+        fcntl(sigchld_pipe_rd_, F_SETFD, FD_CLOEXEC) < 0 ||
+        fcntl(sigchld_pipe_wr_, F_SETFD, FD_CLOEXEC) < 0) {
+        LOG_ERR("runtime: fcntl() failed on SIGCHLD pipe");
+        close(sigchld_pipe_rd_); sigchld_pipe_rd_ = -1;
+        close(sigchld_pipe_wr_); sigchld_pipe_wr_ = -1;
+        return;
+    }
 
     g_sigchld_pipe_wr = sigchld_pipe_wr_;
     struct sigaction sa {};
@@ -550,10 +556,10 @@ void Runtime::teardown_sigchld_pipe() {
 }
 
 void Runtime::reap_children() {
-    // Drain the self-pipe.
-    char buf[64];
-    while (read(sigchld_pipe_rd_, buf, sizeof(buf)) > 0) {
-    }
+    // Drain the self-pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
+    char    buf[64];
+    ssize_t n;
+    do { n = read(sigchld_pipe_rd_, buf, sizeof(buf)); } while (n > 0 || (n < 0 && errno == EINTR));
 
     int   status;
     pid_t pid;

@@ -135,7 +135,7 @@ static std::string net_default_ip() {
     while (fgets(line, sizeof(line), f)) {
         if (sscanf(line, "%31s %x %x %x", iface, &dest, &gw, &flags) == 4) {
             if (dest == 0 && (flags & 0x3) == 0x3) { // RTF_UP | RTF_GATEWAY
-                strncpy(default_iface, iface, sizeof(default_iface) - 1);
+                snprintf(default_iface, sizeof(default_iface), "%s", iface);
                 break;
             }
         }

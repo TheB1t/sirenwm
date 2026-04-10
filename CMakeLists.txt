@@ -16,10 +16,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output)
 
 option(SIRENWM_DEBUG_UI "Build ImGui debug overlay (requires OpenGL/EGL)" OFF)
 
-set(CMAKE_C_FLAGS_RELEASE   "-g0 -Ofast")
+set(CMAKE_C_FLAGS_RELEASE   "-g0 -O3")
 set(CMAKE_C_FLAGS_DEBUG     "-g3 -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}")
+
+add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 
 include(cmake/SirenwmModule.cmake)
 
