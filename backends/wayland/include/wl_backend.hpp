@@ -5,8 +5,11 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 
+#include <wl_backend_obj.hpp>
 #include <wl_display.hpp>
 #include <wl_listener.hpp>
+#include <wl_renderer.hpp>
+#include <wl_scene_graph.hpp>
 #include <wl_surface.hpp>
 
 #include <memory>
@@ -123,36 +126,31 @@ class WaylandBackend final : public Backend {
         void handle_surface_unmap(WlSurface* surf);
         void handle_surface_destroy(WlSurface* surf);
 
-        wlr_renderer*      renderer()    const { return renderer_; }
-        wlr_scene*         scene()       const { return scene_; }
-        wlr_output_layout* out_layout()  const { return output_layout_; }
+        wlr_renderer*      renderer()    const { return renderer_.renderer(); }
+        wlr_scene*         scene()       const { return scene_.scene(); }
+        wlr_output_layout* out_layout()  const { return scene_.output_layout(); }
         wlr_seat*          seat()        const { return seat_; }
         wlr_cursor*        cursor()      const { return cursor_; }
-
-        // Returns the root scene tree, hiding the 0.17/0.18 API difference.
-        // Implementation uses wlr_compat::scene_root() from wl_compat.hpp.
-        wlr_scene_tree* scene_root() const;
+        wlr_scene_tree*    scene_root()  const { return scene_.root(); }
 
     private:
         Core&    core_;
         Runtime& runtime_;
 
-        // Wayland display (owns wl_display, socket, event loop)
-        WlDisplay display_;
+        // Wayland display (owns wl_display, socket, event loop) — destroyed last
+        WlDisplay    display_;
+        // wlroots backend, renderer+allocator+compositor, scene+layout
+        WlBackendObj backend_obj_;
+        WlRenderer   renderer_;
+        WlSceneGraph scene_;
 
-        // wlroots core
-        wlr_backend*         backend_       = nullptr;
-        wlr_renderer*        renderer_      = nullptr;
-        wlr_allocator*       allocator_     = nullptr;
-        wlr_compositor*      compositor_    = nullptr;
-        wlr_scene*           scene_         = nullptr;
-        wlr_output_layout*   output_layout_ = nullptr;
+        // Still raw — will be wrapped in Phase 4 (seat) and later phases
         wlr_seat*            seat_          = nullptr;
         wlr_cursor*          cursor_        = nullptr;
         wlr_xcursor_manager* xcursor_mgr_   = nullptr;
         wlr_xdg_shell*       xdg_shell_     = nullptr;
 #ifndef SIRENWM_NO_LAYER_SHELL
-        wlr_layer_shell_v1* layer_shell_ = nullptr;
+        wlr_layer_shell_v1*      layer_shell_ = nullptr;
 #endif
         wlr_data_device_manager* data_dev_mgr_ = nullptr;
 
