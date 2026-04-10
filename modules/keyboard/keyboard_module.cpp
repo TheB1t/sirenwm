@@ -2,6 +2,7 @@
 
 #include <backend/backend.hpp>
 #include <backend/keyboard_port.hpp>
+#include <backend/events.hpp>
 
 #include <log.hpp>
 #include <module_registry.hpp>
@@ -117,6 +118,38 @@ void KeyboardModule::on_stop(bool /*is_exec_restart*/) {
     auto* kp = backend().keyboard_port();
     if (kp)
         kp->restore();
+}
+
+// ---------------------------------------------------------------------------
+// Per-window layout tracking
+// ---------------------------------------------------------------------------
+
+void KeyboardModule::on(event::FocusChanged ev) {
+    auto* kp = backend().keyboard_port();
+    if (!kp) return;
+
+    // Save current group for the window that is losing focus.
+    if (focused_window_ != NO_WINDOW)
+        window_groups_[focused_window_] = kp->get_group();
+
+    focused_window_ = ev.window;
+
+    // Restore saved group for the newly focused window (or group 0 if unknown).
+    uint32_t group = 0;
+    auto it = window_groups_.find(ev.window);
+    if (it != window_groups_.end())
+        group = it->second;
+    kp->set_group(group);
+
+    // Notify listeners (e.g. bar widgets) about the layout change.
+    std::string layout = kp->current_layout();
+    runtime().emit(event::KeyboardLayoutChanged{ layout });
+}
+
+void KeyboardModule::on(event::WindowUnmapped ev) {
+    window_groups_.erase(ev.window);
+    if (focused_window_ == ev.window)
+        focused_window_ = NO_WINDOW;
 }
 
 SIRENWM_REGISTER_MODULE("keyboard", KeyboardModule)

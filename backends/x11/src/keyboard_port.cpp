@@ -187,6 +187,22 @@ class X11KeyboardPort final : public KeyboardPort {
             apply_snapshot(dpy_, *saved_);
             saved_.reset();
         }
+
+        uint32_t get_group() const override {
+            if (!dpy_)
+                return 0;
+            XkbStateRec state = {};
+            if (XkbGetState(dpy_, XkbUseCoreKbd, &state) != Success)
+                return 0;
+            return static_cast<uint32_t>(state.group);
+        }
+
+        void set_group(uint32_t group) override {
+            if (!dpy_)
+                return;
+            XkbLockGroup(dpy_, XkbUseCoreKbd, group);
+            XFlush(dpy_);
+        }
 };
 
 std::unique_ptr<KeyboardPort> create_keyboard_port(XConnection& xconn) {

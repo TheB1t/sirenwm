@@ -60,6 +60,11 @@ class FakeKeyboardPort : public backend::KeyboardPort {
             apply_called = true;
         }
         void restore() override { restore_called = true; }
+        uint32_t get_group() const override { return group_; }
+        void set_group(uint32_t g) override { group_ = g; }
+
+    private:
+        uint32_t group_ = 0;
 };
 
 // ---------------------------------------------------------------------------
