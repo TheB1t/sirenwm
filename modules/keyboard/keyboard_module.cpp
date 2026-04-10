@@ -115,9 +115,9 @@ void KeyboardModule::on_reload() {
 }
 
 void KeyboardModule::on_stop(bool is_exec_restart) {
-    // Skip restore on exec-restart: the new process will re-apply keyboard
-    // settings via apply() in on_start(). XkbGetKeyboardByName crashes here
-    // because the X connection is being torn down during stop().
+    // Skip XKB restore on exec-restart: XkbGetKeyboardByName crashes when called
+    // while the X connection is being torn down. The new process re-applies
+    // settings via apply() in on_start().
     if (is_exec_restart)
         return;
     auto* kp = backend().keyboard_port();

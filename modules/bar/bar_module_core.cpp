@@ -12,10 +12,8 @@
 #include <unistd.h>
 #include <sys/timerfd.h>
 
-// Parse a slot value (a table) into a BarSlot.
-// Accepts:
-//   { __builtin = "tags"|"title"|"tray" }
-//   { fn = function [, interval = N] }
+// Parse a BarSlot from a Lua table: either a builtin widget ("tags", "title", "tray")
+// or a Lua object with a render() method and an optional update interval in seconds.
 static bool parse_slot(LuaContext& lua, LuaHost& host, int val_idx,
     BarSlot& out, const std::string& ctx, std::string* err_out) {
     val_idx = lua.abs_index(val_idx);
@@ -81,7 +79,7 @@ static bool parse_slot(LuaContext& lua, LuaHost& host, int val_idx,
     return true;
 }
 
-// Parse a zone list: array of slot tables.
+// Parse an array of slot tables into a zone (left/center/right). Skips invalid entries.
 static bool parse_zone(LuaContext& lua, LuaHost& host,
     int table_idx, std::vector<BarSlot>& out,
     const std::string& ctx, std::string* err_out) {
@@ -142,7 +140,7 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
         cfg.height = (int)lua.to_integer(-1);
     lua.pop();
 
-    // Colors: start from theme base colors, then apply per-bar overrides.
+    // Color resolution: theme defaults first, then bar-level overrides on top.
     cfg.colors.normal_bg  = theme.alt_bg;
     cfg.colors.normal_fg  = theme.fg;
     cfg.colors.focused_bg = theme.accent;
@@ -198,10 +196,10 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
     return true;
 }
 
-// Parse one bar side (top or bottom) from a MonitorBarConfig table.
-// Absent key         → BarSideState::Remove
-// key = {}           → BarSideState::Inherit
-// key = { ... }      → BarSideState::Custom
+// Parse one bar side from a Lua table with three-state cascade semantics:
+//   absent key  → Remove  (no bar on this side)
+//   key = {}    → Inherit (use the default config)
+//   key = {...} → Custom  (use the provided config)
 static bool parse_bar_side(LuaContext& lua, LuaHost& host,
     const ThemeConfig& theme, int table_idx, const char* key,
     BarPosition pos, BarSide& out,
@@ -217,7 +215,7 @@ static bool parse_bar_side(LuaContext& lua, LuaHost& host,
         if (err_out) *err_out = ctx + "." + key + ": must be a table";
         return false;
     }
-    // Empty table {} → inherit default.
+    // Truly empty table (no array or string keys) → Inherit.
     if (lua.raw_len(lua.abs_index(-1)) == 0) {
         lua.push_nil();
         bool has_keys = lua.next(lua.abs_index(-2));
@@ -240,7 +238,7 @@ static bool parse_bar_side(LuaContext& lua, LuaHost& host,
     return true;
 }
 
-// Parse { top = {...}, bottom = {...} } into a MonitorBarConfig.
+// Parse top and bottom sides from a Lua table into a MonitorBarConfig.
 static bool parse_monitor_bar_config(LuaContext& lua, LuaHost& host,
     const ThemeConfig& theme, int table_idx,
     MonitorBarConfig& out, const std::string& ctx, std::string* err_out) {
@@ -254,8 +252,8 @@ static bool parse_monitor_bar_config(LuaContext& lua, LuaHost& host,
     return true;
 }
 
-// Detect whether a settings table uses the new per-monitor format.
-// New format has a "default" key, or at least one non-"top"/"bottom" string key.
+// Returns true if the settings table uses per-monitor format (has a "default" key
+// or any key that is not "top"/"bottom"), false if it is the legacy flat format.
 static bool is_per_monitor_format(LuaContext& lua, int table_idx) {
     table_idx = lua.abs_index(table_idx);
     lua.get_field(table_idx, "default");
@@ -263,14 +261,13 @@ static bool is_per_monitor_format(LuaContext& lua, int table_idx) {
     lua.pop();
     if (has_default)
         return true;
-    // Check for any string key that is not "top" or "bottom".
     lua.push_nil();
     while (lua.next(table_idx)) {
-        lua.pop(1); // pop value
+        lua.pop(1);
         if (lua.is_string(-1)) {
             std::string k = lua.to_string(-1);
             if (k != "top" && k != "bottom") {
-                lua.pop(1); // pop key
+                lua.pop(1);
                 return true;
             }
         }
@@ -290,7 +287,6 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
     BarSetConfig cfg;
 
     if (is_per_monitor_format(lua, table_idx)) {
-        // New format: default + per-monitor aliases.
         lua.get_field(table_idx, "default");
         if (!lua.is_nil(-1)) {
             if (!lua.is_table(-1)) {
@@ -306,7 +302,6 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
         }
         lua.pop();
 
-        // Iterate all keys; skip "default".
         lua.push_nil();
         while (lua.next(table_idx)) {
             if (!lua.is_string(-2)) { lua.pop(1); continue; }
@@ -331,7 +326,7 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
             lua.pop(1);
         }
     } else {
-        // Legacy format: { top = {...}, bottom = {...} } → treat as default.
+        // Legacy flat format { top = {...}, bottom = {...} } — treat as the default config.
         if (!parse_monitor_bar_config(lua, host, theme, table_idx,
                 cfg.default_cfg, "bar.settings", &err))
             return false;
