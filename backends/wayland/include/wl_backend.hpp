@@ -7,7 +7,9 @@
 
 #include <wl_backend_obj.hpp>
 #include <wl_display.hpp>
+#include <wl_keyboard.hpp>
 #include <wl_listener.hpp>
+#include <wl_output.hpp>
 #include <wl_renderer.hpp>
 #include <wl_scene_graph.hpp>
 #include <wl_seat.hpp>
@@ -48,29 +50,6 @@ struct WlLayerSurface {
     WlVoidListener              on_commit_;
 };
 #endif
-
-// ---------------------------------------------------------------------------
-// Per-output state tracked by the backend.
-// ---------------------------------------------------------------------------
-struct WlOutput {
-    wlr_output*       output       = nullptr;
-    wlr_scene_output* scene_output = nullptr;
-    int               monitor_idx  = -1;   // Core monitor index (after topology apply)
-
-    WlVoidListener    on_frame_;
-    WlVoidListener    on_destroy_;
-};
-
-// ---------------------------------------------------------------------------
-// Per-keyboard device.
-// ---------------------------------------------------------------------------
-struct WlKeyboard {
-    wlr_input_device* device = nullptr;
-
-    WlListener<wlr_keyboard_key_event> on_key_;
-    WlVoidListener                     on_modifiers_;
-    WlVoidListener                     on_destroy_;
-};
 
 // ---------------------------------------------------------------------------
 // WaylandBackend — wlroots 0.15 compositor backend.

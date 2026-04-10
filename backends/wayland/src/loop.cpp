@@ -47,14 +47,14 @@ void WaylandBackend::render_frame() {
 // handle_output_frame — called by wlr_output::frame signal each vsync
 // ---------------------------------------------------------------------------
 void WaylandBackend::handle_output_frame(WlOutput* out) {
-    if (!out->scene_output) return;
+    if (!out->scene_output()) return;
 
-    wlr_scene_output_commit(out->scene_output, nullptr);
+    wlr_scene_output_commit(out->scene_output(), nullptr);
 
     // Send frame-done to surfaces visible on this output
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_scene_output_send_frame_done(out->scene_output, &now);
+    wlr_scene_output_send_frame_done(out->scene_output(), &now);
 }
 
 // ---------------------------------------------------------------------------

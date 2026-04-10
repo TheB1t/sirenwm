@@ -257,26 +257,18 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
     }
     wlr_output_state_finish(&state);
 
-    auto* out_state = new WlOutput();
-    out_state->output = output;
-
     // Add to output_layout (auto-placed to the right of existing outputs)
     wlr_output_layout_add_auto(scene_.output_layout(), output);
 
     // Create scene output
-    out_state->scene_output = wlr_scene_get_scene_output(scene_.scene(), output);
-    if (!out_state->scene_output)
-        out_state->scene_output = wlr_scene_output_create(scene_.scene(), output);
+    wlr_scene_output* scene_out = wlr_scene_get_scene_output(scene_.scene(), output);
+    if (!scene_out)
+        scene_out = wlr_scene_output_create(scene_.scene(), output);
 
-    // Wire frame + destroy signals
-    out_state->on_frame_.connect(&output->events.frame, [this, out_state](void*) {
-            handle_output_frame(out_state);
-        });
-    out_state->on_destroy_.connect(&output->events.destroy, [this, out_state](void*) {
-            handle_output_destroy(out_state);
-        });
-
-    outputs_.push_back(std::unique_ptr<WlOutput>(out_state));
+    outputs_.push_back(std::make_unique<WlOutput>(output, scene_out,
+        [this](WlOutput* o) { handle_output_frame(o); },
+        [this](WlOutput* o) { handle_output_destroy(o); }
+    ));
 
     // Notify runtime that display topology changed.
     runtime_.dispatch_display_change();
@@ -287,13 +279,10 @@ void WaylandBackend::handle_new_output(wlr_output* output) {
 // ---------------------------------------------------------------------------
 void WaylandBackend::handle_output_destroy(WlOutput* out) {
     LOG_INFO("WaylandBackend: output destroyed '%s'",
-        out->output ? out->output->name : "?");
-    out->on_frame_.disconnect();
-    out->on_destroy_.disconnect();
+        out->output() ? out->output()->name : "?");
+    out->disconnect();
     outputs_.erase(std::remove_if(outputs_.begin(), outputs_.end(),
-        [out](const auto& p) {
-            return p.get() == out;
-        }), outputs_.end());
+        [out](const auto& p) { return p.get() == out; }), outputs_.end());
     runtime_.dispatch_display_change();
 }
 
@@ -316,31 +305,13 @@ void WaylandBackend::handle_new_input(wlr_input_device* device) {
 }
 
 void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
-    auto* kb = new WlKeyboard();
-    kb->device = device;
-
-    wlr_keyboard* keyboard = wlr_keyboard_from_input_device(device);
-
-    // Set up XKB keymap from environment (XKBLAYOUT, XKBOPTIONS, etc.)
-    xkb_context*   ctx    = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    xkb_rule_names rules  = {};
-    xkb_keymap*    keymap = xkb_keymap_new_from_names(ctx, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
-    wlr_keyboard_set_keymap(keyboard, keymap);
-    xkb_keymap_unref(keymap);
-    xkb_context_unref(ctx);
-
-    wlr_keyboard_set_repeat_info(keyboard, 25, 600);
-
-    kb->on_key_.connect(&keyboard->events.key,
-        [this, kb](wlr_keyboard_key_event* ev) { handle_keyboard_key(kb, ev); });
-    kb->on_modifiers_.connect(&keyboard->events.modifiers,
-        [this, kb](void*) { handle_keyboard_modifiers(kb); });
-    kb->on_destroy_.connect(&device->events.destroy,
-        [this, kb](void*) { handle_keyboard_destroy(kb); });
-
-    wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
-
-    keyboards_.push_back(std::unique_ptr<WlKeyboard>(kb));
+    keyboards_.push_back(std::make_unique<WlKeyboard>(device,
+        [this](WlKeyboard* kb, wlr_keyboard_key_event* ev) { handle_keyboard_key(kb, ev); },
+        [this](WlKeyboard* kb) { handle_keyboard_modifiers(kb); },
+        [this](WlKeyboard* kb) { handle_keyboard_destroy(kb); }
+    ));
+    WlKeyboard* kb = keyboards_.back().get();
+    wlr_seat_set_keyboard(seat_obj_.seat(), kb->keyboard());
     LOG_INFO("WaylandBackend: keyboard '%s' added", device->name);
 }
 
@@ -350,7 +321,7 @@ void WaylandBackend::handle_new_pointer(wlr_input_device* device) {
 }
 
 void WaylandBackend::handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event* ev) {
-    wlr_keyboard* keyboard = wlr_keyboard_from_input_device(kb->device);
+    wlr_keyboard* keyboard = kb->keyboard();
     xkb_keycode_t keycode  = ev->keycode + 8;
     xkb_keysym_t  keysym   = xkb_state_key_get_one_sym(keyboard->xkb_state, keycode);
 
@@ -371,7 +342,7 @@ void WaylandBackend::handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event*
 }
 
 void WaylandBackend::handle_keyboard_modifiers(WlKeyboard* kb) {
-    wlr_keyboard* keyboard = wlr_keyboard_from_input_device(kb->device);
+    wlr_keyboard* keyboard = kb->keyboard();
     wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
     wlr_seat_keyboard_notify_modifiers(seat_obj_.seat(), &keyboard->modifiers);
 }
@@ -499,7 +470,7 @@ void WaylandBackend::on(event::FocusChanged ev) {
 
     // Notify seat that keyboard focus goes to this surface.
     if (!keyboards_.empty()) {
-        wlr_keyboard* keyboard = wlr_keyboard_from_input_device(keyboards_[0]->device);
+        wlr_keyboard* keyboard = keyboards_[0]->keyboard();
         wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
         wlr_seat_keyboard_notify_enter(seat_obj_.seat(),
             surf->xdg_surface()->surface,
@@ -530,7 +501,7 @@ WlOutput* WaylandBackend::output_at(double x, double y) {
     wlr_output* o = wlr_output_layout_output_at(scene_.output_layout(), x, y);
     if (!o) return nullptr;
     for (auto& out : outputs_)
-        if (out->output == o) return out.get();
+        if (out->output() == o) return out.get();
     return nullptr;
 }
 
@@ -639,7 +610,7 @@ void WaylandBackend::handle_new_layer_surface(wlr_layer_surface_v1* surface) {
     // Assign output: use the client's requested output or fall back to first.
     if (!surface->output) {
         if (!outputs_.empty())
-            surface->output = outputs_.front()->output;
+            surface->output = outputs_.front()->output();
         else {
             LOG_WARN("WaylandBackend: layer surface with no output available, closing");
             wlr_layer_surface_v1_destroy(surface);
