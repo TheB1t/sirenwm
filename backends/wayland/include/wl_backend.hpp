@@ -44,10 +44,10 @@ struct WlLayerSurface {
     wlr_layer_surface_v1*       surface     = nullptr;
     wlr_scene_layer_surface_v1* scene_layer = nullptr;
 
-    WlListener                  on_map_;
-    WlListener                  on_unmap_;
-    WlListener                  on_destroy_;
-    WlListener                  on_commit_;
+    WlVoidListener              on_map_;
+    WlVoidListener              on_unmap_;
+    WlVoidListener              on_destroy_;
+    WlVoidListener              on_commit_;
 };
 #endif
 
@@ -59,8 +59,8 @@ struct WlOutput {
     wlr_scene_output* scene_output = nullptr;
     int               monitor_idx  = -1;   // Core monitor index (after topology apply)
 
-    WlListener        on_frame_;
-    WlListener        on_destroy_;
+    WlVoidListener    on_frame_;
+    WlVoidListener    on_destroy_;
 };
 
 // ---------------------------------------------------------------------------
@@ -69,9 +69,9 @@ struct WlOutput {
 struct WlKeyboard {
     wlr_input_device* device = nullptr;
 
-    WlListener        on_key_;
-    WlListener        on_modifiers_;
-    WlListener        on_destroy_;
+    WlListener<wlr_keyboard_key_event> on_key_;
+    WlVoidListener                     on_modifiers_;
+    WlVoidListener                     on_destroy_;
 };
 
 // ---------------------------------------------------------------------------
@@ -128,15 +128,9 @@ class WaylandBackend final : public Backend {
         wlr_seat*          seat()        const { return seat_; }
         wlr_cursor*        cursor()      const { return cursor_; }
 
-        // wlr_scene::tree is wlr_scene_tree* in some versions and wlr_scene_tree in others.
-        // This helper always returns wlr_scene_tree*.
-        wlr_scene_tree* scene_root() const {
-#if defined(WLR_SCENE_TREE_IS_POINTER)
-            return scene_->tree;
-#else
-            return &scene_->tree;
-#endif
-        }
+        // Returns the root scene tree, hiding the 0.17/0.18 API difference.
+        // Implementation uses wlr_compat::scene_root() from wl_compat.hpp.
+        wlr_scene_tree* scene_root() const;
 
     private:
         Core&    core_;
@@ -210,19 +204,19 @@ class WaylandBackend final : public Backend {
         std::string socket_name_;
 
         // Backend-level signal listeners
-        WlListener on_new_output_;
-        WlListener on_new_input_;
-        WlListener on_new_xdg_surface_;
+        WlListener<wlr_output>       on_new_output_;
+        WlListener<wlr_input_device> on_new_input_;
+        WlListener<wlr_xdg_surface>  on_new_xdg_surface_;
 #ifndef SIRENWM_NO_LAYER_SHELL
-        WlListener on_new_layer_surface_;
+        WlListener<wlr_layer_surface_v1> on_new_layer_surface_;
 #endif
-        WlListener on_cursor_motion_;
-        WlListener on_cursor_motion_abs_;
-        WlListener on_cursor_button_;
-        WlListener on_cursor_axis_;
-        WlListener on_cursor_frame_;
-        WlListener on_request_cursor_;
-        WlListener on_request_set_selection_;
+        WlListener<wlr_pointer_motion_event>          on_cursor_motion_;
+        WlListener<wlr_pointer_motion_absolute_event> on_cursor_motion_abs_;
+        WlListener<wlr_pointer_button_event>          on_cursor_button_;
+        WlListener<wlr_pointer_axis_event>            on_cursor_axis_;
+        WlVoidListener                                on_cursor_frame_;
+        WlListener<wlr_seat_pointer_request_set_cursor_event>  on_request_cursor_;
+        WlListener<wlr_seat_request_set_selection_event>       on_request_set_selection_;
 
         // Signal handlers
         void handle_new_output(wlr_output* output);

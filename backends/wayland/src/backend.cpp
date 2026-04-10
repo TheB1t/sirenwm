@@ -1,4 +1,5 @@
 #include <wl_backend.hpp>
+#include <wl_compat.hpp>
 #include <wl_ports.hpp>
 #include <wl_surface.hpp>
 
@@ -91,45 +92,34 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
         wlr_cursor_attach_output_layout(cursor_, output_layout_);
 
     // Wire top-level backend signals
-    on_new_output_.connect(&backend_->events.new_output, [this](void* data) {
-            handle_new_output(static_cast<wlr_output*>(data));
-        });
-    on_new_input_.connect(&backend_->events.new_input, [this](void* data) {
-            handle_new_input(static_cast<wlr_input_device*>(data));
-        });
-    on_new_xdg_surface_.connect(&xdg_shell_->events.new_surface, [this](void* data) {
-            handle_new_xdg_surface(static_cast<wlr_xdg_surface*>(data));
-        });
+    on_new_output_.connect(&backend_->events.new_output,
+        [this](wlr_output* o) { handle_new_output(o); });
+    on_new_input_.connect(&backend_->events.new_input,
+        [this](wlr_input_device* d) { handle_new_input(d); });
+    on_new_xdg_surface_.connect(&xdg_shell_->events.new_surface,
+        [this](wlr_xdg_surface* s) { handle_new_xdg_surface(s); });
 #ifndef SIRENWM_NO_LAYER_SHELL
-    on_new_layer_surface_.connect(&layer_shell_->events.new_surface, [this](void* data) {
-            handle_new_layer_surface(static_cast<wlr_layer_surface_v1*>(data));
-        });
+    on_new_layer_surface_.connect(&layer_shell_->events.new_surface,
+        [this](wlr_layer_surface_v1* s) { handle_new_layer_surface(s); });
 #endif
 
     // Cursor signals
-    on_cursor_motion_.connect(&cursor_->events.motion, [this](void* data) {
-            handle_cursor_motion(static_cast<wlr_pointer_motion_event*>(data));
-        });
-    on_cursor_motion_abs_.connect(&cursor_->events.motion_absolute, [this](void* data) {
-            handle_cursor_motion_abs(static_cast<wlr_pointer_motion_absolute_event*>(data));
-        });
-    on_cursor_button_.connect(&cursor_->events.button, [this](void* data) {
-            handle_cursor_button(static_cast<wlr_pointer_button_event*>(data));
-        });
-    on_cursor_axis_.connect(&cursor_->events.axis, [this](void* data) {
-            handle_cursor_axis(static_cast<wlr_pointer_axis_event*>(data));
-        });
-    on_cursor_frame_.connect(&cursor_->events.frame, [this](void*) {
-            handle_cursor_frame();
-        });
+    on_cursor_motion_.connect(&cursor_->events.motion,
+        [this](wlr_pointer_motion_event* ev) { handle_cursor_motion(ev); });
+    on_cursor_motion_abs_.connect(&cursor_->events.motion_absolute,
+        [this](wlr_pointer_motion_absolute_event* ev) { handle_cursor_motion_abs(ev); });
+    on_cursor_button_.connect(&cursor_->events.button,
+        [this](wlr_pointer_button_event* ev) { handle_cursor_button(ev); });
+    on_cursor_axis_.connect(&cursor_->events.axis,
+        [this](wlr_pointer_axis_event* ev) { handle_cursor_axis(ev); });
+    on_cursor_frame_.connect(&cursor_->events.frame,
+        [this](void*) { handle_cursor_frame(); });
 
     // Seat signals
-    on_request_cursor_.connect(&seat_->events.request_set_cursor, [this](void* data) {
-            handle_request_cursor(static_cast<wlr_seat_pointer_request_set_cursor_event*>(data));
-        });
-    on_request_set_selection_.connect(&seat_->events.request_set_selection, [this](void* data) {
-            handle_request_set_selection(static_cast<wlr_seat_request_set_selection_event*>(data));
-        });
+    on_request_cursor_.connect(&seat_->events.request_set_cursor,
+        [this](wlr_seat_pointer_request_set_cursor_event* ev) { handle_request_cursor(ev); });
+    on_request_set_selection_.connect(&seat_->events.request_set_selection,
+        [this](wlr_seat_request_set_selection_event* ev) { handle_request_set_selection(ev); });
 
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(output_layout_, runtime_);
@@ -223,6 +213,10 @@ WaylandBackend::~WaylandBackend() {
     if (renderer_)      wlr_renderer_destroy(renderer_);
     if (backend_)       wlr_backend_destroy(backend_);
     if (display_)       wl_display_destroy(display_);
+}
+
+wlr_scene_tree* WaylandBackend::scene_root() const {
+    return wlr_compat::scene_root(scene_);
 }
 
 // ---------------------------------------------------------------------------
@@ -444,15 +438,12 @@ void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
 
     wlr_keyboard_set_repeat_info(keyboard, 25, 600);
 
-    kb->on_key_.connect(&keyboard->events.key, [this, kb](void* data) {
-            handle_keyboard_key(kb, static_cast<wlr_keyboard_key_event*>(data));
-        });
-    kb->on_modifiers_.connect(&keyboard->events.modifiers, [this, kb](void*) {
-            handle_keyboard_modifiers(kb);
-        });
-    kb->on_destroy_.connect(&device->events.destroy, [this, kb](void*) {
-            handle_keyboard_destroy(kb);
-        });
+    kb->on_key_.connect(&keyboard->events.key,
+        [this, kb](wlr_keyboard_key_event* ev) { handle_keyboard_key(kb, ev); });
+    kb->on_modifiers_.connect(&keyboard->events.modifiers,
+        [this, kb](void*) { handle_keyboard_modifiers(kb); });
+    kb->on_destroy_.connect(&device->events.destroy,
+        [this, kb](void*) { handle_keyboard_destroy(kb); });
 
     wlr_seat_set_keyboard(seat_, keyboard);
 
