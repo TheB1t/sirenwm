@@ -51,16 +51,25 @@ class BarModule : public Module {
         void on(event::KeyboardLayoutChanged) override { redraw(); }
 
     private:
-        // Owned settings registered in RuntimeStore.
-        TypedSetting<std::optional<BarConfig>> top_bar_setting_;
-        TypedSetting<std::optional<BarConfig>> bottom_bar_setting_;
+        // Owned setting registered in RuntimeStore.
+        TypedSetting<BarSetConfig> bar_set_setting_;
 
-        BarConfig top_cfg;
-        BarConfig bottom_cfg;
+        BarSetConfig bar_set_cfg_;
+
+        // Active bar windows. Each entry carries its resolved config.
+        struct BarWindow {
+            std::unique_ptr<backend::RenderWindow> window;
+            BarConfig cfg;       // resolved config for this specific monitor
+            bool      is_top;
+        };
+        std::vector<BarWindow> all_bars_;
+
+        // Convenience views into all_bars_ (non-owning).
+        // Used where code needs to iterate top or bottom bars separately.
+        std::vector<backend::RenderWindow*> top_bar_windows() const;
+        std::vector<backend::RenderWindow*> bottom_bar_windows() const;
 
         backend::RenderPort* render_port_ = nullptr;  // set in on_start()
-        std::vector<std::unique_ptr<backend::RenderWindow>> bars;
-        std::vector<std::unique_ptr<backend::RenderWindow>> bottom_bars;
 
         // One TrayHost per monitor. Exactly one slot has owns_selection=true (the owner).
         struct TraySlot {
@@ -79,7 +88,7 @@ class BarModule : public Module {
         int wakeup_pipe[2] = { -1, -1 };
         int timer_fd       = -1;            // timerfd for widget refresh (1s base tick)
 
-        struct MonRect { int idx; Vec2i pos; Vec2i size; };
+        struct MonRect { int idx; Vec2i pos; Vec2i size; std::string alias; };
 
         // Returns the TrayHost for a given monitor index, or nullptr.
         backend::TrayHost*       tray_for_monitor(int mon_idx);
@@ -93,8 +102,10 @@ class BarModule : public Module {
         void route_icon_to_monitor(WindowId icon_win, int mon_idx);
         void rebalance_tray_icons();
         void rebuild_trays();
-        void create_bars(int bar_h, const std::vector<MonRect>& monitors);
-        void create_bottom_bars(int bar_h, const std::vector<MonRect>& monitors);
+        // Resolve alias for a monitor index using current_settings().monitor_aliases.
+        std::string monitor_alias(int mon_idx) const;
+        // Create a single bar window and push into all_bars_.
+        void create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top);
         int  tag_at(WindowId bar_window, int click_x) const;
         void rebuild_bars();
         void refresh_widgets();

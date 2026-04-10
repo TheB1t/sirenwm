@@ -198,96 +198,275 @@ static bool parse_bar_config_from_lua(LuaContext& lua,
     return true;
 }
 
-static bool load_bar_assignment(LuaHost& host, const ThemeConfig& theme,
-    TypedSetting<std::optional<BarConfig>>& top_setting,
-    TypedSetting<std::optional<BarConfig>>& bottom_setting,
-    LuaContext& lua, int table_idx, std::string& err) {
-    table_idx = lua.abs_index(table_idx);
-    if (!lua.is_table(table_idx)) {
-        err = "siren.bar: expected table";
+// Parse one bar side (top or bottom) from a MonitorBarConfig table.
+// Semantics of the returned optional<optional<BarConfig>>:
+//   nullopt        — key absent in Lua → remove bar
+//   some(nullopt)  — key = {}         → inherit from default
+//   some(some(cfg))— key = { ... }   → custom config
+static bool parse_bar_side(LuaContext& lua, LuaHost& host,
+    const ThemeConfig& theme, int table_idx, const char* key,
+    BarPosition pos, std::optional<std::optional<BarConfig>>& out,
+    const std::string& ctx, std::string* err_out) {
+    lua.get_field(table_idx, key);
+    if (lua.is_nil(-1)) {
+        lua.pop();
+        out = std::nullopt; // absent → remove
+        return true;
+    }
+    if (!lua.is_table(-1)) {
+        lua.pop();
+        if (err_out) *err_out = ctx + "." + key + ": must be a table";
         return false;
     }
-
-    lua.get_field(table_idx, "top");
-    if (!lua.is_nil(-1)) {
-        if (!lua.is_table(-1)) {
+    // Empty table {} → inherit default.
+    if (lua.raw_len(lua.abs_index(-1)) == 0) {
+        // Also check no string keys (truly empty).
+        lua.push_nil();
+        bool has_keys = lua.next(lua.abs_index(-2));
+        if (has_keys) lua.pop(2);
+        if (!has_keys) {
             lua.pop();
-            err = "siren.bar.top: must be a table";
-            return false;
+            out = std::optional<BarConfig>{}; // some(nullopt) → inherit
+            return true;
         }
-        BarConfig   cfg;
-        std::string parse_err;
-        if (!parse_bar_config_from_lua(lua, host, theme, lua.abs_index(-1), BarPosition::TOP, cfg, &parse_err)) {
-            lua.pop();
-            err = parse_err;
-            return false;
-        }
-        top_setting.set(std::move(cfg));
+    }
+    BarConfig cfg;
+    std::string perr;
+    if (!parse_bar_config_from_lua(lua, host, theme, lua.abs_index(-1), pos, cfg, &perr)) {
+        lua.pop();
+        if (err_out) *err_out = perr;
+        return false;
     }
     lua.pop();
-
-    lua.get_field(table_idx, "bottom");
-    if (!lua.is_nil(-1)) {
-        if (!lua.is_table(-1)) {
-            lua.pop();
-            err = "siren.bar.bottom: must be a table";
-            return false;
-        }
-        BarConfig   cfg;
-        std::string parse_err;
-        if (!parse_bar_config_from_lua(lua, host, theme, lua.abs_index(-1), BarPosition::BOTTOM, cfg, &parse_err)) {
-            lua.pop();
-            err = parse_err;
-            return false;
-        }
-        bottom_setting.set(std::move(cfg));
-    }
-    lua.pop();
-
+    out = std::move(cfg); // some(some(cfg)) → custom
     return true;
 }
 
-void BarModule::rebuild_bars() {
-    bars.clear();
-    bottom_bars.clear();
+// Parse { top = {...}, bottom = {...} } into a MonitorBarConfig.
+static bool parse_monitor_bar_config(LuaContext& lua, LuaHost& host,
+    const ThemeConfig& theme, int table_idx,
+    MonitorBarConfig& out, const std::string& ctx, std::string* err_out) {
+    table_idx = lua.abs_index(table_idx);
+    if (!parse_bar_side(lua, host, theme, table_idx, "top",
+            BarPosition::TOP, out.top, ctx, err_out))
+        return false;
+    if (!parse_bar_side(lua, host, theme, table_idx, "bottom",
+            BarPosition::BOTTOM, out.bottom, ctx, err_out))
+        return false;
+    return true;
+}
 
-    // monitor_states() returns coordinates offset by the currently applied inset.
-    // Bar windows must be placed at the physical monitor top (before inset),
-    // so subtract the current inset to recover the original y origin.
-    const auto&          monitors   = core().monitor_states();
-    const int            cur_top    = core().monitor_top_inset();
-    const int            cur_bottom = core().monitor_bottom_inset();
-    std::vector<MonRect> top_rects;
-    std::vector<MonRect> bottom_rects;
-    top_rects.reserve(monitors.size());
-    bottom_rects.reserve(monitors.size());
+// Detect whether a settings table uses the new per-monitor format.
+// New format has a "default" key, or at least one non-"top"/"bottom" string key.
+static bool is_per_monitor_format(LuaContext& lua, int table_idx) {
+    table_idx = lua.abs_index(table_idx);
+    lua.get_field(table_idx, "default");
+    bool has_default = !lua.is_nil(-1);
+    lua.pop();
+    if (has_default)
+        return true;
+    // Check for any string key that is not "top" or "bottom".
+    lua.push_nil();
+    while (lua.next(table_idx)) {
+        lua.pop(1); // pop value
+        if (lua.is_string(-1)) {
+            std::string k = lua.to_string(-1);
+            if (k != "top" && k != "bottom") {
+                lua.pop(1); // pop key
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
+    TypedSetting<BarSetConfig>& setting,
+    LuaContext& lua, int table_idx, std::string& err) {
+    table_idx = lua.abs_index(table_idx);
+    if (!lua.is_table(table_idx)) {
+        err = "bar.settings: expected table";
+        return false;
+    }
+
+    BarSetConfig cfg;
+
+    if (is_per_monitor_format(lua, table_idx)) {
+        // New format: default + per-monitor aliases.
+        lua.get_field(table_idx, "default");
+        if (!lua.is_nil(-1)) {
+            if (!lua.is_table(-1)) {
+                lua.pop();
+                err = "bar.settings.default: must be a table";
+                return false;
+            }
+            if (!parse_monitor_bar_config(lua, host, theme, lua.abs_index(-1),
+                    cfg.default_cfg, "bar.settings.default", &err)) {
+                lua.pop();
+                return false;
+            }
+        }
+        lua.pop();
+
+        // Iterate all keys; skip "default".
+        lua.push_nil();
+        while (lua.next(table_idx)) {
+            if (!lua.is_string(-2)) { lua.pop(1); continue; }
+            std::string key = lua.to_string(-2);
+            if (key == "default") { lua.pop(1); continue; }
+
+            if (!lua.is_table(-1)) {
+                LOG_WARN("bar.settings.%s: expected table, skipping", key.c_str());
+                lua.pop(1);
+                continue;
+            }
+            MonitorBarConfig mcfg;
+            std::string      ctx = "bar.settings." + key;
+            std::string      perr;
+            if (!parse_monitor_bar_config(lua, host, theme, lua.abs_index(-1),
+                    mcfg, ctx, &perr)) {
+                LOG_WARN("%s: %s — skipping", ctx.c_str(), perr.c_str());
+                lua.pop(1);
+                continue;
+            }
+            cfg.per_monitor[key] = std::move(mcfg);
+            lua.pop(1);
+        }
+    } else {
+        // Legacy format: { top = {...}, bottom = {...} } → treat as default.
+        if (!parse_monitor_bar_config(lua, host, theme, table_idx,
+                cfg.default_cfg, "bar.settings", &err))
+            return false;
+    }
+
+    setting.set(std::move(cfg));
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+std::string BarModule::monitor_alias(int mon_idx) const {
+    const auto& aliases = core().current_settings().monitor_aliases;
+    const auto& monitors = core().monitor_states();
+    if (mon_idx < 0 || mon_idx >= (int)monitors.size())
+        return {};
+    const std::string& mon_name = monitors[mon_idx].name;
+    for (const auto& a : aliases)
+        if (a.output == mon_name)
+            return a.alias;
+    return mon_name; // fallback: use output name directly
+}
+
+std::vector<backend::RenderWindow*> BarModule::top_bar_windows() const {
+    std::vector<backend::RenderWindow*> out;
+    for (const auto& b : all_bars_)
+        if (b.is_top) out.push_back(b.window.get());
+    return out;
+}
+
+std::vector<backend::RenderWindow*> BarModule::bottom_bar_windows() const {
+    std::vector<backend::RenderWindow*> out;
+    for (const auto& b : all_bars_)
+        if (!b.is_top) out.push_back(b.window.get());
+    return out;
+}
+
+void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top) {
+    auto& rp = *render_port_;
+    backend::RenderWindowCreateInfo info;
+    info.monitor_index           = m.idx;
+    info.pos                     = m.pos;
+    info.size                    = { m.size.x(), cfg.height };
+    info.background_pixel        = rp.black_pixel();
+    info.want_expose             = true;
+    info.want_button_press       = true;
+    info.want_button_release     = true;
+    info.hints.override_redirect = true;
+    info.hints.dock              = true;
+    info.hints.keep_above        = true;
+
+    auto win = rp.create_window(info);
+    if (!win) return;
+
+    BarWindow bw;
+    bw.cfg    = cfg;
+    bw.is_top = is_top;
+    bw.window = std::move(win);
+    all_bars_.push_back(std::move(bw));
+}
+
+void BarModule::rebuild_bars() {
+    all_bars_.clear();
+
+    const auto& monitors   = core().monitor_states();
+    const int   cur_top    = core().monitor_top_inset();
+    const int   cur_bottom = core().monitor_bottom_inset();
+
+    int global_top_h    = 0;
+    int global_bottom_h = 0;
+
     for (int i = 0; i < (int)monitors.size(); i++) {
+        std::string      alias = monitor_alias(i);
+        MonitorBarConfig mcfg  = bar_set_cfg_.resolve(alias);
+
         int phys_y = monitors[i].y() - cur_top;
         int phys_h = monitors[i].height() + cur_top + cur_bottom;
-        top_rects.push_back({ i, { monitors[i].x(), phys_y }, monitors[i].size() });
-        bottom_rects.push_back({ i, { monitors[i].x(), phys_y + phys_h - bottom_cfg.height },
-                                 monitors[i].size() });
+        MonRect m{ i, { monitors[i].x(), phys_y }, monitors[i].size(), alias };
+
+        // After resolve():
+        //   nullopt              → bar removed for this monitor
+        //   some(nullopt)        → should not occur (resolve() expands to default)
+        //   some(some(cfg))      → use this config
+        auto has_content = [](const BarConfig& cfg) {
+            return cfg.height > 0 || !cfg.left.empty()
+                || !cfg.center.empty() || !cfg.right.empty();
+        };
+
+        // Helper: extract BarConfig from optional<optional<BarConfig>>.
+        // Returns nullptr if bar should be removed (outer nullopt).
+        auto effective = [](const std::optional<std::optional<BarConfig>>& v)
+                -> const BarConfig* {
+            if (!v.has_value()) return nullptr;         // absent → remove
+            if (!v->has_value()) return nullptr;        // some(nullopt) → no default set
+            return &(*v).value();
+        };
+
+        if (const BarConfig* top = effective(mcfg.top)) {
+            BarConfig top_cfg = *top;
+            if (top_cfg.height <= 0) top_cfg.height = 18;
+            if (has_content(top_cfg)) {
+                create_bar_window(m, top_cfg, true);
+                global_top_h = std::max(global_top_h, top_cfg.height);
+            }
+        }
+
+        if (const BarConfig* bot = effective(mcfg.bottom)) {
+            BarConfig bottom_cfg = *bot;
+            if (bottom_cfg.height <= 0) bottom_cfg.height = 18;
+            if (has_content(bottom_cfg)) {
+                MonRect mb{ i, { monitors[i].x(), phys_y + phys_h - bottom_cfg.height },
+                            monitors[i].size(), alias };
+                create_bar_window(mb, bottom_cfg, false);
+                global_bottom_h = std::max(global_bottom_h, bottom_cfg.height);
+            }
+        }
     }
 
-    if (top_cfg.height > 0) {
-        create_bars(top_cfg.height, top_rects);
-        (void)core().dispatch(command::ApplyMonitorTopInset{ top_cfg.height });
-    }
-    if (bottom_cfg.height > 0) {
-        create_bottom_bars(bottom_cfg.height, bottom_rects);
-        (void)core().dispatch(command::ApplyMonitorBottomInset{ bottom_cfg.height });
-    }
+    if (global_top_h > 0)
+        (void)core().dispatch(command::ApplyMonitorTopInset{ global_top_h });
+    if (global_bottom_h > 0)
+        (void)core().dispatch(command::ApplyMonitorBottomInset{ global_bottom_h });
 }
 
 bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {
     const ThemeConfig& theme = core().current_settings().theme;
-    return load_bar_assignment(this->lua(), theme,
-               top_bar_setting_, bottom_bar_setting_, lua, table_idx, err);
+    return load_bar_set_config(this->lua(), theme, bar_set_setting_, lua, table_idx, err);
 }
 
 void BarModule::on_init() {
-    store().register_setting("bar",        top_bar_setting_);
-    store().register_setting("bottom_bar", bottom_bar_setting_);
+    store().register_setting("bar_set", bar_set_setting_);
 
     state_provider = [this](int mon_idx) -> BarState {
             BarState    s;
@@ -352,9 +531,24 @@ void BarModule::on_lua_init() {
     host.set_module_table("bar");
 }
 
+static void apply_theme_to_cfg(BarConfig& cfg, const ThemeConfig& th) {
+    if (cfg.font.empty())              cfg.font = th.font;
+    if (cfg.colors.bar_bg.empty())     cfg.colors.bar_bg = th.bg;
+    if (cfg.colors.normal_fg.empty())  cfg.colors.normal_fg = th.fg;
+    if (cfg.colors.normal_bg.empty())  cfg.colors.normal_bg = th.alt_bg;
+    if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
+    if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
+    if (cfg.colors.status_fg.empty())  cfg.colors.status_fg = th.fg;
+}
+
+static void apply_theme_to_monitor_cfg(MonitorBarConfig& mcfg, const ThemeConfig& th) {
+    if (mcfg.top    && mcfg.top->has_value())    apply_theme_to_cfg(mcfg.top->value(), th);
+    if (mcfg.bottom && mcfg.bottom->has_value()) apply_theme_to_cfg(mcfg.bottom->value(), th);
+}
+
 void BarModule::on(event::ExposeWindow ev) {
-    for (auto& b : bars)
-        if (b->id() == ev.window) {
+    for (auto& b : all_bars_)
+        if (b.window && b.window->id() == ev.window) {
             redraw();
             return;
         }
@@ -368,15 +562,11 @@ void BarModule::on(event::WindowUnmapped ev) {
 }
 
 bool BarModule::on(event::ClientMessageEv ev) {
-    // Only the owner tray handles REQUEST_DOCK client messages.
     backend::TrayHost* t = owner_tray();
     if (!t)
         return false;
 
-    // Pre-check: if the icon is already docked in any tray (e.g. after a
-    // transfer), ignore the duplicate REQUEST_DOCK that apps send when they
-    // see a new MANAGER broadcast on exec-restart.
-    if (ev.data[1] == 0) { // SYSTEM_TRAY_REQUEST_DOCK opcode
+    if (ev.data[1] == 0) {
         WindowId icon_win = ev.data[2];
         for (const auto& slot : trays)
             if (slot.tray && slot.tray->contains_icon(icon_win))
@@ -385,13 +575,8 @@ bool BarModule::on(event::ClientMessageEv ev) {
 
     WindowId icon_win = NO_WINDOW;
     bool     handled  = t->handle_client_message(ev, &icon_win);
-    if (handled && icon_win != NO_WINDOW) {
-        // Do not transfer immediately after docking: the app window may not yet
-        // be placed on its final workspace (rules run async), and a premature
-        // reparent confuses apps that respond to XEMBED_EMBEDDED_NOTIFY.
-        // Rebalancing happens on workspace-switch and window-move events.
+    if (handled && icon_win != NO_WINDOW)
         redraw();
-    }
     return handled;
 }
 
@@ -428,12 +613,12 @@ void BarModule::on(event::ButtonEv ev) {
         if (slot.tray && slot.tray->handle_button_event(ev))
             return;
 
-    for (auto& b : bars) {
-        if (b->id() != ev.window)
+    for (auto& b : all_bars_) {
+        if (!b.is_top || !b.window || b.window->id() != ev.window)
             continue;
         int ws = tag_at(ev.window, ev.event_pos.x());
         if (ws >= 0) {
-            (void)core().dispatch(command::SwitchWorkspace{ ws, b->monitor_index() });
+            (void)core().dispatch(command::SwitchWorkspace{ ws, b.window->monitor_index() });
             redraw();
         }
         return;
@@ -441,28 +626,13 @@ void BarModule::on(event::ButtonEv ev) {
 }
 
 void BarModule::on_reload() {
-    if (auto& bc = top_bar_setting_.get(); bc.has_value())
-        top_cfg = *bc;
-    if (auto& bc = bottom_bar_setting_.get(); bc.has_value())
-        bottom_cfg = *bc;
+    bar_set_cfg_ = bar_set_setting_.get();
 
     const ThemeConfig& th = core().current_settings().theme;
-    auto               apply_theme = [&](BarConfig& cfg) {
-            if (cfg.font.empty())              cfg.font = th.font;
-            if (cfg.colors.bar_bg.empty())     cfg.colors.bar_bg = th.bg;
-            if (cfg.colors.normal_fg.empty())  cfg.colors.normal_fg = th.fg;
-            if (cfg.colors.normal_bg.empty())  cfg.colors.normal_bg = th.alt_bg;
-            if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
-            if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
-            if (cfg.colors.status_fg.empty())  cfg.colors.status_fg = th.fg;
-        };
-    apply_theme(top_cfg);
-    apply_theme(bottom_cfg);
+    apply_theme_to_monitor_cfg(bar_set_cfg_.default_cfg, th);
+    for (auto& [alias, mcfg] : bar_set_cfg_.per_monitor)
+        apply_theme_to_monitor_cfg(mcfg, th);
 
-    if (top_cfg.height <= 0)
-        top_cfg.height = 18;
-    // Recreate bar windows and re-apply monitor top inset so tiling
-    // geometry matches the bar height after reload.
     rebuild_bars();
     (void)core().dispatch(command::ReconcileNow{});
     rebuild_trays();
@@ -472,12 +642,10 @@ void BarModule::on_reload() {
 }
 
 void BarModule::rebuild_trays() {
-    if (bars.empty())
+    auto top_wins = top_bar_windows();
+    if (top_wins.empty())
         return;
 
-    // Determine owner monitor: prefer the current owner to avoid re-broadcasting
-    // MANAGER (which causes all tray clients to re-dock with new icon windows).
-    // Only pick a new owner on first run (trays empty) or topology change.
     int owner_mon = -1;
     for (auto& slot : trays) {
         if (slot.tray && slot.tray->owns_selection()) {
@@ -486,47 +654,48 @@ void BarModule::rebuild_trays() {
         }
     }
     if (owner_mon < 0) {
-        // First run: pick focused monitor, fallback to first bar.
         int focused_mon = core().focused_monitor_index();
-        for (auto& b : bars) {
-            if (b && b->monitor_index() == focused_mon) {
+        for (auto* w : top_wins) {
+            if (w && w->monitor_index() == focused_mon) {
                 owner_mon = focused_mon;
                 break;
             }
         }
-        if (owner_mon < 0 && !bars.empty())
-            owner_mon = bars.front()->monitor_index();
+        if (owner_mon < 0 && !top_wins.empty())
+            owner_mon = top_wins.front()->monitor_index();
     }
 
-    // Build set of monitor indices currently covered by bars.
     std::unordered_set<int> bar_mons;
-    for (auto& b : bars)
-        if (b) bar_mons.insert(b->monitor_index());
+    for (auto* w : top_wins)
+        if (w) bar_mons.insert(w->monitor_index());
 
-    // Remove slots for monitors that no longer have a bar.
     trays.erase(std::remove_if(trays.begin(), trays.end(),
         [&](const TraySlot& s) {
             return bar_mons.find(s.mon_idx) == bar_mons.end();
         }),
         trays.end());
 
-    for (auto& b : bars) {
-        if (!b)
-            continue;
-        int mon_idx = b->monitor_index();
+    for (auto* w : top_wins) {
+        if (!w) continue;
+        int mon_idx = w->monitor_index();
 
-        // If a tray already exists for this monitor, just reattach geometry.
         backend::TrayHost* existing = tray_for_monitor(mon_idx);
         if (existing) {
-            existing->attach_to_bar(b->id(), b->x(), b->y(), b->width());
+            existing->attach_to_bar(w->id(), w->x(), w->y(), w->width());
             continue;
         }
 
-        // New monitor — create a passive tray (owner never changes after first run).
+        // Find height for this monitor's top bar.
+        int bar_h = 18;
+        for (const auto& b : all_bars_)
+            if (b.is_top && b.window && b.window->monitor_index() == mon_idx) {
+                bar_h = b.cfg.height;
+                break;
+            }
+
         bool own_selection = (mon_idx == owner_mon) && !owner_tray();
         auto tray          = backend().create_tray_host(
-            b->id(), b->x(), b->y(),
-            top_cfg.height, own_selection);
+            w->id(), w->x(), w->y(), bar_h, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
             LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx);
             continue;
@@ -542,11 +711,9 @@ void BarModule::rebuild_trays() {
 }
 
 void BarModule::on(event::TrayIconDocked ev) {
-    // Icon returned to root (ReparentNotify to root) — re-adopt into owner tray.
     backend::TrayHost* t = owner_tray();
     if (t && !t->contains_icon(ev.icon))
         t->adopt_icon(ev.icon);
-    // Now move it to the correct monitor.
     int target = monitor_for_icon(ev.icon);
     route_icon_to_monitor(ev.icon, target);
     redraw();
@@ -567,33 +734,13 @@ void BarModule::on_start() {
         LOG_ERR("Bar: backend render port is unavailable");
         return;
     }
-    if (auto& bc = top_bar_setting_.get(); bc.has_value())
-        top_cfg = *bc;
-    if (auto& bc = bottom_bar_setting_.get(); bc.has_value())
-        bottom_cfg = *bc;
 
-    // Theme is parsed after bar.settings in post-exec — patch colors/font now.
+    bar_set_cfg_ = bar_set_setting_.get();
+
     const ThemeConfig& th = core().current_settings().theme;
-    auto               apply_theme = [&](BarConfig& cfg) {
-            if (cfg.font.empty())
-                cfg.font = th.font;
-            if (cfg.colors.bar_bg.empty())    cfg.colors.bar_bg = th.bg;
-            if (cfg.colors.normal_fg.empty()) cfg.colors.normal_fg = th.fg;
-            if (cfg.colors.normal_bg.empty()) cfg.colors.normal_bg = th.alt_bg;
-            if (cfg.colors.focused_bg.empty()) cfg.colors.focused_bg = th.accent;
-            if (cfg.colors.focused_fg.empty()) cfg.colors.focused_fg = th.alt_fg;
-            if (cfg.colors.status_fg.empty()) cfg.colors.status_fg = th.fg;
-        };
-    apply_theme(top_cfg);
-    apply_theme(bottom_cfg);
-
-    if (top_cfg.height <= 0 && !top_bar_setting_.get().has_value())
-        top_cfg.height = 0;
-    else if (top_cfg.height <= 0)
-        top_cfg.height = 18;
-
-    if (bottom_cfg.height <= 0 && bottom_bar_setting_.get().has_value())
-        bottom_cfg.height = 18;
+    apply_theme_to_monitor_cfg(bar_set_cfg_.default_cfg, th);
+    for (auto& [alias, mcfg] : bar_set_cfg_.per_monitor)
+        apply_theme_to_monitor_cfg(mcfg, th);
 
     rebuild_bars();
     (void)core().dispatch(command::ReconcileNow{});
@@ -612,19 +759,15 @@ void BarModule::on_start() {
             });
     }
 
-    // Collect all Lua slots across both bar configs for timer and init.
-    auto lua_slots = [](BarConfig& cfg) -> std::vector<BarSlot*> {
-            std::vector<BarSlot*> out;
-            for (auto& s : cfg.left)   if (s.kind == BarSlotKind::Lua) out.push_back(&s);
-            for (auto& s : cfg.center) if (s.kind == BarSlotKind::Lua) out.push_back(&s);
-            for (auto& s : cfg.right)  if (s.kind == BarSlotKind::Lua) out.push_back(&s);
-            return out;
-        };
-    auto top_lua    = lua_slots(top_cfg);
-    auto bottom_lua = lua_slots(bottom_cfg);
-    bool has_lua    = !top_lua.empty() || !bottom_lua.empty();
+    // Collect all Lua slots across all bar configs for timer setup.
+    bool has_lua = false;
+    for (const auto& b : all_bars_) {
+        for (const auto& s : b.cfg.left)   if (s.kind == BarSlotKind::Lua) { has_lua = true; break; }
+        for (const auto& s : b.cfg.center) if (s.kind == BarSlotKind::Lua) { has_lua = true; break; }
+        for (const auto& s : b.cfg.right)  if (s.kind == BarSlotKind::Lua) { has_lua = true; break; }
+        if (has_lua) break;
+    }
 
-    // If any Lua widgets exist, set up a 1-second timerfd for refresh.
     if (has_lua) {
         timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
         if (timer_fd >= 0) {
@@ -644,6 +787,5 @@ void BarModule::on_start() {
     }
 
     redraw();
-
-    LOG_INFO("Bar: initialized, height=%d (Cairo/Pango)", top_cfg.height);
+    LOG_INFO("Bar: initialized, %d bar window(s)", (int)all_bars_.size());
 }
