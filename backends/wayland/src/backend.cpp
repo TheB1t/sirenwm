@@ -44,10 +44,11 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     , runtime_(runtime)
     , backend_obj_(display_.ev_loop())
     , renderer_(backend_obj_.get(), display_.get())
-    , scene_(display_.get()) {
+    , scene_(display_.get())
+    , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software()) {
     wlr_log_init(WLR_DEBUG, wlr_log_handler);
 
-    // display_, backend_obj_, renderer_, scene_ are initialised by member ctors above.
+    // display_, backend_obj_, renderer_, scene_, seat_obj_ initialised by member ctors above.
     xdg_shell_ = wlr_xdg_shell_create(display_.get(), 3);
 #ifndef SIRENWM_NO_LAYER_SHELL
     layer_shell_ = wlr_layer_shell_v1_create(display_.get(), 4);
@@ -56,19 +57,6 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     LOG_INFO("WaylandBackend: layer-shell disabled (xml not found at build time)");
 #endif
     data_dev_mgr_ = wlr_data_device_manager_create(display_.get());
-
-    seat_        = wlr_seat_create(display_.get(), "seat0");
-    cursor_      = wlr_cursor_create();
-    xcursor_mgr_ = wlr_xcursor_manager_create(nullptr, 24);
-    wlr_xcursor_manager_load(xcursor_mgr_, 1.0f);
-    // Attach cursor to output layout after xcursor theme is loaded.
-    // Under WLR_BACKENDS=x11 (pixman renderer, no DRM) skip the attachment:
-    // wlr_output_commit_state would trigger wlr_output_cursor_set_buffer which
-    // asserts renderer != NULL.  X11 backend draws the cursor via XFixes, so
-    // no wlr_cursor attachment is needed.
-    software_renderer_ = renderer_.is_software();
-    if (!software_renderer_)
-        wlr_cursor_attach_output_layout(cursor_, scene_.output_layout());
 
     // Wire top-level backend signals
     on_new_output_.connect(&backend_obj_.new_output_signal(),
@@ -83,28 +71,28 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
 #endif
 
     // Cursor signals
-    on_cursor_motion_.connect(&cursor_->events.motion,
+    on_cursor_motion_.connect(&seat_obj_.cursor()->events.motion,
         [this](wlr_pointer_motion_event* ev) { handle_cursor_motion(ev); });
-    on_cursor_motion_abs_.connect(&cursor_->events.motion_absolute,
+    on_cursor_motion_abs_.connect(&seat_obj_.cursor()->events.motion_absolute,
         [this](wlr_pointer_motion_absolute_event* ev) { handle_cursor_motion_abs(ev); });
-    on_cursor_button_.connect(&cursor_->events.button,
+    on_cursor_button_.connect(&seat_obj_.cursor()->events.button,
         [this](wlr_pointer_button_event* ev) { handle_cursor_button(ev); });
-    on_cursor_axis_.connect(&cursor_->events.axis,
+    on_cursor_axis_.connect(&seat_obj_.cursor()->events.axis,
         [this](wlr_pointer_axis_event* ev) { handle_cursor_axis(ev); });
-    on_cursor_frame_.connect(&cursor_->events.frame,
+    on_cursor_frame_.connect(&seat_obj_.cursor()->events.frame,
         [this](void*) { handle_cursor_frame(); });
 
     // Seat signals
-    on_request_cursor_.connect(&seat_->events.request_set_cursor,
+    on_request_cursor_.connect(&seat_obj_.seat()->events.request_set_cursor,
         [this](wlr_seat_pointer_request_set_cursor_event* ev) { handle_request_cursor(ev); });
-    on_request_set_selection_.connect(&seat_->events.request_set_selection,
+    on_request_set_selection_.connect(&seat_obj_.seat()->events.request_set_selection,
         [this](wlr_seat_request_set_selection_event* ev) { handle_request_set_selection(ev); });
 
     // Create port implementations
     monitor_port_impl_  = backend::wl::create_monitor_port(scene_.output_layout(), runtime_);
     render_port_impl_   = backend::wl::create_render_port(scene_.root(), renderer_.renderer(), renderer_.allocator());
-    input_port_impl_    = backend::wl::create_input_port(seat_, cursor_, pointer_grabbed_);
-    keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_);
+    input_port_impl_    = backend::wl::create_input_port(seat_obj_.seat(), seat_obj_.cursor(), pointer_grabbed_);
+    keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_obj_.seat());
 
     // Start the backend (opens DRM device, creates initial outputs)
     backend_obj_.start();
@@ -134,9 +122,7 @@ WaylandBackend::~WaylandBackend() {
     pending_.clear();
     surfaces_.clear();
 
-    if (xcursor_mgr_)   wlr_xcursor_manager_destroy(xcursor_mgr_);
-    if (cursor_)        wlr_cursor_destroy(cursor_);
-    // seat, compositor, xdg_shell are destroyed via wl_display_destroy (in WlDisplay dtor)
+    // seat_obj_ dtor destroys xcursor_mgr + cursor; seat via wl_display_destroy
     // scene_, renderer_, backend_obj_, display_ dtors run after this in reverse declaration order
 }
 
@@ -326,7 +312,7 @@ void WaylandBackend::handle_new_input(wlr_input_device* device) {
     for (const auto& kb : keyboards_) (void)kb, caps |= WL_SEAT_CAPABILITY_KEYBOARD;
     for (const auto& out : outputs_)  (void)out, caps |= WL_SEAT_CAPABILITY_POINTER;
     if (!keyboards_.empty()) caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-    wlr_seat_set_capabilities(seat_, caps);
+    wlr_seat_set_capabilities(seat_obj_.seat(), caps);
 }
 
 void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
@@ -352,14 +338,14 @@ void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
     kb->on_destroy_.connect(&device->events.destroy,
         [this, kb](void*) { handle_keyboard_destroy(kb); });
 
-    wlr_seat_set_keyboard(seat_, keyboard);
+    wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
 
     keyboards_.push_back(std::unique_ptr<WlKeyboard>(kb));
     LOG_INFO("WaylandBackend: keyboard '%s' added", device->name);
 }
 
 void WaylandBackend::handle_new_pointer(wlr_input_device* device) {
-    wlr_cursor_attach_input_device(cursor_, device);
+    wlr_cursor_attach_input_device(seat_obj_.cursor(), device);
     LOG_INFO("WaylandBackend: pointer '%s' added", device->name);
 }
 
@@ -380,14 +366,14 @@ void WaylandBackend::handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event*
     runtime_.emit(kev);
 
     // Pass through to focused client
-    wlr_seat_set_keyboard(seat_, keyboard);
-    wlr_seat_keyboard_notify_key(seat_, ev->time_msec, ev->keycode, ev->state);
+    wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
+    wlr_seat_keyboard_notify_key(seat_obj_.seat(), ev->time_msec, ev->keycode, ev->state);
 }
 
 void WaylandBackend::handle_keyboard_modifiers(WlKeyboard* kb) {
     wlr_keyboard* keyboard = wlr_keyboard_from_input_device(kb->device);
-    wlr_seat_set_keyboard(seat_, keyboard);
-    wlr_seat_keyboard_notify_modifiers(seat_, &keyboard->modifiers);
+    wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
+    wlr_seat_keyboard_notify_modifiers(seat_obj_.seat(), &keyboard->modifiers);
 }
 
 void WaylandBackend::handle_keyboard_destroy(WlKeyboard* kb) {
@@ -401,12 +387,12 @@ void WaylandBackend::handle_keyboard_destroy(WlKeyboard* kb) {
 // Cursor handlers
 // ---------------------------------------------------------------------------
 void WaylandBackend::handle_cursor_motion(wlr_pointer_motion_event* ev) {
-    wlr_cursor_move(cursor_, &ev->pointer->base, ev->delta_x, ev->delta_y);
+    wlr_cursor_move(seat_obj_.cursor(), &ev->pointer->base, ev->delta_x, ev->delta_y);
     process_cursor_motion(ev->time_msec);
 }
 
 void WaylandBackend::handle_cursor_motion_abs(wlr_pointer_motion_absolute_event* ev) {
-    wlr_cursor_warp_absolute(cursor_, &ev->pointer->base, ev->x, ev->y);
+    wlr_cursor_warp_absolute(seat_obj_.cursor(), &ev->pointer->base, ev->x, ev->y);
     process_cursor_motion(ev->time_msec);
 }
 
@@ -415,35 +401,35 @@ void WaylandBackend::handle_cursor_button(wlr_pointer_button_event* ev) {
     bev.button   = (uint8_t)(ev->button & 0xFF);
     bev.state    = (uint16_t)mod_state_;
     bev.release  = (ev->state == WLR_BUTTON_RELEASED);
-    bev.root_pos = { (int16_t)cursor_->x, (int16_t)cursor_->y };
+    bev.root_pos = { (int16_t)seat_obj_.cursor()->x, (int16_t)seat_obj_.cursor()->y };
     runtime_.emit(bev);
 
-    wlr_seat_pointer_notify_button(seat_, ev->time_msec, ev->button, ev->state);
+    wlr_seat_pointer_notify_button(seat_obj_.seat(), ev->time_msec, ev->button, ev->state);
 }
 
 void WaylandBackend::handle_cursor_axis(wlr_pointer_axis_event* ev) {
-    wlr_seat_pointer_notify_axis(seat_, ev->time_msec, ev->orientation,
+    wlr_seat_pointer_notify_axis(seat_obj_.seat(), ev->time_msec, ev->orientation,
         ev->delta, ev->delta_discrete, ev->source, ev->relative_direction);
 }
 
 void WaylandBackend::handle_cursor_frame() {
-    wlr_seat_pointer_notify_frame(seat_);
+    wlr_seat_pointer_notify_frame(seat_obj_.seat());
 }
 
 void WaylandBackend::handle_request_cursor(
     wlr_seat_pointer_request_set_cursor_event* ev) {
-    wlr_cursor_set_surface(cursor_, ev->surface, ev->hotspot_x, ev->hotspot_y);
+    wlr_cursor_set_surface(seat_obj_.cursor(), ev->surface, ev->hotspot_x, ev->hotspot_y);
 }
 
 void WaylandBackend::handle_request_set_selection(
     wlr_seat_request_set_selection_event* ev) {
-    wlr_seat_set_selection(seat_, ev->source, ev->serial);
+    wlr_seat_set_selection(seat_obj_.seat(), ev->source, ev->serial);
 }
 
 void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
     // Find surface under cursor; notify seat
     double             sx = 0, sy = 0;
-    wlr_scene_node*    node    = wlr_scene_node_at(&scene_.root()->node, cursor_->x, cursor_->y, &sx, &sy);
+    wlr_scene_node*    node    = wlr_scene_node_at(&scene_.root()->node, seat_obj_.cursor()->x, seat_obj_.cursor()->y, &sx, &sy);
     wlr_scene_surface* ss      = nullptr;
     wlr_surface*       surface = nullptr;
 
@@ -461,10 +447,10 @@ void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
 
     if (!surface) {
         set_cursor("left_ptr");
-        wlr_seat_pointer_clear_focus(seat_);
+        wlr_seat_pointer_clear_focus(seat_obj_.seat());
     } else {
-        wlr_seat_pointer_notify_enter(seat_, surface, sx, sy);
-        wlr_seat_pointer_notify_motion(seat_, time_ms, sx, sy);
+        wlr_seat_pointer_notify_enter(seat_obj_.seat(), surface, sx, sy);
+        wlr_seat_pointer_notify_motion(seat_obj_.seat(), time_ms, sx, sy);
 
         // Focus-follows-mouse: find the managed window under the cursor and
         // dispatch a FocusWindow command to Core (mirrors X11 EnterNotify).
@@ -496,7 +482,7 @@ void WaylandBackend::on(event::FocusChanged ev) {
     }
 
     if (ev.window == NO_WINDOW) {
-        wlr_seat_keyboard_notify_clear_focus(seat_);
+        wlr_seat_keyboard_notify_clear_focus(seat_obj_.seat());
         focused_window_ = NO_WINDOW;
         return;
     }
@@ -514,8 +500,8 @@ void WaylandBackend::on(event::FocusChanged ev) {
     // Notify seat that keyboard focus goes to this surface.
     if (!keyboards_.empty()) {
         wlr_keyboard* keyboard = wlr_keyboard_from_input_device(keyboards_[0]->device);
-        wlr_seat_set_keyboard(seat_, keyboard);
-        wlr_seat_keyboard_notify_enter(seat_,
+        wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
+        wlr_seat_keyboard_notify_enter(seat_obj_.seat(),
             surf->xdg_surface()->surface,
             keyboard->keycodes,
             keyboard->num_keycodes,
@@ -537,18 +523,7 @@ void WaylandBackend::on(event::WindowAdopted ev) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 void WaylandBackend::set_cursor(const char* name) {
-    // wlr_cursor_set_xcursor uploads cursor textures to each output via the
-    // output's software cursor path.  When running nested under X11
-    // (WLR_BACKENDS=x11) wlroots uses a pixman (software) renderer with no
-    // DRM device, and wlr_output_cursor_set_buffer asserts that a renderer is
-    // present for buffer upload — which fails.
-    //
-    // Detect the software-renderer case by checking wlr_renderer_get_drm_fd.
-    // Returns -1 when there is no backing DRM device (pixman/software path).
-    // In that case skip the xcursor call: the host X11 window provides its
-    // own cursor decoration.
-    if (renderer_.is_software()) return;
-    wlr_cursor_set_xcursor(cursor_, xcursor_mgr_, name);
+    seat_obj_.set_cursor(name);
 }
 
 WlOutput* WaylandBackend::output_at(double x, double y) {
@@ -590,7 +565,7 @@ void WaylandBackend::apply_core_backend_effects() {
                 runtime_.emit(event::FocusChanged{ e.window });
                 break;
             case BackendEffectKind::FocusRoot:
-                wlr_seat_keyboard_notify_clear_focus(seat_);
+                wlr_seat_keyboard_notify_clear_focus(seat_obj_.seat());
                 break;
             case BackendEffectKind::UpdateWindow: {
                 if (e.window == NO_WINDOW)
@@ -618,7 +593,7 @@ void WaylandBackend::apply_core_backend_effects() {
                 break;
             }
             case BackendEffectKind::WarpPointer:
-                wlr_cursor_warp_absolute(cursor_, nullptr,
+                wlr_cursor_warp_absolute(seat_obj_.cursor(), nullptr,
                     (double)e.pos.x() / 1.0, (double)e.pos.y() / 1.0);
                 break;
         }
