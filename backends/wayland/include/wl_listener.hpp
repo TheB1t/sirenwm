@@ -27,98 +27,86 @@
 
 template<typename T>
 class WlListener {
-public:
-    WlListener() noexcept { wl_list_init(&raw_.link); }
+    public:
+        WlListener() noexcept { wl_list_init(&raw_.link); }
 
-    ~WlListener() { disconnect(); }
+        ~WlListener() { disconnect(); }
 
-    WlListener(const WlListener&)            = delete;
-    WlListener& operator=(const WlListener&) = delete;
+        WlListener(const WlListener&)            = delete;
+        WlListener& operator=(const WlListener&) = delete;
 
-    WlListener(WlListener&& o) noexcept {
-        fn_ = std::move(o.fn_);
-        wl_list_init(&raw_.link);
-        if (o.connected()) {
-            raw_.notify = &dispatch;
-            // Atomically transplant: insert self before o, then remove o.
-            wl_list_insert(o.raw_.link.prev, &raw_.link);
-            wl_list_remove(&o.raw_.link);
-            wl_list_init(&o.raw_.link);
-        }
-    }
-
-    WlListener& operator=(WlListener&& o) noexcept {
-        if (this != &o) {
-            disconnect();
+        WlListener(WlListener&& o) noexcept {
             fn_ = std::move(o.fn_);
+            wl_list_init(&raw_.link);
             if (o.connected()) {
                 raw_.notify = &dispatch;
+                // Atomically transplant: insert self before o, then remove o.
                 wl_list_insert(o.raw_.link.prev, &raw_.link);
                 wl_list_remove(&o.raw_.link);
                 wl_list_init(&o.raw_.link);
             }
         }
-        return *this;
-    }
 
-    void connect(wl_signal* signal, std::function<void(T*)> fn) {
-        disconnect();
-        fn_          = std::move(fn);
-        raw_.notify  = &dispatch;
-        wl_signal_add(signal, &raw_);
-    }
-
-    void disconnect() noexcept {
-        if (connected()) {
-            wl_list_remove(&raw_.link);
-            wl_list_init(&raw_.link);
+        WlListener& operator=(WlListener&& o) noexcept {
+            if (this != &o) {
+                disconnect();
+                fn_ = std::move(o.fn_);
+                if (o.connected()) {
+                    raw_.notify = &dispatch;
+                    wl_list_insert(o.raw_.link.prev, &raw_.link);
+                    wl_list_remove(&o.raw_.link);
+                    wl_list_init(&o.raw_.link);
+                }
+            }
+            return *this;
         }
-    }
 
-    bool connected() const noexcept {
-        return raw_.link.prev != nullptr && raw_.link.prev != &raw_.link;
-    }
+        void connect(wl_signal* signal, std::function<void(T*)> fn) {
+            disconnect();
+            fn_         = std::move(fn);
+            raw_.notify = &dispatch;
+            wl_signal_add(signal, &raw_);
+        }
 
-private:
-    // raw_ MUST be the first member: dispatch() recovers `this` via
-    // reinterpret_cast, which is valid only as long as WlListener is
-    // standard-layout and raw_ is at offset 0.
-    wl_listener raw_{};
-    std::function<void(T*)> fn_;
+        void disconnect() noexcept {
+            if (connected()) {
+                wl_list_remove(&raw_.link);
+                wl_list_init(&raw_.link);
+            }
+        }
 
-    static void dispatch(wl_listener* l, void* data) noexcept {
-        auto* self = reinterpret_cast<WlListener*>(l);
-        if (self->fn_)
-            self->fn_(static_cast<T*>(data));
-    }
+        bool connected() const noexcept {
+            return raw_.link.prev != nullptr && raw_.link.prev != &raw_.link;
+        }
+
+    private:
+        // raw_ MUST be the first member: dispatch() recovers `this` via
+        // reinterpret_cast, which is valid only as long as WlListener is
+        // standard-layout and raw_ is at offset 0.
+        wl_listener raw_{};
+        std::function<void(T*)> fn_;
+
+        static void dispatch(wl_listener* l, void* data) noexcept {
+            auto* self = reinterpret_cast<WlListener*>(l);
+            if (self->fn_)
+                self->fn_(static_cast<T*>(data));
+        }
 };
 
 // Specialisation for void: the callback receives the raw void* pointer.
 template<>
 class WlListener<void> {
-public:
-    WlListener() noexcept { wl_list_init(&raw_.link); }
+    public:
+        WlListener() noexcept { wl_list_init(&raw_.link); }
 
-    ~WlListener() { disconnect(); }
+        ~WlListener() { disconnect(); }
 
-    WlListener(const WlListener&)            = delete;
-    WlListener& operator=(const WlListener&) = delete;
+        WlListener(const WlListener&)            = delete;
+        WlListener& operator=(const WlListener&) = delete;
 
-    WlListener(WlListener&& o) noexcept {
-        fn_ = std::move(o.fn_);
-        wl_list_init(&raw_.link);
-        if (o.connected()) {
-            raw_.notify = &dispatch;
-            wl_list_insert(o.raw_.link.prev, &raw_.link);
-            wl_list_remove(&o.raw_.link);
-            wl_list_init(&o.raw_.link);
-        }
-    }
-
-    WlListener& operator=(WlListener&& o) noexcept {
-        if (this != &o) {
-            disconnect();
+        WlListener(WlListener&& o) noexcept {
             fn_ = std::move(o.fn_);
+            wl_list_init(&raw_.link);
             if (o.connected()) {
                 raw_.notify = &dispatch;
                 wl_list_insert(o.raw_.link.prev, &raw_.link);
@@ -126,36 +114,48 @@ public:
                 wl_list_init(&o.raw_.link);
             }
         }
-        return *this;
-    }
 
-    void connect(wl_signal* signal, std::function<void(void*)> fn) {
-        disconnect();
-        fn_         = std::move(fn);
-        raw_.notify = &dispatch;
-        wl_signal_add(signal, &raw_);
-    }
-
-    void disconnect() noexcept {
-        if (connected()) {
-            wl_list_remove(&raw_.link);
-            wl_list_init(&raw_.link);
+        WlListener& operator=(WlListener&& o) noexcept {
+            if (this != &o) {
+                disconnect();
+                fn_ = std::move(o.fn_);
+                if (o.connected()) {
+                    raw_.notify = &dispatch;
+                    wl_list_insert(o.raw_.link.prev, &raw_.link);
+                    wl_list_remove(&o.raw_.link);
+                    wl_list_init(&o.raw_.link);
+                }
+            }
+            return *this;
         }
-    }
 
-    bool connected() const noexcept {
-        return raw_.link.prev != nullptr && raw_.link.prev != &raw_.link;
-    }
+        void connect(wl_signal* signal, std::function<void(void*)> fn) {
+            disconnect();
+            fn_         = std::move(fn);
+            raw_.notify = &dispatch;
+            wl_signal_add(signal, &raw_);
+        }
 
-private:
-    wl_listener raw_{};
-    std::function<void(void*)> fn_;
+        void disconnect() noexcept {
+            if (connected()) {
+                wl_list_remove(&raw_.link);
+                wl_list_init(&raw_.link);
+            }
+        }
 
-    static void dispatch(wl_listener* l, void* data) noexcept {
-        auto* self = reinterpret_cast<WlListener<void>*>(l);
-        if (self->fn_)
-            self->fn_(data);
-    }
+        bool connected() const noexcept {
+            return raw_.link.prev != nullptr && raw_.link.prev != &raw_.link;
+        }
+
+    private:
+        wl_listener raw_{};
+        std::function<void(void*)> fn_;
+
+        static void dispatch(wl_listener* l, void* data) noexcept {
+            auto* self = reinterpret_cast<WlListener<void>*>(l);
+            if (self->fn_)
+                self->fn_(data);
+        }
 };
 
 // Convenience alias for signals that carry no data.

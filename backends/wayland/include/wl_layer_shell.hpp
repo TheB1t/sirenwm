@@ -19,7 +19,7 @@ extern "C" {
 // ---------------------------------------------------------------------------
 class WlLayerShell {
     public:
-        using SurfaceCb = std::function<void(wlr_layer_surface_v1*)>;
+        using SurfaceCb = std::function<void (wlr_layer_surface_v1*)>;
 
         WlLayerShell(wl_display* display, uint32_t version, SurfaceCb on_new_surface);
         ~WlLayerShell() = default;
@@ -31,8 +31,8 @@ class WlLayerShell {
         WlLayerShell& operator=(WlLayerShell&&)      = delete;
 
     private:
-        wlr_layer_shell_v1*                  shell_ = nullptr;
-        WlListener<wlr_layer_surface_v1>     on_new_surface_;
+        wlr_layer_shell_v1* shell_ = nullptr;
+        WlListener<wlr_layer_surface_v1> on_new_surface_;
 };
 
 #endif // SIRENWM_NO_LAYER_SHELL

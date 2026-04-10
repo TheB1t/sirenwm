@@ -21,8 +21,8 @@ struct Monitor {
     // Bar insets — how much space is currently reserved at top/bottom of this
     // monitor by bars. pos_/size_ already have these subtracted (workspace area),
     // so `physical()` undoes them to recover the original monitor rect.
-    int         top_inset_    = 0;
-    int         bottom_inset_ = 0;
+    int top_inset_    = 0;
+    int bottom_inset_ = 0;
 
     Monitor(int id, std::string name, int x, int y, int w, int h)
         : id(id), name(std::move(name)), pos_(x, y), size_(w, h) {}

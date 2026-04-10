@@ -18,9 +18,9 @@ extern "C" {
 // ---------------------------------------------------------------------------
 class WlKeyboard {
     public:
-        using KeyCb     = std::function<void(WlKeyboard*, wlr_keyboard_key_event*)>;
-        using ModsCb    = std::function<void(WlKeyboard*)>;
-        using DestroyCb = std::function<void(WlKeyboard*)>;
+        using KeyCb     = std::function<void (WlKeyboard*, wlr_keyboard_key_event*)>;
+        using ModsCb    = std::function<void (WlKeyboard*)>;
+        using DestroyCb = std::function<void (WlKeyboard*)>;
 
         WlKeyboard(wlr_input_device* device, KeyCb on_key, ModsCb on_mods, DestroyCb on_destroy);
         ~WlKeyboard() = default;
@@ -39,6 +39,6 @@ class WlKeyboard {
         wlr_keyboard*     keyboard_ = nullptr;
 
         WlListener<wlr_keyboard_key_event> on_key_;
-        WlVoidListener                     on_modifiers_;
-        WlVoidListener                     on_destroy_;
+        WlVoidListener on_modifiers_;
+        WlVoidListener on_destroy_;
 };

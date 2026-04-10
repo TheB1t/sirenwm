@@ -67,9 +67,11 @@ static int g_sigchld_pipe_wr = -1;
 
 static void sigchld_handler(int) {
     if (g_sigchld_pipe_wr >= 0) {
-        char b = 1;
+        char    b = 1;
         ssize_t r;
-        do { r = write(g_sigchld_pipe_wr, &b, 1); } while (r < 0 && errno == EINTR);
+        do {
+            r = write(g_sigchld_pipe_wr, &b, 1);
+        } while (r < 0 && errno == EINTR);
     }
 }
 
@@ -559,7 +561,9 @@ void Runtime::reap_children() {
     // Drain the self-pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
     char    buf[64];
     ssize_t n;
-    do { n = read(sigchld_pipe_rd_, buf, sizeof(buf)); } while (n > 0 || (n < 0 && errno == EINTR));
+    do {
+        n = read(sigchld_pipe_rd_, buf, sizeof(buf));
+    } while (n > 0 || (n < 0 && errno == EINTR));
 
     int   status;
     pid_t pid;

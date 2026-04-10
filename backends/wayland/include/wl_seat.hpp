@@ -20,7 +20,7 @@ class WlSeat {
         // given cursor size.  If software_renderer is true the cursor is not
         // attached to the output layout (xcursor upload requires a DRM device).
         WlSeat(wl_display* display, wlr_output_layout* layout, bool software_renderer,
-               unsigned int cursor_size = 24);
+            unsigned int cursor_size = 24);
         ~WlSeat();
 
         // Non-copyable, non-movable (listeners hold raw pointers into this object).
@@ -37,8 +37,8 @@ class WlSeat {
         void set_cursor(const char* name) const noexcept;
 
     private:
-        wlr_seat*            seat_       = nullptr;
-        wlr_cursor*          cursor_     = nullptr;
+        wlr_seat*   seat_                 = nullptr;
+        wlr_cursor* cursor_               = nullptr;
         wlr_xcursor_manager* xcursor_mgr_ = nullptr;
-        bool                 software_   = false;
+        bool software_                    = false;
 };

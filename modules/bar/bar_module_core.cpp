@@ -226,7 +226,7 @@ static bool parse_bar_side(LuaContext& lua, LuaHost& host,
             return true;
         }
     }
-    BarConfig cfg;
+    BarConfig   cfg;
     std::string perr;
     if (!parse_bar_config_from_lua(lua, host, theme, lua.abs_index(-1), pos, cfg, &perr)) {
         lua.pop();
@@ -244,10 +244,10 @@ static bool parse_monitor_bar_config(LuaContext& lua, LuaHost& host,
     MonitorBarConfig& out, const std::string& ctx, std::string* err_out) {
     table_idx = lua.abs_index(table_idx);
     if (!parse_bar_side(lua, host, theme, table_idx, "top",
-            BarPosition::TOP,    out.top,    ctx, err_out))
+        BarPosition::TOP,    out.top,    ctx, err_out))
         return false;
     if (!parse_bar_side(lua, host, theme, table_idx, "bottom",
-            BarPosition::BOTTOM, out.bottom, ctx, err_out))
+        BarPosition::BOTTOM, out.bottom, ctx, err_out))
         return false;
     return true;
 }
@@ -295,7 +295,7 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
                 return false;
             }
             if (!parse_monitor_bar_config(lua, host, theme, lua.abs_index(-1),
-                    cfg.default_cfg, "bar.settings.default", &err)) {
+                cfg.default_cfg, "bar.settings.default", &err)) {
                 lua.pop();
                 return false;
             }
@@ -304,9 +304,13 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
 
         lua.push_nil();
         while (lua.next(table_idx)) {
-            if (!lua.is_string(-2)) { lua.pop(1); continue; }
+            if (!lua.is_string(-2)) {
+                lua.pop(1); continue;
+            }
             std::string key = lua.to_string(-2);
-            if (key == "default") { lua.pop(1); continue; }
+            if (key == "default") {
+                lua.pop(1); continue;
+            }
 
             if (!lua.is_table(-1)) {
                 LOG_WARN("bar.settings.%s: expected table, skipping", key.c_str());
@@ -317,7 +321,7 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
             std::string      ctx = "bar.settings." + key;
             std::string      perr;
             if (!parse_monitor_bar_config(lua, host, theme, lua.abs_index(-1),
-                    mcfg, ctx, &perr)) {
+                mcfg, ctx, &perr)) {
                 LOG_WARN("%s: %s — skipping", ctx.c_str(), perr.c_str());
                 lua.pop(1);
                 continue;
@@ -328,7 +332,7 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
     } else {
         // Legacy flat format { top = {...}, bottom = {...} } — treat as the default config.
         if (!parse_monitor_bar_config(lua, host, theme, table_idx,
-                cfg.default_cfg, "bar.settings", &err))
+            cfg.default_cfg, "bar.settings", &err))
             return false;
     }
 
@@ -341,7 +345,7 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
 // ---------------------------------------------------------------------------
 
 std::string BarModule::monitor_alias(int mon_idx) const {
-    const auto& aliases = core().current_settings().monitor_aliases;
+    const auto& aliases  = core().current_settings().monitor_aliases;
     const auto& monitors = core().monitor_states();
     if (mon_idx < 0 || mon_idx >= (int)monitors.size())
         return {};
@@ -367,7 +371,7 @@ std::vector<backend::RenderWindow*> BarModule::bottom_bar_windows() const {
 }
 
 void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top) {
-    auto& rp = *render_port_;
+    auto&                           rp = *render_port_;
     backend::RenderWindowCreateInfo info;
     info.monitor_index           = m.idx;
     info.pos                     = m.pos;
@@ -395,10 +399,10 @@ void BarModule::rebuild_bars() {
 
     const auto& monitors = core().monitor_states();
 
-    auto has_content = [](const BarConfig& cfg) {
-        return cfg.height > 0 || !cfg.left.empty()
-            || !cfg.center.empty() || !cfg.right.empty();
-    };
+    auto        has_content = [](const BarConfig& cfg) {
+            return cfg.height > 0 || !cfg.left.empty()
+                   || !cfg.center.empty() || !cfg.right.empty();
+        };
 
     for (int i = 0; i < (int)monitors.size(); i++) {
         std::string      alias = monitor_alias(i);
@@ -409,8 +413,8 @@ void BarModule::rebuild_bars() {
         auto [phy_pos, phy_size] = monitors[i].physical();
         MonRect m{ i, phy_pos, phy_size, alias };
 
-        int top_h    = 0;
-        int bottom_h = 0;
+        int     top_h    = 0;
+        int     bottom_h = 0;
 
         if (mcfg.top.state == BarSideState::Custom) {
             BarConfig top_cfg = mcfg.top.cfg;
@@ -654,7 +658,7 @@ void BarModule::rebuild_trays() {
 
     for (auto* w : top_wins) {
         if (!w) continue;
-        int mon_idx = w->monitor_index();
+        int                mon_idx = w->monitor_index();
 
         backend::TrayHost* existing = tray_for_monitor(mon_idx);
         if (existing) {
@@ -734,9 +738,11 @@ void BarModule::on_start() {
         } else {
             runtime().watch_fd(wakeup_pipe[0], [this]() {
                     // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
-                    char    buf[64];
+                    char buf[64];
                     ssize_t n;
-                    do { n = read(wakeup_pipe[0], buf, sizeof(buf)); } while (n > 0 || (n < 0 && errno == EINTR));
+                    do {
+                        n = read(wakeup_pipe[0], buf, sizeof(buf));
+                    } while (n > 0 || (n < 0 && errno == EINTR));
                     redraw();
                 });
         }
@@ -745,9 +751,15 @@ void BarModule::on_start() {
     // Collect all Lua slots across all bar configs for timer setup.
     bool has_lua = false;
     for (const auto& b : all_bars_) {
-        for (const auto& s : b.cfg.left)   if (s.kind == BarSlotKind::Lua) { has_lua = true; break; }
-        for (const auto& s : b.cfg.center) if (s.kind == BarSlotKind::Lua) { has_lua = true; break; }
-        for (const auto& s : b.cfg.right)  if (s.kind == BarSlotKind::Lua) { has_lua = true; break; }
+        for (const auto& s : b.cfg.left)   if (s.kind == BarSlotKind::Lua) {
+                has_lua = true; break;
+            }
+        for (const auto& s : b.cfg.center) if (s.kind == BarSlotKind::Lua) {
+                has_lua = true; break;
+            }
+        for (const auto& s : b.cfg.right)  if (s.kind == BarSlotKind::Lua) {
+                has_lua = true; break;
+            }
         if (has_lua) break;
     }
 

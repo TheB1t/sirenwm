@@ -108,17 +108,17 @@ class WaylandBackend final : public Backend {
         Runtime& runtime_;
 
         // Wayland display (owns wl_display, socket, event loop) — destroyed last
-        WlDisplay    display_;
+        WlDisplay display_;
         // wlroots backend, renderer+allocator+compositor, scene+layout
         WlBackendObj backend_obj_;
         WlRenderer   renderer_;
         WlSceneGraph scene_;
         // seat + cursor + xcursor_manager
-        WlSeat       seat_obj_;
+        WlSeat seat_obj_;
 
-        WlXdgShell           xdg_shell_;
+        WlXdgShell xdg_shell_;
 #ifndef SIRENWM_NO_LAYER_SHELL
-        WlLayerShell         layer_shell_;
+        WlLayerShell layer_shell_;
 #endif
         wlr_data_device_manager* data_dev_mgr_ = nullptr;
 
@@ -162,13 +162,13 @@ class WaylandBackend final : public Backend {
         // Backend-level signal listeners
         WlListener<wlr_output>       on_new_output_;
         WlListener<wlr_input_device> on_new_input_;
-        WlListener<wlr_pointer_motion_event>          on_cursor_motion_;
+        WlListener<wlr_pointer_motion_event> on_cursor_motion_;
         WlListener<wlr_pointer_motion_absolute_event> on_cursor_motion_abs_;
         WlListener<wlr_pointer_button_event>          on_cursor_button_;
-        WlListener<wlr_pointer_axis_event>            on_cursor_axis_;
-        WlVoidListener                                on_cursor_frame_;
-        WlListener<wlr_seat_pointer_request_set_cursor_event>  on_request_cursor_;
-        WlListener<wlr_seat_request_set_selection_event>       on_request_set_selection_;
+        WlListener<wlr_pointer_axis_event> on_cursor_axis_;
+        WlVoidListener on_cursor_frame_;
+        WlListener<wlr_seat_pointer_request_set_cursor_event> on_request_cursor_;
+        WlListener<wlr_seat_request_set_selection_event>      on_request_set_selection_;
 
         // Signal handlers
         void handle_new_output(wlr_output* output);

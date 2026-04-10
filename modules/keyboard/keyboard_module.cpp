@@ -141,7 +141,7 @@ void KeyboardModule::on(event::FocusChanged ev) {
 
     // Restore saved group for the newly focused window (or group 0 if unknown).
     uint32_t group = 0;
-    auto it = window_groups_.find(ev.window);
+    auto     it    = window_groups_.find(ev.window);
     if (it != window_groups_.end())
         group = it->second;
     kp->set_group(group);

@@ -44,17 +44,29 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     // Wire xdg_surface lifecycle signals.
     // In wlroots 0.18 map/unmap moved from xdg_surface to xdg_surface->surface.
     raw->on_map_.connect(&xdg_surface->surface->events.map,
-        [this, raw](void*) { handle_surface_map(raw); });
+        [this, raw](void*) {
+            handle_surface_map(raw);
+        });
     raw->on_unmap_.connect(&xdg_surface->surface->events.unmap,
-        [this, raw](void*) { handle_surface_unmap(raw); });
+        [this, raw](void*) {
+            handle_surface_unmap(raw);
+        });
     raw->on_destroy_.connect(&xdg_surface->events.destroy,
-        [this, raw](void*) { handle_surface_destroy(raw); });
+        [this, raw](void*) {
+            handle_surface_destroy(raw);
+        });
     raw->on_commit_.connect(&xdg_surface->surface->events.commit,
-        [raw](void*) { raw->on_commit(); });
+        [raw](void*) {
+            raw->on_commit();
+        });
     raw->on_set_title_.connect(&toplevel->events.set_title,
-        [this, raw](void*) { runtime_.emit(event::PropertyNotify{ raw->id, 0 }); });
+        [this, raw](void*) {
+            runtime_.emit(event::PropertyNotify{ raw->id, 0 });
+        });
     raw->on_set_app_id_.connect(&toplevel->events.set_app_id,
-        [this, raw](void*) { runtime_.emit(event::PropertyNotify{ raw->id, 1 }); });
+        [this, raw](void*) {
+            runtime_.emit(event::PropertyNotify{ raw->id, 1 });
+        });
 
     // Client-requested fullscreen toggle.
     raw->on_request_fullscreen_.connect(&toplevel->events.request_fullscreen,
@@ -74,9 +86,13 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     // We acknowledge but don't initiate — mouse bindings handle pointer-driven
     // move/resize in Core.  Send an empty configure so the client doesn't hang.
     raw->on_request_move_.connect(&toplevel->events.request_move,
-        [raw](void*) { wlr_xdg_surface_schedule_configure(raw->xdg_surface()); });
+        [raw](void*) {
+            wlr_xdg_surface_schedule_configure(raw->xdg_surface());
+        });
     raw->on_request_resize_.connect(&toplevel->events.request_resize,
-        [raw](void*) { wlr_xdg_surface_schedule_configure(raw->xdg_surface()); });
+        [raw](void*) {
+            wlr_xdg_surface_schedule_configure(raw->xdg_surface());
+        });
 }
 
 // ---------------------------------------------------------------------------

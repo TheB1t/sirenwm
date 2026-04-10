@@ -19,23 +19,23 @@ extern "C" {
 }
 
 class WlRenderer {
-public:
-    WlRenderer(wlr_backend* backend, wl_display* display);
-    ~WlRenderer();
+    public:
+        WlRenderer(wlr_backend* backend, wl_display* display);
+        ~WlRenderer();
 
-    WlRenderer(const WlRenderer&)            = delete;
-    WlRenderer& operator=(const WlRenderer&) = delete;
+        WlRenderer(const WlRenderer&)            = delete;
+        WlRenderer& operator=(const WlRenderer&) = delete;
 
-    wlr_renderer*  renderer()   const noexcept { return renderer_; }
-    wlr_allocator* allocator()  const noexcept { return allocator_; }
-    bool           is_software() const noexcept { return software_; }
+        wlr_renderer*  renderer()   const noexcept { return renderer_; }
+        wlr_allocator* allocator()  const noexcept { return allocator_; }
+        bool           is_software() const noexcept { return software_; }
 
-    // Must be called for each new output before first use.
-    void init_output(wlr_output* output) noexcept;
+        // Must be called for each new output before first use.
+        void init_output(wlr_output* output) noexcept;
 
-private:
-    wlr_renderer*   renderer_   = nullptr;
-    wlr_allocator*  allocator_  = nullptr;
-    wlr_compositor* compositor_ = nullptr;  // destroyed via wl_display_destroy
-    bool            software_   = false;
+    private:
+        wlr_renderer*   renderer_   = nullptr;
+        wlr_allocator*  allocator_  = nullptr;
+        wlr_compositor* compositor_ = nullptr; // destroyed via wl_display_destroy
+        bool software_              = false;
 };

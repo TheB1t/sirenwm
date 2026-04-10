@@ -2,7 +2,7 @@
 #include <log.hpp>
 
 WlSeat::WlSeat(wl_display* display, wlr_output_layout* layout, bool software_renderer,
-               unsigned int cursor_size)
+    unsigned int cursor_size)
     : software_(software_renderer) {
     seat_ = wlr_seat_create(display, "seat0");
     if (!seat_)

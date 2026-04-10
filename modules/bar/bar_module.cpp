@@ -70,7 +70,7 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
         for (auto& c : wc) c = (char)tolower((unsigned char)c);
         std::string wi = w->wm_instance;
         for (auto& c : wi) c = (char)tolower((unsigned char)c);
-        bool match = (wc == icon_class) || (wi == icon_class)
+        bool        match = (wc == icon_class) || (wi == icon_class)
             || (base_of(wc) == icon_class) || (wc == base_of(icon_class))
             || (base_of(wi) == icon_class) || (wi == base_of(icon_class));
         if (!match) continue;
@@ -304,9 +304,15 @@ void BarModule::on_stop(bool) {
 }
 
 void BarModule::stop_runtime() {
-    if (wakeup_pipe[0] >= 0) { close(wakeup_pipe[0]); wakeup_pipe[0] = -1; }
-    if (wakeup_pipe[1] >= 0) { close(wakeup_pipe[1]); wakeup_pipe[1] = -1; }
-    if (timer_fd >= 0)       { close(timer_fd);        timer_fd = -1; }
+    if (wakeup_pipe[0] >= 0) {
+        close(wakeup_pipe[0]); wakeup_pipe[0] = -1;
+    }
+    if (wakeup_pipe[1] >= 0) {
+        close(wakeup_pipe[1]); wakeup_pipe[1] = -1;
+    }
+    if (timer_fd >= 0) {
+        close(timer_fd);        timer_fd = -1;
+    }
     trays.clear();
     tag_hits.clear();
     all_bars_.clear();
