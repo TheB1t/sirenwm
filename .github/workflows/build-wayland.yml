@@ -2,9 +2,9 @@ name: Build (Wayland backend)
 
 on:
   push:
-    branches: [ wayland-backend ]
+    branches: [ master ]
   pull_request:
-    branches: [ wayland-backend ]
+    branches: [ master ]
 
 jobs:
   build-wayland:
