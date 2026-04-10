@@ -6,7 +6,7 @@ SirenWM is a tiling window manager with selectable X11 and Wayland backends.
 
 ## About
 
-SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles layout, rendering, and the event loop. Everything else — keybindings, rules, autostart, wallpaper, widgets — is Lua, hot-reloaded without restarting. Failed reloads roll back automatically.
+SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles layout, window management, and rendering. Everything else — keybindings, rules, autostart, wallpaper, widgets — is Lua, hot-reloaded without restarting. Failed reloads roll back automatically.
 
 ## Requirements
 
@@ -47,18 +47,17 @@ SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles lay
 
 #### Developer
 
-- ImGui debug overlay for live WM state inspection (`-DSIRENWM_DEBUG_UI=ON`)
+- ImGui debug overlay for live WM state inspection (`-DSIRENWM_DEBUG_UI=ON`, X11 only)
 - Runtime lifecycle FSM (Idle → Configured → Starting → Running → Stopping → Stopped)
 - Typed setting registry with transactional reload and per-setting validation
 
 ### X11 backend
 
-- ICCCM: WM_DELETE_WINDOW, WM_TAKE_FOCUS, WM_HINTS (InputHint, UrgencyHint), WM_NORMAL_HINTS
+- ICCCM: WM_DELETE_WINDOW, WM_TAKE_FOCUS, WM_HINTS (InputHint, UrgencyHint), WM_NORMAL_HINTS size constraints
 - EWMH: `_NET_WM_STATE` fullscreen, `_NET_ACTIVE_WINDOW`, `_NET_CLOSE_WINDOW`, client list
 - RandR hotplug — monitors added/removed at runtime without restart
 - Pointer barriers confine cursor to active fullscreen monitor
 - Fullscreen compatibility: MOTIF hints, Wine/Proton, SDL2, LibGDK
-- WM_NORMAL_HINTS size constraints enforced
 - System tray (XEmbed protocol)
 
 ### Wayland backend
@@ -71,23 +70,67 @@ SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles lay
 
 ## Architecture
 
-SirenWM is split into a C++ core and Lua modules. The boundary is intentional:
-the core never reads `init.lua` directly — it exposes an API and the Lua layer drives it.
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                        User config                              │
+│                  ~/.config/sirenwm/init.lua                     │
+│        (loads modules, sets options, defines keybindings)       │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │  require() / siren.load()
+          ┌─────────────────┼──────────────────────┐
+          │                 │                      │
+          ▼                 ▼                      ▼
+   ┌─────────────┐  ┌──────────────┐      ┌───────────────┐
+   │ Lua modules │  │ C++ modules  │      │  Lua widgets  │
+   │  rules      │  │  keybindings │      │  tags, title  │
+   │  wallpaper  │  │  bar         │      │  clock, …     │
+   │  autostart  │  │  keyboard    │      └───────┬───────┘
+   └──────┬──────┘  │  sysinfo     │              │
+          │         │  audio       │              │
+          │         │  debug_ui    │              │
+          │         └──────┬───────┘              │
+          │                │                      │
+          └────────────────▼──────────────────────┘
+                           │  dispatch() / emit()
+                           ▼
+          ┌────────────────────────────────────────┐
+          │                Runtime                 │
+          │  lifecycle FSM · Lua host · hot-reload │
+          │  setting registry · event bus          │
+          └───────────────────┬────────────────────┘
+                              │
+                              ▼
+          ┌────────────────────────────────────────┐
+          │                 Core                   │
+          │  window manager · layout engine        │
+          │  workspace/monitor topology            │
+          │  command dispatcher · event emitter    │
+          └───────────────────┬────────────────────┘
+                              │  port interfaces
+                              ▼
+          ┌────────────────────────────────────────┐
+          │  MonitorPort · InputPort               │
+          │  RenderPort  · KeyboardPort            │
+          └───────────────────┬────────────────────┘
+                              │  (selected at build time)
+                    ┌─────────┴─────────┐
+                    │                   │
+                    ▼                   ▼
+     ┌──────────────────────┐  ┌──────────────────────┐
+     │     X11 backend      │  │   Wayland backend    │
+     │  XCB · RandR · XKB   │  │  wlroots · xdg-shell │
+     │  ICCCM · EWMH        │  │  layer-shell · DRM   │
+     │  XEmbed tray         │  │  KMS via libseat     │
+     └──────────────────────┘  └──────────────────────┘
+```
 
-| Layer | What lives here |
-| ----- | --------------- |
-| C++ core | Event loop, window manager logic, layout engine, bar renderer |
-| C++ backend | X11/XCB (`backends/x11/`) or Wayland/wlroots (`backends/wayland/`) — selected at build time |
-| C++ modules | `keybindings`, `bar`, `keyboard`, `sysinfo`, `debug_ui` |
-| Lua modules | `rules`, `wallpaper`, `autostart` — ship as `lua/swm/*.lua` |
-| Lua widgets | `widgets.tags`, `widgets.title`, `widgets.clock`, `widgets.sysinfo`, … |
-| User config | `~/.config/sirenwm/init.lua` — loads modules, sets options, defines binds |
+The core never reads `init.lua` directly — it exposes a command/event API and the Lua layer drives it. C++ modules bridge the two: they register with the Lua host and translate Lua calls into core commands.
 
-C++ modules are loaded with `require("name")` and return an API table.
-Lua modules use the same `require()` — or `siren.load()` for optional ones.
+**Key design decisions:**
 
-No global config object — each module owns its own settings.
-Hot-reload is transactional: snapshot → clear → re-execute `init.lua` → commit or rollback.
+- **Port interfaces** (`MonitorPort`, `InputPort`, `RenderPort`, `KeyboardPort`) decouple the core from any display protocol. Swapping backends requires no core changes.
+- **No global config object** — each module owns its settings via a typed registry. Hot-reload is transactional: snapshot → clear → re-execute `init.lua` → commit or rollback automatically.
+- **Lua boundary is strict** — the core has no Lua dependency. Modules expose an API table; the user config is pure Lua on top.
 
 ## Getting Started
 
