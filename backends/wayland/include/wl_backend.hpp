@@ -24,7 +24,6 @@
 
 extern "C" {
 #include <wayland-server-core.h>
-#include <wlr/backend.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
@@ -50,7 +49,7 @@ struct WlLayerSurface {
 #endif
 
 // ---------------------------------------------------------------------------
-// WaylandBackend — wlroots 0.15 compositor backend.
+// WaylandBackend — wlroots compositor backend (supports 0.17/0.18).
 // ---------------------------------------------------------------------------
 class WaylandBackend final : public Backend {
     public:
