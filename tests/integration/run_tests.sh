@@ -1389,6 +1389,88 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test: exec-restart (siren.restart()) survives without segfault
+#
+# Trigger restart via the Lua API. The WM replaces itself via execv() —
+# the PID stays the same but the process image is replaced. We verify:
+#  1. The process is still alive after restart (no segfault in on_stop).
+#  2. The WM re-reaches Running state (FSM log entry appears).
+# ---------------------------------------------------------------------------
+
+RESTART_STATE_FILE="/run/user/$(id -u)/sirenwm-restart-state.txt"
+rm -f "$RESTART_STATE_FILE"
+
+# Trigger restart via wmctrl client-message to the root window.
+# sirenwm exposes siren.restart() as a Lua call — we invoke it by sending
+# the _SIRENWM_CMD client message (if available) or by using the reload
+# config trick: write a temp config that calls siren.restart() on load and
+# send SIGHUP. Simpler: just send SIGUSR1 if wired, otherwise use xdotool.
+# The most reliable path in tests: write restart into a temp config and reload.
+
+# Write a one-shot reload config that calls siren.restart().
+RESTART_LUA="$TEST_HOME/.config/sirenwm/init.lua"
+cp "$RESTART_LUA" "${RESTART_LUA}.bak"
+cat >>"$RESTART_LUA" <<'LUA'
+-- injected by restart test
+siren.on("started", function() siren.restart() end)
+LUA
+
+ORIG_PID=$SIRENWM_PID
+
+# Send SIGHUP to trigger reload (which will run the injected restart call).
+kill -HUP "$SIRENWM_PID" 2>/dev/null || true
+
+# Wait up to 3s for the restart-state file to appear (written before execv).
+RESTART_HAPPENED=0
+for _ in $(seq 1 30); do
+    sleep 0.1
+    if [[ -f "$RESTART_STATE_FILE" ]]; then
+        RESTART_HAPPENED=1
+        break
+    fi
+done
+
+# Restore original config immediately so the new process loads cleanly.
+cp "${RESTART_LUA}.bak" "$RESTART_LUA"
+rm -f "${RESTART_LUA}.bak"
+
+if [[ $RESTART_HAPPENED -eq 0 ]]; then
+    fail "exec-restart triggered" "restart-state file never appeared"
+else
+    pass "exec-restart triggered (state file written)"
+fi
+
+# The PID is the same after execv — wait for FSM Running log entry.
+RESTART_RUNNING=0
+for _ in $(seq 1 40); do
+    sleep 0.1
+    if grep -q "FSM: Starting → Running" "$SIRENWM_LOG" 2>/dev/null; then
+        # Count occurrences: must be at least 2 (initial start + after restart).
+        COUNT=$(grep -c "FSM: Starting → Running" "$SIRENWM_LOG" || true)
+        if [[ $COUNT -ge 2 ]]; then
+            RESTART_RUNNING=1
+            break
+        fi
+    fi
+done
+
+if [[ $RESTART_RUNNING -eq 1 ]]; then
+    pass "exec-restart: WM reached Running state after restart"
+else
+    fail "exec-restart: WM reached Running state after restart" "FSM Running not seen twice in log"
+    dump_logs
+fi
+
+# Confirm no segfault: process must still be alive.
+sleep 0.3
+if kill -0 $SIRENWM_PID 2>/dev/null; then
+    pass "exec-restart: no segfault (process alive after on_stop)"
+else
+    fail "exec-restart: no segfault" "process died — likely segfault in on_stop"
+    dump_logs
+fi
+
+# ---------------------------------------------------------------------------
 # Test 8: sirenwm still alive after window operations
 # ---------------------------------------------------------------------------
 
