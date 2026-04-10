@@ -5,6 +5,7 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 
+#include <wl_display.hpp>
 #include <wl_listener.hpp>
 #include <wl_surface.hpp>
 
@@ -136,9 +137,8 @@ class WaylandBackend final : public Backend {
         Core&    core_;
         Runtime& runtime_;
 
-        // Wayland display + event loop
-        wl_display*    display_ = nullptr;
-        wl_event_loop* ev_loop_ = nullptr;
+        // Wayland display (owns wl_display, socket, event loop)
+        WlDisplay display_;
 
         // wlroots core
         wlr_backend*         backend_       = nullptr;
@@ -196,12 +196,6 @@ class WaylandBackend final : public Backend {
         // True when running on a software (pixman) renderer with no DRM device.
         // In this mode cursor attachment and xcursor upload must be skipped.
         bool software_renderer_ = false;
-
-        // Wayland display socket fd (owned by us, passed to wl_display_add_socket_fd).
-        // -1 if inherited from parent process via SIRENWM_WL_SOCKET_FD.
-        int socket_fd_ = -1;
-        // Socket name (e.g. "wayland-1"), stored for prepare_exec_restart().
-        std::string socket_name_;
 
         // Backend-level signal listeners
         WlListener<wlr_output>       on_new_output_;

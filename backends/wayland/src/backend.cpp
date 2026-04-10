@@ -43,13 +43,8 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     : core_(core), runtime_(runtime) {
     wlr_log_init(WLR_DEBUG, wlr_log_handler);
 
-    display_ = wl_display_create();
-    if (!display_)
-        LOG_ERR("WaylandBackend: wl_display_create failed");
-
-    ev_loop_ = wl_display_get_event_loop(display_);
-
-    backend_ = wlr_backend_autocreate(ev_loop_, nullptr);
+    // display_ is constructed before we get here (WlDisplay ctor runs first)
+    backend_ = wlr_backend_autocreate(display_.ev_loop(), nullptr);
     if (!backend_)
         LOG_ERR("WaylandBackend: wlr_backend_autocreate failed");
 
@@ -57,28 +52,28 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     if (!renderer_)
         LOG_ERR("WaylandBackend: wlr_renderer_autocreate failed");
 
-    wlr_renderer_init_wl_display(renderer_, display_);
+    wlr_renderer_init_wl_display(renderer_, display_.get());
 
     allocator_ = wlr_allocator_autocreate(backend_, renderer_);
     if (!allocator_)
         LOG_ERR("WaylandBackend: wlr_allocator_autocreate failed");
 
-    compositor_ = wlr_compositor_create(display_, 6, renderer_);
+    compositor_ = wlr_compositor_create(display_.get(), 6, renderer_);
 
-    output_layout_ = wlr_output_layout_create(display_);
+    output_layout_ = wlr_output_layout_create(display_.get());
     scene_         = wlr_scene_create();
     wlr_scene_attach_output_layout(scene_, output_layout_);
 
-    xdg_shell_ = wlr_xdg_shell_create(display_, 3);
+    xdg_shell_ = wlr_xdg_shell_create(display_.get(), 3);
 #ifndef SIRENWM_NO_LAYER_SHELL
-    layer_shell_ = wlr_layer_shell_v1_create(display_, 4);
+    layer_shell_ = wlr_layer_shell_v1_create(display_.get(), 4);
     LOG_INFO("WaylandBackend: layer-shell enabled");
 #else
     LOG_INFO("WaylandBackend: layer-shell disabled (xml not found at build time)");
 #endif
-    data_dev_mgr_ = wlr_data_device_manager_create(display_);
+    data_dev_mgr_ = wlr_data_device_manager_create(display_.get());
 
-    seat_        = wlr_seat_create(display_, "seat0");
+    seat_        = wlr_seat_create(display_.get(), "seat0");
     cursor_      = wlr_cursor_create();
     xcursor_mgr_ = wlr_xcursor_manager_create(nullptr, 24);
     wlr_xcursor_manager_load(xcursor_mgr_, 1.0f);
@@ -131,57 +126,8 @@ WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
     if (!wlr_backend_start(backend_))
         LOG_ERR("WaylandBackend: wlr_backend_start failed");
 
-    // Create (or inherit) the Wayland display socket.
-    // On exec-restart SIRENWM_WL_SOCKET_FD carries the already-bound fd and
-    // SIRENWM_WL_SOCKET_NAME carries the socket name — adopt them directly so
-    // existing clients survive the compositor restart without reconnecting.
-    const char* inherited_fd_str   = std::getenv("SIRENWM_WL_SOCKET_FD");
-    const char* inherited_name_str = std::getenv("SIRENWM_WL_SOCKET_NAME");
-
-    if (inherited_fd_str && inherited_name_str) {
-        int inherited_fd = std::atoi(inherited_fd_str);
-        // Restore O_CLOEXEC now that we've consumed the fd.
-        fcntl(inherited_fd, F_SETFD, FD_CLOEXEC);
-        if (wl_display_add_socket_fd(display_, inherited_fd) == 0) {
-            socket_fd_   = inherited_fd;
-            socket_name_ = inherited_name_str;
-            setenv("WAYLAND_DISPLAY", socket_name_.c_str(), 1);
-            LOG_INFO("WaylandBackend: inherited socket fd=%d name=%s",
-                inherited_fd, socket_name_.c_str());
-        } else {
-            LOG_ERR("WaylandBackend: wl_display_add_socket_fd(%d) failed", inherited_fd);
-        }
-    } else {
-        const char* socket_name = wl_display_add_socket_auto(display_);
-        if (!socket_name) {
-            LOG_ERR("WaylandBackend: wl_display_add_socket_auto failed");
-        } else {
-            socket_name_ = socket_name;
-            // Find the socket fd so we can pass it across exec-restart.
-            // libwayland does not expose the fd directly; locate it via
-            // /proc/self/fd by matching the socket path.
-            const char* xdg_runtime = std::getenv("XDG_RUNTIME_DIR");
-            if (xdg_runtime) {
-                std::string sock_path = std::string(xdg_runtime) + "/" + socket_name_;
-                char        link_buf[256];
-                for (int fd = 3; fd < 1024; ++fd) {
-                    std::string proc_fd = "/proc/self/fd/" + std::to_string(fd);
-                    ssize_t     n       = readlink(proc_fd.c_str(), link_buf, sizeof(link_buf) - 1);
-                    if (n > 0) {
-                        link_buf[n] = '\0';
-                        if (sock_path == link_buf) {
-                            socket_fd_ = fd;
-                            break;
-                        }
-                    }
-                }
-            }
-            setenv("WAYLAND_DISPLAY", socket_name_.c_str(), 1);
-            LOG_INFO("WaylandBackend: listening on %s (fd=%d)", socket_name_.c_str(), socket_fd_);
-        }
-    }
-
-    LOG_INFO("WaylandBackend: initialised");
+    // Socket is already initialised by WlDisplay constructor.
+    LOG_INFO("WaylandBackend: initialised on %s", display_.socket_name().c_str());
 }
 
 WaylandBackend::~WaylandBackend() {
@@ -207,12 +153,12 @@ WaylandBackend::~WaylandBackend() {
 
     if (xcursor_mgr_)   wlr_xcursor_manager_destroy(xcursor_mgr_);
     if (cursor_)        wlr_cursor_destroy(cursor_);
-    // seat, compositor, xdg_shell are destroyed via wl_display_destroy
+    // seat, compositor, xdg_shell are destroyed via wl_display_destroy (in WlDisplay dtor)
     if (output_layout_) wlr_output_layout_destroy(output_layout_);
     if (allocator_)     wlr_allocator_destroy(allocator_);
     if (renderer_)      wlr_renderer_destroy(renderer_);
     if (backend_)       wlr_backend_destroy(backend_);
-    if (display_)       wl_display_destroy(display_);
+    // display_ dtor runs after this — destroys wl_display
 }
 
 wlr_scene_tree* WaylandBackend::scene_root() const {
@@ -236,21 +182,7 @@ void WaylandBackend::shutdown() {
 }
 
 void WaylandBackend::prepare_exec_restart() {
-    if (socket_fd_ < 0 || socket_name_.empty()) {
-        LOG_WARN("WaylandBackend: prepare_exec_restart: no socket fd tracked, clients will die");
-        return;
-    }
-    // Drop O_CLOEXEC so the fd survives execv().
-    int flags = fcntl(socket_fd_, F_GETFD);
-    if (flags < 0 || fcntl(socket_fd_, F_SETFD, flags & ~FD_CLOEXEC) < 0) {
-        LOG_ERR("WaylandBackend: prepare_exec_restart: fcntl failed: %s", std::strerror(errno));
-        return;
-    }
-    // Pass fd number and socket name to the new process via environment.
-    setenv("SIRENWM_WL_SOCKET_FD",   std::to_string(socket_fd_).c_str(),  1);
-    setenv("SIRENWM_WL_SOCKET_NAME", socket_name_.c_str(), 1);
-    LOG_INFO("WaylandBackend: socket fd=%d name=%s will survive exec",
-        socket_fd_, socket_name_.c_str());
+    display_.prepare_exec_restart();
 }
 
 void WaylandBackend::on_reload_applied() {
