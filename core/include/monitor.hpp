@@ -18,6 +18,12 @@ struct Monitor {
 
     int         active_ws = -1;
 
+    // Bar insets — how much space is currently reserved at top/bottom of this
+    // monitor by bars. pos_/size_ already have these subtracted (workspace area),
+    // so `physical()` undoes them to recover the original monitor rect.
+    int         top_inset_    = 0;
+    int         bottom_inset_ = 0;
+
     Monitor(int id, std::string name, int x, int y, int w, int h)
         : id(id), name(std::move(name)), pos_(x, y), size_(w, h) {}
 
@@ -37,6 +43,9 @@ struct Monitor {
     Vec2i&       size()       { return size_; }
     const Vec2i& size() const { return size_; }
 
+    int top_inset()    const { return top_inset_; }
+    int bottom_inset() const { return bottom_inset_; }
+
     Vec2i center() const { return pos_ + size_ / 2; }
 
     bool contains(Vec2i p) const {
@@ -45,10 +54,16 @@ struct Monitor {
     }
 
     // Physical area: the full monitor surface before bar insets were applied.
-    std::pair<Vec2i, Vec2i> physical(int top_inset, int bottom_inset) const {
-        int top = std::max(0, top_inset);
-        int bot = std::max(0, bottom_inset);
+    std::pair<Vec2i, Vec2i> physical() const {
+        int top = std::max(0, top_inset_);
+        int bot = std::max(0, bottom_inset_);
         return { { pos_.x(), pos_.y() - top }, { size_.x(), std::max(1, size_.y() + top + bot) } };
+    }
+
+    bool physical_contains(Vec2i p) const {
+        auto [pp, ps] = physical();
+        return p.x() >= pp.x() && p.x() < pp.x() + ps.x() &&
+               p.y() >= pp.y() && p.y() < pp.y() + ps.y();
     }
 };
 

@@ -217,12 +217,12 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         auto geo = xconn.get_window_geometry(ev->window);
         if (geo) {
             const auto& mons    = core.monitor_states();
-            int         top     = std::max(0, core.monitor_top_inset());
-            int         bottom  = std::max(0, core.monitor_bottom_inset());
             int         outer_w = (int)(geo->width  + 2 * geo->border_width);
             int         outer_h = (int)(geo->height + 2 * geo->border_width);
             for (const auto& mon : mons) {
-                if (outer_w >= mon.width() && outer_h >= mon.height() - top - bottom) {
+                int top = std::max(0, mon.top_inset());
+                int bot = std::max(0, mon.bottom_inset());
+                if (outer_w >= mon.width() && outer_h >= mon.height() - top - bot) {
                     meta.covers_monitor = true;
                     break;
                 }
@@ -304,8 +304,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         int         mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
-                core.monitor_top_inset(), core.monitor_bottom_inset());
+            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
             LOG_INFO("MapRequest(%d): %s, promoting to borderless at %d,%d %dx%d",
                 ev->window,
                 mapped_window->self_managed ? "self-managed (Wine/Proton)" : "borderless",
@@ -333,8 +332,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         int         mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
-                core.monitor_top_inset(), core.monitor_bottom_inset());
+            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
             LOG_DEBUG("MapRequest(%d): re-map of borderless, repinning geometry at %d,%d %dx%d",
                 ev->window, phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
             (void)core.dispatch(command::SetWindowGeometry{
@@ -602,8 +600,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
                         const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-                            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical(
-                                core.monitor_top_inset(), core.monitor_bottom_inset());
+                            auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
                             LOG_INFO("PropertyNotify(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
                                 ev->window, phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
                             (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
@@ -676,7 +673,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
             }
             if (ptr_mon_idx >= 0) {
                 const auto& m = mons[ptr_mon_idx];
-                auto [tgt_pos, tgt_size] = m.physical(core.monitor_top_inset(), core.monitor_bottom_inset());
+                auto [tgt_pos, tgt_size] = m.physical();
                 cfg_x                    = (int16_t)tgt_pos.x();
                 cfg_y                    = (int16_t)tgt_pos.y();
 
@@ -687,7 +684,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
                     int rw = (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH)  ? ev->width  : 0;
                     int rh = (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT) ? ev->height : 0;
                     for (int i = 0; i < (int)mons.size(); i++) {
-                        auto [src_pos, src_size] = mons[i].physical(core.monitor_top_inset(), core.monitor_bottom_inset());
+                        auto [src_pos, src_size] = mons[i].physical();
                         if (rw == src_size.x() && rh == src_size.y()) {
                             ev->width       = (uint16_t)tgt_size.x();
                             ev->height      = (uint16_t)tgt_size.y();
@@ -768,8 +765,8 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
             const auto& mon = mons[(size_t)mon_idx];
             // SDL2 subtracts bar insets from its requested size; compare against usable area.
             int         usable_h = mon.height()
-                - std::max(0, core.monitor_top_inset())
-                - std::max(0, core.monitor_bottom_inset());
+                - std::max(0, mon.top_inset())
+                - std::max(0, mon.bottom_inset());
             if ((int)ev->width >= mon.width() && (int)ev->height >= usable_h) {
                 LOG_INFO(
                     "ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",

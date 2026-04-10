@@ -393,32 +393,31 @@ void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool i
 void BarModule::rebuild_bars() {
     all_bars_.clear();
 
-    const auto& monitors   = core().monitor_states();
-    const int   cur_top    = core().monitor_top_inset();
-    const int   cur_bottom = core().monitor_bottom_inset();
+    const auto& monitors = core().monitor_states();
 
-    int global_top_h    = 0;
-    int global_bottom_h = 0;
+    auto has_content = [](const BarConfig& cfg) {
+        return cfg.height > 0 || !cfg.left.empty()
+            || !cfg.center.empty() || !cfg.right.empty();
+    };
 
     for (int i = 0; i < (int)monitors.size(); i++) {
         std::string      alias = monitor_alias(i);
         MonitorBarConfig mcfg  = bar_set_cfg_.resolve(alias);
 
-        int phys_y = monitors[i].y() - cur_top;
-        int phys_h = monitors[i].height() + cur_top + cur_bottom;
-        MonRect m{ i, { monitors[i].x(), phys_y }, monitors[i].size(), alias };
+        // Physical rect of this monitor: undo any currently applied insets so
+        // new bars position correctly even while old ones are still in effect.
+        auto [phy_pos, phy_size] = monitors[i].physical();
+        MonRect m{ i, phy_pos, phy_size, alias };
 
-        auto has_content = [](const BarConfig& cfg) {
-            return cfg.height > 0 || !cfg.left.empty()
-                || !cfg.center.empty() || !cfg.right.empty();
-        };
+        int top_h    = 0;
+        int bottom_h = 0;
 
         if (mcfg.top.state == BarSideState::Custom) {
             BarConfig top_cfg = mcfg.top.cfg;
             if (top_cfg.height <= 0) top_cfg.height = kBarDefaultHeight;
             if (has_content(top_cfg)) {
                 create_bar_window(m, top_cfg, true);
-                global_top_h = std::max(global_top_h, top_cfg.height);
+                top_h = top_cfg.height;
             }
         }
 
@@ -426,18 +425,16 @@ void BarModule::rebuild_bars() {
             BarConfig bottom_cfg = mcfg.bottom.cfg;
             if (bottom_cfg.height <= 0) bottom_cfg.height = kBarDefaultHeight;
             if (has_content(bottom_cfg)) {
-                MonRect mb{ i, { monitors[i].x(), phys_y + phys_h - bottom_cfg.height },
-                            monitors[i].size(), alias };
+                MonRect mb{ i, { phy_pos.x(), phy_pos.y() + phy_size.y() - bottom_cfg.height },
+                            phy_size, alias };
                 create_bar_window(mb, bottom_cfg, false);
-                global_bottom_h = std::max(global_bottom_h, bottom_cfg.height);
+                bottom_h = bottom_cfg.height;
             }
         }
-    }
 
-    if (global_top_h > 0)
-        (void)core().dispatch(command::ApplyMonitorTopInset{ global_top_h });
-    if (global_bottom_h > 0)
-        (void)core().dispatch(command::ApplyMonitorBottomInset{ global_bottom_h });
+        (void)core().dispatch(command::ApplyMonitorTopInset{ top_h, i });
+        (void)core().dispatch(command::ApplyMonitorBottomInset{ bottom_h, i });
+    }
 }
 
 bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {

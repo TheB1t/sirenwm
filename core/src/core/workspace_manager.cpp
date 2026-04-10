@@ -673,14 +673,18 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
     sync_focus_state();
 }
 
-void WorkspaceManager::adjust_monitor_insets(int top_delta, int bottom_delta) {
-    for (auto& mon : monitors) {
-        if (top_delta != 0) {
-            mon.y()     += top_delta;
-            mon.height() = std::max(0, mon.height() - top_delta);
-        }
-        if (bottom_delta != 0)
-            mon.height() = std::max(0, mon.height() - bottom_delta);
+void WorkspaceManager::adjust_monitor_inset(int mon_idx, int top_delta, int bottom_delta) {
+    if (mon_idx < 0 || mon_idx >= (int)monitors.size())
+        return;
+    auto& mon = monitors[mon_idx];
+    if (top_delta != 0) {
+        mon.y()     += top_delta;
+        mon.height() = std::max(0, mon.height() - top_delta);
+        mon.top_inset_ += top_delta;
+    }
+    if (bottom_delta != 0) {
+        mon.height() = std::max(0, mon.height() - bottom_delta);
+        mon.bottom_inset_ += bottom_delta;
     }
 }
 
@@ -1013,8 +1017,18 @@ int WorkspaceManager::monitor_at_point(int x, int y) const {
     return -1;
 }
 
+int WorkspaceManager::monitor_at_physical_point(int x, int y) const {
+    for (int i = 0; i < (int)monitors.size(); i++) {
+        if (monitors[i].physical_contains({ x, y }))
+            return i;
+    }
+    return -1;
+}
+
 bool WorkspaceManager::focus_monitor_at_point(int x, int y) {
-    int mon = monitor_at_point(x, y);
+    // Backends supply root (physical) coordinates — hit-test against physical rect
+    // so clicks inside the top/bottom bar strip still pick the underlying monitor.
+    int mon = monitor_at_physical_point(x, y);
     if (mon < 0)
         return false;
     bool changed = (mon != focused_monitor_);

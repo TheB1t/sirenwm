@@ -114,8 +114,6 @@ class Core {
         std::string config_path;
         LuaHost*    lua_host_                    = nullptr;
         bool        runtime_started              = false;
-        int         monitor_top_inset_applied    = 0;
-        int         monitor_bottom_inset_applied = 0;
 
         void         emit_backend_effect(BackendEffectKind kind, WindowId window = NO_WINDOW);
         void         emit_warp_pointer(Vec2i16 pos);
@@ -187,8 +185,23 @@ class Core {
         }
         const CoreSettings& current_settings() const { return settings; }
         void mark_runtime_started(bool started) { runtime_started = started; }
-        int  monitor_top_inset()    const { return monitor_top_inset_applied; }
-        int  monitor_bottom_inset() const { return monitor_bottom_inset_applied; }
+        // Per-monitor bar insets; max across monitors when no index is given.
+        int  monitor_top_inset(int mon_idx = -1) const {
+            const auto& mons = wsman.all_monitor_states();
+            if (mon_idx >= 0 && mon_idx < (int)mons.size())
+                return mons[mon_idx].top_inset();
+            int m = 0;
+            for (const auto& mon : mons) m = std::max(m, mon.top_inset());
+            return m;
+        }
+        int  monitor_bottom_inset(int mon_idx = -1) const {
+            const auto& mons = wsman.all_monitor_states();
+            if (mon_idx >= 0 && mon_idx < (int)mons.size())
+                return mons[mon_idx].bottom_inset();
+            int m = 0;
+            for (const auto& mon : mons) m = std::max(m, mon.bottom_inset());
+            return m;
+        }
         CoreReloadState snapshot_reload_state() const;
         void            restore_reload_state(const CoreReloadState& snapshot);
         void clear_reloadable_runtime_state() {
@@ -267,10 +280,10 @@ class Core {
         int focused_monitor_index()           const { return wsman.get_focused_monitor(); }
         bool focus_monitor_at_point(int x, int y);
         int active_workspace_at_point(int x, int y) const {
-            // Monitor coordinates are adjusted by bar inset (mon.y += top_inset).
-            // Callers may pass raw physical coordinates (e.g. WM_NORMAL_HINTS.PPosition
-            // from Wine/Proton), so compensate before the lookup.
-            int mon = wsman.monitor_at_point(x, y + std::max(0, monitor_top_inset_applied));
+            // Callers pass raw physical coordinates (WM_NORMAL_HINTS.PPosition from
+            // Wine/Proton, pointer root coords, etc). Hit-test against the physical
+            // monitor rect so points inside the bar strip still resolve.
+            int mon = wsman.monitor_at_physical_point(x, y);
             return (mon >= 0) ? wsman.active_workspace(mon) : -1;
         }
         int workspace_count()         const { return (int)workspace_states().size(); }

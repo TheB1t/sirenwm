@@ -126,10 +126,12 @@ struct ApplyMonitorTopology {
     std::vector<Monitor> monitors;
 };
 struct ApplyMonitorTopInset {
-    int inset_px = 0;
+    int inset_px    = 0;
+    int monitor_idx = -1;  // -1 = apply to every monitor
 };
 struct ApplyMonitorBottomInset {
-    int inset_px = 0;
+    int inset_px    = 0;
+    int monitor_idx = -1;  // -1 = apply to every monitor
 };
 
 struct SetLayout {

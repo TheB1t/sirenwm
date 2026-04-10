@@ -141,7 +141,7 @@ class WorkspaceManager {
             const MonitorCompose& compose = {});
 
         void             set_monitors(std::vector<Monitor> mons);
-        void             adjust_monitor_insets(int top_delta, int bottom_delta);
+        void             adjust_monitor_inset(int mon_idx, int top_delta, int bottom_delta);
 
         Workspace&       current();
         const Workspace& current() const;
@@ -189,6 +189,7 @@ class WorkspaceManager {
         }
 
         int              monitor_at_point(int x, int y) const;
+        int              monitor_at_physical_point(int x, int y) const;
         bool             focus_monitor_at_point(int x, int y);
 
         Workspace&       workspace(int id);
