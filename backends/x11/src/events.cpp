@@ -2,6 +2,7 @@
 
 #include <core.hpp>
 #include <log.hpp>
+#include <protocol/keyboard.hpp>
 #include <protocol/system_tray.hpp>
 #include <runtime.hpp>
 #include <xconn.hpp>
@@ -1111,7 +1112,9 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
                 auto* kp = keyboard_port_impl.get();
                 if (kp) {
                     std::string layout = kp->current_layout();
-                    runtime.emit(event::KeyboardLayoutChanged{ layout });
+                    runtime.emit(event::CustomEvent{
+                        MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
+                    });
                 }
                 break;
             }

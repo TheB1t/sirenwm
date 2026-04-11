@@ -1,5 +1,6 @@
 #include <lua_host.hpp>
 #include <log.hpp>
+#include <protocol/keyboard.hpp>
 
 #include <cstdarg>
 
@@ -620,13 +621,15 @@ void LuaHost::on(event::WindowAssignedToWorkspace ev) {
 // -- keyboard.layout_changed ----------------------------------------------
 
 static int push_keyboard_layout(LuaContext& lua, const void* ev_ptr, Core&) {
-    auto* ev = static_cast<const event::KeyboardLayoutChanged*>(ev_ptr);
+    auto* payload = static_cast<const protocol::keyboard::LayoutChanged*>(ev_ptr);
     lua.new_table();
-    lua.push_string(ev->layout);
+    lua.push_string(payload->name);
     lua.set_field(-2, "layout");
     return 1;
 }
 
-void LuaHost::on(event::KeyboardLayoutChanged ev) {
-    emit_to_lua("keyboard.layout_changed", push_keyboard_layout, &ev, &core_);
+void LuaHost::on(const event::CustomEvent& ev) {
+    if (auto* p = ev.msg.unpack<protocol::keyboard::LayoutChanged>()) {
+        emit_to_lua("keyboard.layout_changed", push_keyboard_layout, p, &core_);
+    }
 }

@@ -75,9 +75,6 @@ struct PropertyNotify { WindowId window; uint32_t atom; };
 // Emitted after a window has been placed on a workspace (rules, move, or initial mapping).
 struct WindowAssignedToWorkspace { WindowId window; int workspace_id; };
 
-// Emitted when the active XKB group (keyboard layout) changes.
-struct KeyboardLayoutChanged { std::string layout; };
-
 // Lifecycle events — previously ad-hoc string-based emit_to_lua() calls,
 // now proper type-safe structs dispatched through IEventReceiver.
 struct RuntimeStopping { bool exec_restart = false; };

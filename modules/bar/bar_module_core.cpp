@@ -5,6 +5,7 @@
 #include <backend/events.hpp>
 #include <core.hpp>
 #include <log.hpp>
+#include <protocol/keyboard.hpp>
 #include <protocol/system_tray.hpp>
 #include <runtime.hpp>
 #include <algorithm>
@@ -700,6 +701,11 @@ void BarModule::on(const event::CustomEvent& ev) {
         int target = monitor_for_icon(docked->icon);
         route_icon_to_monitor(docked->icon, target);
         redraw();
+        return;
+    }
+    if (ev.msg.unpack<protocol::keyboard::LayoutChanged>()) {
+        redraw();
+        return;
     }
 }
 

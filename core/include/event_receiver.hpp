@@ -32,7 +32,6 @@ class IEventReceiver {
         virtual void on(event::ConfigureNotify)           {}
         virtual void on(event::PropertyNotify)            {}
         virtual void on(event::WindowAssignedToWorkspace) {}
-        virtual void on(event::KeyboardLayoutChanged)     {}
         virtual void on(event::WindowAdopted)             {}
         virtual void on(const event::CustomEvent&)        {}
 

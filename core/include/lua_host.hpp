@@ -132,7 +132,7 @@ class LuaHost : public IEventReceiver {
         void on(event::ConfigReloaded ev)            override;
         void on(event::ChildExited ev)               override;
         void on(event::WindowAssignedToWorkspace ev) override;
-        void on(event::KeyboardLayoutChanged ev)     override;
+        void on(const event::CustomEvent& ev)        override;
 
         // Register siren.on(event, fn) from Lua — called by the C++ siren.on binding.
         void register_handler(const std::string& event, LuaRegistryRef handler);
