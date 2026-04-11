@@ -2,6 +2,7 @@
 
 #include <core.hpp>
 #include <log.hpp>
+#include <protocol/system_tray.hpp>
 #include <runtime.hpp>
 #include <xconn.hpp>
 
@@ -448,11 +449,13 @@ void X11Backend::handle_reparent_notify(xcb_reparent_notify_event_t* ev) {
         xcb_atom_t xembed_info_atom = xconn.intern_atom_reply(
             xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
         bool       has_xembed = xconn.has_property_32(ev->window, xembed_info_atom, 2);
-        // Emit TrayIconDocked only when reparented to root (MANAGER broadcast).
+        // Publish via protocol only when reparented to root (MANAGER broadcast).
         // Reparents to non-root are either our own transfers or initial docks.
         if (has_xembed && ev->parent == root_window) {
             LOG_DEBUG("ReparentNotify(%u): xembed icon returned to root, re-adopting", ev->window);
-            runtime.emit(event::TrayIconDocked{ ev->window });
+            runtime.emit(event::CustomEvent{
+                MessageEnvelope::pack(protocol::system_tray::IconDocked{ ev->window })
+            });
         } else {
             LOG_DEBUG("ReparentNotify(%u): parent %u (unmanaged, xembed=%d)", ev->window, ev->parent,
                 has_xembed ? 1 : 0);
