@@ -5,6 +5,7 @@
 #include <backend/events.hpp>
 #include <core.hpp>
 #include <log.hpp>
+#include <protocol/system_tray.hpp>
 #include <runtime.hpp>
 #include <algorithm>
 #include <unordered_set>
@@ -691,13 +692,15 @@ void BarModule::rebuild_trays() {
     LOG_INFO("Bar: rebuild_trays done, %d tray(s), owner_mon=%d", (int)trays.size(), owner_mon);
 }
 
-void BarModule::on(event::TrayIconDocked ev) {
-    backend::TrayHost* t = owner_tray();
-    if (t && !t->contains_icon(ev.icon))
-        t->adopt_icon(ev.icon);
-    int target = monitor_for_icon(ev.icon);
-    route_icon_to_monitor(ev.icon, target);
-    redraw();
+void BarModule::on(const event::CustomEvent& ev) {
+    if (auto* docked = ev.msg.unpack<protocol::system_tray::IconDocked>()) {
+        backend::TrayHost* t = owner_tray();
+        if (t && !t->contains_icon(docked->icon))
+            t->adopt_icon(docked->icon);
+        int target = monitor_for_icon(docked->icon);
+        route_icon_to_monitor(docked->icon, target);
+        redraw();
+    }
 }
 
 void BarModule::on(event::DisplayTopologyChanged) {

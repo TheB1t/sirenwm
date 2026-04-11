@@ -72,8 +72,6 @@ struct PropertyNotify { WindowId window; uint32_t atom; };
 
 // Emitted when an unmanaged XEMBED window reparents itself to any window.
 // bar module uses this to trigger tray rebalancing after a client docks.
-struct TrayIconDocked { WindowId icon; };
-
 // Emitted after a window has been placed on a workspace (rules, move, or initial mapping).
 struct WindowAssignedToWorkspace { WindowId window; int workspace_id; };
 
