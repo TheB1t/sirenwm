@@ -438,8 +438,8 @@ void BarModule::rebuild_bars() {
             }
         }
 
-        (void)core().dispatch(command::atom::ApplyMonitorTopInset{ top_h, i });
-        (void)core().dispatch(command::atom::ApplyMonitorBottomInset{ bottom_h, i });
+        (void)core().dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Top, top_h });
+        (void)core().dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Bottom, bottom_h });
     }
 }
 

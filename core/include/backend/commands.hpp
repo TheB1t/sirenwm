@@ -130,14 +130,13 @@ struct ApplyMonitorTopology {
     std::vector<Monitor> monitors;
 };
 
-struct ApplyMonitorTopInset {
-    int inset_px    = 0;
-    int monitor_idx = -1;  // -1 = apply to every monitor
-};
-
-struct ApplyMonitorBottomInset {
-    int inset_px    = 0;
-    int monitor_idx = -1;  // -1 = apply to every monitor
+// Reserve `px` pixels of space at one edge of a monitor (bars, panels,
+// docks). The core subtracts the reservation from the usable workspace
+// area and keeps the original physical rect recoverable via Monitor::physical().
+struct ReserveMonitorArea {
+    int         monitor_idx = -1; // -1 = apply to every monitor
+    MonitorEdge edge        = MonitorEdge::Top;
+    int         px          = 0;
 };
 
 struct SetLayout {
@@ -240,8 +239,7 @@ using CommandAtom = std::variant<
     atom::SetWindowBorderless,
     atom::HideWindow,
     atom::ApplyMonitorTopology,
-    atom::ApplyMonitorTopInset,
-    atom::ApplyMonitorBottomInset,
+    atom::ReserveMonitorArea,
     atom::SetLayout,
     atom::SetMasterFactor,
     atom::FocusMonitor,
