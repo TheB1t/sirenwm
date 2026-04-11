@@ -682,18 +682,29 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
     sync_focus_state();
 }
 
-void WorkspaceManager::adjust_monitor_inset(int mon_idx, int top_delta, int bottom_delta) {
-    if (mon_idx < 0 || mon_idx >= (int)monitors.size())
+void WorkspaceManager::adjust_monitor_inset(int mon_idx, MonitorEdge edge, int delta) {
+    if (mon_idx < 0 || mon_idx >= (int)monitors.size() || delta == 0)
         return;
     auto& mon = monitors[mon_idx];
-    if (top_delta != 0) {
-        mon.y()        += top_delta;
-        mon.height()    = std::max(0, mon.height() - top_delta);
-        mon.top_inset_ += top_delta;
-    }
-    if (bottom_delta != 0) {
-        mon.height()       = std::max(0, mon.height() - bottom_delta);
-        mon.bottom_inset_ += bottom_delta;
+    switch (edge) {
+        case MonitorEdge::Top:
+            mon.y()        += delta;
+            mon.height()    = std::max(0, mon.height() - delta);
+            mon.top_inset_ += delta;
+            break;
+        case MonitorEdge::Bottom:
+            mon.height()       = std::max(0, mon.height() - delta);
+            mon.bottom_inset_ += delta;
+            break;
+        case MonitorEdge::Left:
+            mon.x()         += delta;
+            mon.width()      = std::max(0, mon.width() - delta);
+            mon.left_inset_ += delta;
+            break;
+        case MonitorEdge::Right:
+            mon.width()       = std::max(0, mon.width() - delta);
+            mon.right_inset_ += delta;
+            break;
     }
 }
 

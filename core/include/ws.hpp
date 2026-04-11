@@ -141,7 +141,7 @@ class WorkspaceManager {
             const MonitorCompose& compose = {});
 
         void             set_monitors(std::vector<Monitor> mons);
-        void             adjust_monitor_inset(int mon_idx, int top_delta, int bottom_delta);
+        void             adjust_monitor_inset(int mon_idx, MonitorEdge edge, int delta);
 
         Workspace&       current();
         const Workspace& current() const;

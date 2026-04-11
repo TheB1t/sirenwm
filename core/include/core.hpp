@@ -192,21 +192,14 @@ class Core {
         }
         const CoreSettings& current_settings() const { return settings; }
         void mark_runtime_started(bool started) { runtime_started = started; }
-        // Per-monitor bar insets; max across monitors when no index is given.
-        int  monitor_top_inset(int mon_idx = -1) const {
+        // Per-monitor reserved area at the given edge; max across monitors
+        // when no index is given.
+        int monitor_inset(MonitorEdge edge, int mon_idx = -1) const {
             const auto& mons = wsman.all_monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size())
-                return mons[mon_idx].top_inset();
+                return mons[mon_idx].inset(edge);
             int m = 0;
-            for (const auto& mon : mons) m = std::max(m, mon.top_inset());
-            return m;
-        }
-        int  monitor_bottom_inset(int mon_idx = -1) const {
-            const auto& mons = wsman.all_monitor_states();
-            if (mon_idx >= 0 && mon_idx < (int)mons.size())
-                return mons[mon_idx].bottom_inset();
-            int m = 0;
-            for (const auto& mon : mons) m = std::max(m, mon.bottom_inset());
+            for (const auto& mon : mons) m = std::max(m, mon.inset(edge));
             return m;
         }
         CoreReloadState snapshot_reload_state() const;
@@ -244,8 +237,7 @@ class Core {
         bool dispatch(const command::atom::SetWindowBorderless& cmd);
         bool dispatch(const command::atom::HideWindow& cmd);
         bool dispatch(const command::atom::ApplyMonitorTopology& cmd);
-        bool dispatch(const command::atom::ApplyMonitorTopInset& cmd);
-        bool dispatch(const command::atom::ApplyMonitorBottomInset& cmd);
+        bool dispatch(const command::atom::ReserveMonitorArea& cmd);
         bool dispatch(const command::atom::SetLayout& cmd);
         bool dispatch(const command::atom::SetMasterFactor& cmd);
         bool dispatch(const command::atom::FocusMonitor& cmd);

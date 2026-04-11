@@ -152,25 +152,25 @@ TEST(Hotplug, TopInsetAdjustsMonitorGeometry) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 });
-    EXPECT_EQ(h.core.monitor_top_inset(), 20);
+    h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 });
+    EXPECT_EQ(h.core.monitor_inset(MonitorEdge::Top), 20);
 }
 
 TEST(Hotplug, BottomInsetAdjustsMonitorGeometry) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::atom::ApplyMonitorBottomInset{ 24 });
-    EXPECT_EQ(h.core.monitor_bottom_inset(), 24);
+    h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Bottom, 24 });
+    EXPECT_EQ(h.core.monitor_inset(MonitorEdge::Bottom), 24);
 }
 
 TEST(Hotplug, InsetIsIdempotentWhenSameValue) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 });
-    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 }); // same value twice — no-op
-    EXPECT_EQ(h.core.monitor_top_inset(), 20);
+    h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 });
+    h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 }); // same value twice — no-op
+    EXPECT_EQ(h.core.monitor_inset(MonitorEdge::Top), 20);
 }
 
 // ---------------------------------------------------------------------------

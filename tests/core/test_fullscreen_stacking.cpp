@@ -249,7 +249,7 @@ TEST(FullscreenStacking, FullscreenCoversFullMonitorWithInset) {
     TestHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
     h.start();
 
-    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 });
+    h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 });
 
     WindowId win = h.map_window(0x1000, 0);
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });

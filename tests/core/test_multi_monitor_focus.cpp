@@ -234,7 +234,7 @@ TEST(MultiMonitorFocus, RemoveWindowOnOtherMonitorSafe) {
 TEST(MultiMonitorFocus, InsetAffectsTiledNotFullscreen) {
     auto h = make_dual();
 
-    h->core.dispatch(command::atom::ApplyMonitorTopInset{ 30 });
+    h->core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 30 });
 
     WindowId tiled = h->map_window(0x1000, 0);
     WindowId fs    = h->map_window(0x2000, 0);
