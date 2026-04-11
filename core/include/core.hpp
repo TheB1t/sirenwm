@@ -51,9 +51,7 @@ using CoreDomainEvent   = std::variant<
     event::WorkspaceSwitched,
     event::RaiseDocks,
     event::DisplayTopologyChanged,
-    event::WindowAssignedToWorkspace,
-    event::BorderlessActivated,
-    event::BorderlessDeactivated
+    event::WindowAssignedToWorkspace
 >;
 
 enum class BackendEffectKind {
@@ -137,8 +135,6 @@ class Core {
         void         emit_raise_docks();
         void         emit_display_topology_changed();
         void         emit_window_assigned_to_workspace(WindowId window, int workspace_id);
-        void         emit_borderless_activated(WindowId window, int monitor_index);
-        void         emit_borderless_deactivated();
         void         evaluate_workspace_fullscreen(int ws_id);
         void         pin_fullscreen_to_monitor(swm::Window& w, int ws_id);
 

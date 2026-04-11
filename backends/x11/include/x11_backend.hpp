@@ -185,8 +185,6 @@ class X11Backend final : public Backend {
         void                   on(event::WindowAssignedToWorkspace ev) override;
         void                   on(event::FocusChanged ev) override;
         void                   on(event::WindowAdopted ev) override;
-        void                   on(event::BorderlessActivated ev) override;
-        void                   on(event::BorderlessDeactivated ev) override;
         bool                   close_window(WindowId window) override;
         void                   shutdown() override;
         StartupSnapshot        scan_existing_windows() override;

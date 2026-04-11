@@ -211,14 +211,6 @@ void Core::emit_display_topology_changed() {
     pending_core_events.push_back(event::DisplayTopologyChanged{});
 }
 
-void Core::emit_borderless_activated(WindowId window, int monitor_index) {
-    pending_core_events.push_back(event::BorderlessActivated{ window, monitor_index });
-}
-
-void Core::emit_borderless_deactivated() {
-    pending_core_events.push_back(event::BorderlessDeactivated{});
-}
-
 void Core::emit_window_assigned_to_workspace(WindowId window, int workspace_id) {
     pending_core_events.push_back(event::WindowAssignedToWorkspace{ window, workspace_id });
 }
@@ -645,20 +637,6 @@ bool Core::dispatch(const command::atom::SetWindowBorderless& cmd) {
         int ws_id = wsman.workspace_of_window(cmd.window);
         if (ws_id >= 0)
             evaluate_workspace_fullscreen(ws_id);
-    }
-    if (cmd.borderless) {
-        int ws_id   = wsman.workspace_of_window(cmd.window);
-        int mon_idx = wsman.monitor_of_workspace(ws_id);
-        if (mon_idx >= 0)
-            emit_borderless_activated(cmd.window, mon_idx);
-    } else {
-        // Check if any borderless window remains on any monitor.
-        const auto& mons = wsman.all_monitor_states();
-        bool        any  = false;
-        for (int i = 0; i < (int)mons.size() && !any; ++i)
-            any = monitor_has_visible_borderless(i);
-        if (!any)
-            emit_borderless_deactivated();
     }
     return true;
 }
