@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <string>
 
+#include <message.hpp>
 #include <vec.hpp>
 
 using WindowId = uint32_t;
@@ -91,5 +92,11 @@ struct BorderlessDeactivated {};
 struct RuntimeStopping { bool exec_restart = false; };
 struct ConfigReloaded {};
 struct ChildExited { int pid = 0; int exit_code = 0; };
+
+// Envelope for protocol messages that the core is deliberately ignorant of.
+// Any module/backend can emit one; any receiver inspects via msg.unpack<T>()
+// for the protocols it cares about. Unknown tags are silently dropped.
+// See core/include/protocol/ for the public contract headers.
+struct CustomEvent { MessageEnvelope msg; };
 
 } // namespace event
