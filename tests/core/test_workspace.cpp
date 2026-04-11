@@ -209,47 +209,6 @@ TEST(Workspace, MoveWindowEmitsAssignedEvent) {
     EXPECT_TRUE(found);
 }
 
-TEST(Workspace, BorderlessEmitsBorderlessActivatedEvent) {
-    TestHarness h;
-    h.start();
-
-    WindowId win = h.map_window(0x1000, 0);
-    h.core.take_core_events(); // drain
-
-    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
-    auto events = h.core.take_core_events();
-
-    bool found = false;
-    for (const auto& e : events) {
-        if (auto* ev = std::get_if<event::BorderlessActivated>(&e)) {
-            if (ev->window == win) {
-                found = true; break;
-            }
-        }
-    }
-    EXPECT_TRUE(found);
-}
-
-TEST(Workspace, ClearLastBorderlessEmitsDeactivatedEvent) {
-    TestHarness h;
-    h.start();
-
-    WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
-    h.core.take_core_events(); // drain
-
-    h.core.dispatch(command::atom::SetWindowBorderless{ win, false });
-    auto events = h.core.take_core_events();
-
-    bool found = false;
-    for (const auto& e : events) {
-        if (std::holds_alternative<event::BorderlessDeactivated>(e)) {
-            found = true; break;
-        }
-    }
-    EXPECT_TRUE(found);
-}
-
 // ---------------------------------------------------------------------------
 // Zoom
 // ---------------------------------------------------------------------------

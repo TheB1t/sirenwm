@@ -181,10 +181,11 @@ TEST(CrossMonitor, FocusDoesNotFollowMoveToInvisibleWorkspace) {
 }
 
 // ---------------------------------------------------------------------------
-// Borderless events on cross-monitor move
+// Cross-monitor move of a borderless window emits FocusChanged,
+// which is what the backend uses to re-sync pointer barriers.
 // ---------------------------------------------------------------------------
 
-TEST(CrossMonitor, BorderlessActivatedEmittedAfterMove) {
+TEST(CrossMonitor, MoveBorderlessAcrossMonitorsEmitsFocusChanged) {
     auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
@@ -194,8 +195,6 @@ TEST(CrossMonitor, BorderlessActivatedEmittedAfterMove) {
     h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto events = h->core.take_core_events();
 
-    // Focus changed event should fire, which is what triggers
-    // barrier updates in the backend
     EXPECT_TRUE(has_domain_event<event::FocusChanged>(events));
 }
 

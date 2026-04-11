@@ -397,9 +397,7 @@ void X11Backend::update_focus(event::FocusChanged ev) {
         set_border_color(ev.window, border_focused_pixel);
     border_painted_focused_ = ev.window;
 
-    // Sync pointer barriers: barriers follow focus, not borderless-activation events.
-    // This is the single source of truth for barrier state — on(BorderlessActivated/Deactivated)
-    // no longer touch barriers to avoid races with FocusChanged.
+    // Sync pointer barriers: barriers follow focus. Single source of truth.
     auto w = (ev.window != NO_WINDOW) ? core.window_state_any(ev.window) : nullptr;
     if (w && w->borderless) {
         int ws_id   = core.workspace_of_window(ev.window);

@@ -34,8 +34,6 @@ class IEventReceiver {
         virtual void on(event::WindowAssignedToWorkspace) {}
         virtual void on(event::TrayIconDocked)            {}
         virtual void on(event::KeyboardLayoutChanged)     {}
-        virtual void on(event::BorderlessActivated)       {}
-        virtual void on(event::BorderlessDeactivated)     {}
         virtual void on(event::WindowAdopted)             {}
         virtual void on(const event::CustomEvent&)        {}
 

@@ -80,13 +80,6 @@ struct WindowAssignedToWorkspace { WindowId window; int workspace_id; };
 // Emitted when the active XKB group (keyboard layout) changes.
 struct KeyboardLayoutChanged { std::string layout; };
 
-// Emitted when a borderless window becomes active on a monitor.
-// Backend should confine the pointer to that monitor (e.g. pointer barriers).
-struct BorderlessActivated { WindowId window; int monitor_index; };
-
-// Emitted when no borderless window is active on any monitor.
-struct BorderlessDeactivated {};
-
 // Lifecycle events — previously ad-hoc string-based emit_to_lua() calls,
 // now proper type-safe structs dispatched through IEventReceiver.
 struct RuntimeStopping { bool exec_restart = false; };

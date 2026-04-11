@@ -208,35 +208,6 @@ TEST(EdgeCases, BorderlessZerosBorderOnNonSelfManaged) {
     EXPECT_EQ(w->border_width, 0);
 }
 
-TEST(EdgeCases, BorderlessToNonBorderlessEmitsDeactivatedWhenNoOthersBorderless) {
-    TestHarness h;
-    h.start();
-
-    WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
-    h.core.take_core_events(); // drain
-
-    h.core.dispatch(command::atom::SetWindowBorderless{ win, false });
-    auto events = h.core.take_core_events();
-    EXPECT_TRUE(has_domain_event<event::BorderlessDeactivated>(events));
-}
-
-TEST(EdgeCases, BorderlessDeactivatedNotEmittedWhenOthersBorderless) {
-    TestHarness h;
-    h.start();
-
-    WindowId a = h.map_window(0x1000, 0);
-    WindowId b = h.map_window(0x2000, 0);
-    h.core.dispatch(command::atom::SetWindowBorderless{ a, true });
-    h.core.dispatch(command::atom::SetWindowBorderless{ b, true });
-    h.core.take_core_events(); // drain
-
-    // Remove borderless from a; b is still borderless
-    h.core.dispatch(command::atom::SetWindowBorderless{ a, false });
-    auto events = h.core.take_core_events();
-    EXPECT_FALSE(has_domain_event<event::BorderlessDeactivated>(events));
-}
-
 // ---------------------------------------------------------------------------
 // EnsureWindow
 // ---------------------------------------------------------------------------

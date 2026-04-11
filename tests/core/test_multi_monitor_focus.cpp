@@ -228,30 +228,6 @@ TEST(MultiMonitorFocus, RemoveWindowOnOtherMonitorSafe) {
 }
 
 // ---------------------------------------------------------------------------
-// Borderless on multi-monitor: activated event has correct monitor index
-// ---------------------------------------------------------------------------
-
-TEST(MultiMonitorFocus, BorderlessActivatedHasCorrectMonitor) {
-    auto     h = make_dual();
-
-    WindowId win = h->map_window(0x2000, 1);
-    h->core.take_core_events(); // drain
-
-    h->core.dispatch(command::atom::SetWindowBorderless{ win, true });
-    auto events = h->core.take_core_events();
-
-    bool found = false;
-    for (const auto& e : events) {
-        if (auto* ev = std::get_if<event::BorderlessActivated>(&e)) {
-            if (ev->window == win && ev->monitor_index == 1) {
-                found = true; break;
-            }
-        }
-    }
-    EXPECT_TRUE(found);
-}
-
-// ---------------------------------------------------------------------------
 // Insets affect tiled but not fullscreen
 // ---------------------------------------------------------------------------
 
