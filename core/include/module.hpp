@@ -6,7 +6,6 @@
 #include <log.hpp>
 #include <runtime_state.hpp>
 
-class Backend;
 class Core;
 class Runtime;
 class RuntimeStore;
@@ -64,22 +63,6 @@ class Module : public IEventReceiver {
         const Runtime& runtime() const { return deps_.runtime; }
         RuntimeStore& store();
         LuaHost&      lua();
-        Backend& backend() {
-            if (!backend_) {
-                LOG_ERR("backend() called before on_start() (runtime state: %s)",
-                    runtime_state_name(runtime_state()));
-                std::abort();
-            }
-            return *backend_;
-        }
-        const Backend& backend() const {
-            if (!backend_) {
-                LOG_ERR("backend() called before on_start() (runtime state: %s)",
-                    runtime_state_name(runtime_state()));
-                std::abort();
-            }
-            return *backend_;
-        }
 
         // Returns the current FSM state of the owning Runtime.
         // Defined in module.cpp to avoid a circular include with runtime.hpp.
@@ -88,10 +71,6 @@ class Module : public IEventReceiver {
     private:
         friend class Runtime;
 
-        // Called by Runtime::start() before on_start(). Not accessible externally.
-        void bind_backend(Backend& b) { backend_ = &b; }
-
         ModuleDeps deps_;
-        Backend*   backend_    = nullptr;
         bool       lua_inited_ = false;
 };

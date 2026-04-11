@@ -63,6 +63,7 @@ enum class BackendEffectKind {
     WarpPointer,
     RaiseWindow,           // raise window to top of X stacking order
     LowerWindow,           // lower window to bottom of X stacking order
+    CloseWindow,           // request client to close (WM_DELETE_WINDOW / kill)
 };
 
 struct BackendEffect {
@@ -249,6 +250,7 @@ class Core {
         bool dispatch(const command::atom::SetWindowSize& cmd);
         bool dispatch(const command::atom::SetWindowBorderWidth& cmd);
         bool dispatch(const command::atom::SyncWindowFromConfigureNotify& cmd);
+        bool dispatch(const command::atom::CloseWindow& cmd);
 
         // Per-type composite overloads — sugar scenarios that read state and
         // then emit one or more atoms under the hood.

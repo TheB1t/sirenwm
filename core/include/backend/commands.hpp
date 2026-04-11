@@ -92,6 +92,8 @@ struct SetWindowMetadata {
     WindowId    window = NO_WINDOW;
     std::string wm_instance;
     std::string wm_class;
+    std::string title;
+    uint32_t    pid = 0;
     WindowType  type = WindowType::Normal;
     WindowHints hints;
     WindowId    transient_for = NO_WINDOW;
@@ -190,6 +192,10 @@ struct SyncWindowFromConfigureNotify {
     uint32_t border_width = 0;
 };
 
+struct CloseWindow {
+    WindowId window = NO_WINDOW;
+};
+
 } // namespace atom
 
 namespace composite {
@@ -250,7 +256,8 @@ using CommandAtom = std::variant<
     atom::SetWindowPosition,
     atom::SetWindowSize,
     atom::SetWindowBorderWidth,
-    atom::SyncWindowFromConfigureNotify
+    atom::SyncWindowFromConfigureNotify,
+    atom::CloseWindow
 >;
 
 using CommandComposite = std::variant<

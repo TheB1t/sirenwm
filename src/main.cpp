@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
 
     if (runtime.consume_exec_restart_request()) {
         LOG_INFO("restart: replacing process via %s", exec_path.c_str());
-        runtime.backend().prepare_exec_restart();
+        runtime.prepare_exec_restart();
         spdlog::shutdown();
         char* exec_argv[] = { (char*)exec_path.c_str(), nullptr };
         execv(exec_path.c_str(), exec_argv);

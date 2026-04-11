@@ -34,6 +34,8 @@ struct WindowState {
 
     std::string wm_instance;
     std::string wm_class;
+    std::string title;
+    uint32_t    pid               = 0;
     WindowType  type              = WindowType::Normal;
     bool        size_locked       = false;       // WM_NORMAL_HINTS min == max
     bool        no_input_focus    = false;      // WM_HINTS.input == False

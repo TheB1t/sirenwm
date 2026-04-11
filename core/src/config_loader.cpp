@@ -286,14 +286,8 @@ static int lua_win_move_to_monitor(LuaContext& lua, void* userdata) {
 
 static int lua_win_close(LuaContext&, void* userdata) {
     auto focused = loader_core(userdata).focused_window_state();
-    if (focused) {
-        bool handled = loader_runtime(userdata).emit_until_handled(
-            event::CloseWindowRequest{ focused->id });
-        if (!handled)
-            handled = loader_runtime(userdata).backend().close_window(focused->id);
-        if (!handled)
-            LOG_WARN("win.close: no close handler accepted window %u", focused->id);
-    }
+    if (focused)
+        (void)loader_core(userdata).dispatch(command::atom::CloseWindow{ focused->id });
     return 0;
 }
 

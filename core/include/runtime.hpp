@@ -9,6 +9,7 @@
 #include <atomic>
 #include <sys/epoll.h>
 
+#include <backend/backend_ports.hpp>
 #include <backend/events.hpp>
 #include <core.hpp>
 #include <core_config.hpp>
@@ -120,8 +121,8 @@ class Runtime : public IEventEmitter {
         // Used by test harnesses directly; prefer run() in production.
         void           start();
         bool           load_config(const std::string& path);
-        Backend&       backend();
-        const Backend& backend() const;
+        backend::BackendPorts ports();
+        void           prepare_exec_restart();
         ModuleRegistry& module_registry() { return module_registry_; }
         const ModuleRegistry& module_registry() const { return module_registry_; }
 
@@ -183,6 +184,9 @@ class Runtime : public IEventEmitter {
         void bind_backend(Backend& b) { backend_ = &b; }
 
     private:
+        Backend&       backend();
+        const Backend& backend() const;
+
         void          reload();
         void          tick();                    // one event-loop iteration (Running state)
         void          run_loop();                // epoll setup + tick() loop

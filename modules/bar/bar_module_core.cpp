@@ -3,6 +3,7 @@
 #include <bar/bar_state.hpp>
 #include <backend/backend.hpp>
 #include <backend/events.hpp>
+#include <backend/tray_host_port.hpp>
 #include <core.hpp>
 #include <log.hpp>
 #include <protocol/keyboard.hpp>
@@ -483,8 +484,10 @@ void BarModule::on_init() {
                 if (w == NO_WINDOW && safe_mon_idx == core().focused_monitor_index())
                     if (auto focused = core().focused_window_state())
                         w = focused->id;
-                if (w != NO_WINDOW)
-                    s.title = backend().window_title(w);
+                if (w != NO_WINDOW) {
+                    if (auto ws = core().window_state_any(w))
+                        s.title = ws->title;
+                }
             }
             return s;
         };
@@ -677,7 +680,12 @@ void BarModule::rebuild_trays() {
             }
 
         bool own_selection = (mon_idx == owner_mon) && !owner_tray();
-        auto tray          = backend().create_tray_host(
+        auto* tray_port    = runtime().ports().tray_host;
+        if (!tray_port) {
+            LOG_WARN("Bar: backend has no TrayHostPort, skipping tray for monitor %d", mon_idx);
+            continue;
+        }
+        auto tray = tray_port->create(
             w->id(), w->x(), w->y(), bar_h, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
             LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx);
@@ -719,11 +727,7 @@ void BarModule::on(event::DisplayTopologyChanged) {
 }
 
 void BarModule::on_start() {
-    render_port_ = backend().render_port();
-    if (!render_port_) {
-        LOG_ERR("Bar: backend render port is unavailable");
-        return;
-    }
+    render_port_ = &runtime().ports().render;
 
     bar_set_cfg_ = bar_set_setting_.get();
 

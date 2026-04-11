@@ -63,7 +63,7 @@ bool KeyboardModule::parse_setup(LuaContext& lua, int idx, std::string& err) {
 void KeyboardModule::apply() {
     if (layouts_.empty())
         return;
-    auto* kp = backend().keyboard_port();
+    auto* kp = &runtime().ports().keyboard;
     if (!kp) {
         LOG_WARN("keyboard: no keyboard port available");
         return;
@@ -121,7 +121,7 @@ void KeyboardModule::on_stop(bool is_exec_restart) {
     // settings via apply() in on_start().
     if (is_exec_restart)
         return;
-    auto* kp = backend().keyboard_port();
+    auto* kp = &runtime().ports().keyboard;
     if (kp)
         kp->restore();
 }
@@ -131,7 +131,7 @@ void KeyboardModule::on_stop(bool is_exec_restart) {
 // ---------------------------------------------------------------------------
 
 void KeyboardModule::on(event::FocusChanged ev) {
-    auto* kp = backend().keyboard_port();
+    auto* kp = &runtime().ports().keyboard;
     if (!kp) return;
 
     // Save current group for the window that is losing focus.

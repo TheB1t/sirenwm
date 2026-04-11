@@ -6,10 +6,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include <backend/backend_ports.hpp>
 #include <backend/commands.hpp>
 #include <backend/events.hpp>
 #include <backend/render_port.hpp>
-#include <backend/tray_host.hpp>
 #include <window.hpp>
 
 class Core;
@@ -87,19 +87,8 @@ class Backend {
         virtual void on(event::DisplayTopologyChanged) {}
         virtual void on(event::WindowAdopted) {}
 
-        // Close a window using platform-specific protocol (e.g. WM_DELETE_WINDOW / kill).
-        virtual bool close_window(WindowId) { return false; }
-
-        // Optional capabilities for UI modules.
-        virtual backend::InputPort*    input_port()    { return nullptr; }
-        virtual backend::MonitorPort*  monitor_port()  { return nullptr; }
-        virtual backend::RenderPort*   render_port()   { return nullptr; }
-        virtual backend::KeyboardPort* keyboard_port() { return nullptr; }
-        virtual backend::GLPort*       gl_port()       { return nullptr; }
-        virtual std::unique_ptr<backend::TrayHost>
-        create_tray_host(WindowId, int, int, int, bool) { return nullptr; }
-        virtual std::string window_title(WindowId) const { return {}; }
-        virtual uint32_t window_pid(WindowId) const { return 0; }
+        // Capability ports exposed to Core and modules.
+        virtual backend::BackendPorts ports() = 0;
 
         // Window factory — backend overrides to create its own subclass (e.g. X11Window).
         virtual std::shared_ptr<swm::Window> create_window(WindowId id) {

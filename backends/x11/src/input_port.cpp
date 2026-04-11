@@ -122,10 +122,6 @@ class X11InputPort final : public backend::InputPort {
 
 } // namespace
 
-backend::InputPort* X11Backend::input_port() {
-    return input_port_impl.get();
-}
-
 xcb_key_symbols_t* X11Backend::key_symbols() {
     if (!key_syms)
         key_syms = xconn.alloc_key_symbols();

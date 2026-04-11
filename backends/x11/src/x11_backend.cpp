@@ -14,17 +14,14 @@
 X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     : core(core_ref), runtime(runtime_ref) {
     root_window        = xconn.root_window();
-    render_port_impl   = backend::x11::create_render_port(xconn);
-    input_port_impl    = backend::x11::create_input_port(xconn, key_syms);
-    monitor_port_impl  = backend::x11::create_monitor_port(xconn, runtime_ref);
-    keyboard_port_impl = backend::x11::create_keyboard_port(xconn);
+    render_port_impl    = backend::x11::create_render_port(xconn);
+    input_port_impl     = backend::x11::create_input_port(xconn, key_syms);
+    monitor_port_impl   = backend::x11::create_monitor_port(xconn, runtime_ref);
+    keyboard_port_impl  = backend::x11::create_keyboard_port(xconn);
+    tray_host_port_impl = backend::x11::create_tray_host_port(xconn, core_ref);
 #ifdef SIRENWM_DEBUG_UI
     gl_port_impl = backend::x11::create_gl_port();
 #endif
-    auto atoms = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
-    net_wm_name = atoms["_NET_WM_NAME"];
-    utf8_string = atoms["UTF8_STRING"];
-    net_wm_pid  = atoms["_NET_WM_PID"];
     uint32_t root_event_mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY
         | XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_POINTER_MOTION
         | XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_LEAVE_WINDOW
@@ -207,32 +204,23 @@ void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
         win, x1, y1, x2 - x1, y2 - y1);
 }
 
-bool X11Backend::close_window(WindowId window) {
-    return handle(event::CloseWindowRequest{ window });
-}
-
 void X11Backend::shutdown() {
     xconn.shutdown();
 }
 
-backend::MonitorPort* X11Backend::monitor_port() {
-    return monitor_port_impl.get();
-}
-
-backend::KeyboardPort* X11Backend::keyboard_port() {
-    return keyboard_port_impl.get();
-}
-
-backend::RenderPort* X11Backend::render_port() {
-    return render_port_impl.get();
-}
-
-backend::GLPort* X11Backend::gl_port() {
+backend::BackendPorts X11Backend::ports() {
+    return backend::BackendPorts{
+        .input     = *input_port_impl,
+        .monitor   = *monitor_port_impl,
+        .render    = *render_port_impl,
+        .keyboard  = *keyboard_port_impl,
 #ifdef SIRENWM_DEBUG_UI
-    return gl_port_impl.get();
+        .gl        = gl_port_impl.get(),
 #else
-    return nullptr;
+        .gl        = nullptr,
 #endif
+        .tray_host = tray_host_port_impl.get(),
+    };
 }
 
 std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {
@@ -241,35 +229,3 @@ std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {
     return w;
 }
 
-std::unique_ptr<backend::TrayHost>
-X11Backend::create_tray_host(WindowId owner_bar_window, int bar_x, int bar_y, int bar_h, bool own_selection) {
-    const auto& bg_str = core.current_settings().theme.bg;
-    uint32_t    bg     = bg_str.empty() ? xconn.screen_black_pixel()
-                                        : XConnection::parse_color_hex(bg_str);
-    return backend::x11::create_tray_host(xconn, owner_bar_window, bar_x, bar_y, bar_h, bg, own_selection);
-}
-
-std::string X11Backend::window_title(WindowId window) const {
-    auto title = xconn.get_text_property(window, net_wm_name, utf8_string);
-    if (title.empty())
-        title = xconn.get_text_property(window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
-    return title;
-}
-
-uint32_t X11Backend::window_pid(WindowId window) const {
-    if (net_wm_pid == XCB_ATOM_NONE)
-        return 0;
-    auto* conn   = const_cast<xcb_connection_t*>(xconn.raw_conn());
-    auto  cookie = xcb_get_property(conn, 0, window, net_wm_pid, XCB_ATOM_CARDINAL, 0, 1);
-    auto* reply  = xcb_get_property_reply(conn, cookie, nullptr);
-    if (!reply)
-        return 0;
-    uint32_t pid = 0;
-    if (reply->format == 32 && reply->value_len >= 1) {
-        auto* data = (uint32_t*)xcb_get_property_value(reply);
-        if (data)
-            pid = data[0];
-    }
-    free(reply);
-    return pid;
-}

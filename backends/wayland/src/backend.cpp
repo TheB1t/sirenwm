@@ -187,10 +187,15 @@ WlSurface* WaylandBackend::wl_surface(WindowId id) {
 // ---------------------------------------------------------------------------
 // Port accessors
 // ---------------------------------------------------------------------------
-backend::MonitorPort*  WaylandBackend::monitor_port()  { return monitor_port_impl_.get();  }
-backend::RenderPort*   WaylandBackend::render_port()   { return render_port_impl_.get();   }
-backend::InputPort*    WaylandBackend::input_port()    { return input_port_impl_.get();    }
-backend::KeyboardPort* WaylandBackend::keyboard_port() { return keyboard_port_impl_.get(); }
+backend::BackendPorts WaylandBackend::ports() {
+    return backend::BackendPorts{
+        .input    = *input_port_impl_,
+        .monitor  = *monitor_port_impl_,
+        .render   = *render_port_impl_,
+        .keyboard = *keyboard_port_impl_,
+        .gl       = nullptr,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // create_window — Core factory callback: called from EnsureWindow dispatch.

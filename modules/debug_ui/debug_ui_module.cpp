@@ -190,7 +190,7 @@ void DebugUIModule::ensure_window() {
     if (gl_window_)
         return;
 
-    auto* port = backend().gl_port();
+    auto* port = runtime().ports().gl;
     if (!port) {
         LOG_WARN("debug_ui: backend does not provide GLPort — cannot create debug window");
         return;

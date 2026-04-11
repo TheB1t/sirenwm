@@ -135,6 +135,15 @@ void X11Backend::apply_core_backend_effects() {
                 if (auto* xw = x11_window(e.window))
                     xw->lower();
                 break;
+            case BackendEffectKind::CloseWindow:
+                if (auto* xw = x11_window(e.window)) {
+                    if (xw->supports_delete())
+                        xw->send_delete_message();
+                    else
+                        xw->kill();
+                    xconn.flush();
+                }
+                break;
         }
     }
 }

@@ -12,7 +12,9 @@
 #include <backend/gl_port.hpp>
 #endif
 #include <backend/tray_host.hpp>
+#include <backend/tray_host_port.hpp>
 
+class Core;
 class XConnection;
 class Runtime;
 
@@ -32,5 +34,8 @@ create_tray_host(XConnection& xconn,
     int bar_x, int bar_y, int bar_h,
     uint32_t bg_pixel,
     bool own_selection);
+
+std::unique_ptr<backend::TrayHostPort>
+create_tray_host_port(XConnection& xconn, Core& core);
 
 } // namespace backend::x11
