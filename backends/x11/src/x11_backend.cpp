@@ -141,7 +141,7 @@ void X11Backend::on(event::WindowAssignedToWorkspace ev) {
                     nx = mon.x() + (mon.width()  - w->width())  / 2;
                     ny = mon.y() + (mon.height() - w->height()) / 2;
                 }
-                (void)core.dispatch(command::SetWindowGeometry{
+                (void)core.dispatch(command::atom::SetWindowGeometry{
                     ev.window, { nx, ny }, w->size() });
             }
         }

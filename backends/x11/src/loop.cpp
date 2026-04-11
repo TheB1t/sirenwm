@@ -79,7 +79,7 @@ void X11Backend::apply_core_backend_effects() {
                         const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
                             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
-                            (void)core.dispatch(command::SetWindowGeometry{
+                            (void)core.dispatch(command::atom::SetWindowGeometry{
                                 e.window, phy_pos,
                                 phy_size });
                             if (auto flush = core.take_window_flush(e.window))

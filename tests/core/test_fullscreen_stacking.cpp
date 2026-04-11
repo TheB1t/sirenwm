@@ -40,7 +40,7 @@ TEST(FullscreenStacking, EnterFullscreenSetsWorkspaceMode) {
     WindowId win = h.map_window(0x1000, 0);
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
     auto& ws = h.core.workspace_states()[0];
     EXPECT_EQ(ws.mode, WorkspaceMode::Fullscreen);
@@ -51,8 +51,8 @@ TEST(FullscreenStacking, ExitFullscreenRestoresNormalMode) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
 
     auto& ws = h.core.workspace_states()[0];
     EXPECT_EQ(ws.mode, WorkspaceMode::Normal);
@@ -65,7 +65,7 @@ TEST(FullscreenStacking, BorderlessAlsoEntersFullscreenMode) {
     WindowId win = h.map_window(0x1000, 0);
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
 
     auto& ws = h.core.workspace_states()[0];
     EXPECT_EQ(ws.mode, WorkspaceMode::Fullscreen);
@@ -82,7 +82,7 @@ TEST(FullscreenStacking, FullscreenFocusedEmitsRaise) {
     WindowId win = h.map_window(0x1000, 0);
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     auto effects = drain(h.core);
 
     EXPECT_TRUE(has_effect(effects, BackendEffectKind::RaiseWindow, win));
@@ -94,14 +94,14 @@ TEST(FullscreenStacking, FocusNormalWhileFullscreenExistsLowersFS) {
 
     WindowId fs_win  = h.map_window(0x1000, 0);
     WindowId nrm_win = h.map_window(0x2000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ fs_win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ fs_win, true });
     drain(h.core);
 
     // Focus the normal window
-    h.core.dispatch(command::FocusWindow{ nrm_win });
+    h.core.dispatch(command::atom::FocusWindow{ nrm_win });
     // evaluate_workspace_fullscreen is called during various operations;
     // trigger it by switching focus which should re-evaluate stacking
-    h.core.dispatch(command::SetWindowFullscreen{ fs_win, true }); // re-trigger eval
+    h.core.dispatch(command::atom::SetWindowFullscreen{ fs_win, true }); // re-trigger eval
     auto effects = drain(h.core);
 
     EXPECT_TRUE(has_effect(effects, BackendEffectKind::RaiseWindow, fs_win));
@@ -116,7 +116,7 @@ TEST(FullscreenStacking, FullscreenPinsToMonitorGeometry) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
     auto w = h.core.window_state_any(win);
     ASSERT_TRUE(w);
@@ -132,19 +132,19 @@ TEST(FullscreenStacking, FullscreenPreserveGeometrySavesOriginal) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFloating{ win, true });
-    h.core.dispatch(command::SetWindowGeometry{ win, {50, 50}, {800, 600} });
+    h.core.dispatch(command::atom::SetWindowFloating{ win, true });
+    h.core.dispatch(command::atom::SetWindowGeometry{ win, {50, 50}, {800, 600} });
 
     // preserve_geometry still pins to monitor (via evaluate_workspace_fullscreen)
     // but it does save the original geometry for later restoration.
-    h.core.dispatch(command::SetWindowFullscreen{ win, true, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true, true });
 
     auto w = h.core.window_state_any(win);
     ASSERT_TRUE(w);
     EXPECT_TRUE(w->fullscreen);
 
     // Exit fullscreen — floating geometry should be restored from saved values
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
     w = h.core.window_state_any(win);
     EXPECT_EQ(w->pos().x(), 50);
     EXPECT_EQ(w->pos().y(), 50);
@@ -157,15 +157,15 @@ TEST(FullscreenStacking, FullscreenRestoresGeometryForFloating) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFloating{ win, true });
-    h.core.dispatch(command::SetWindowGeometry{ win, {50, 50}, {800, 600} });
+    h.core.dispatch(command::atom::SetWindowFloating{ win, true });
+    h.core.dispatch(command::atom::SetWindowGeometry{ win, {50, 50}, {800, 600} });
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     // Verify fullscreen changed geometry
     auto w = h.core.window_state_any(win);
     EXPECT_NE(w->pos().x(), 50);
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
     w = h.core.window_state_any(win);
     ASSERT_TRUE(w);
     // Position and size should be restored for floating windows
@@ -180,9 +180,9 @@ TEST(FullscreenStacking, FullscreenZerosBorderOnEntry) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowBorderWidth{ win, 3 });
+    h.core.dispatch(command::atom::SetWindowBorderWidth{ win, 3 });
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     auto w = h.core.window_state_any(win);
     EXPECT_EQ(w->border_width, 0);
 }
@@ -192,12 +192,12 @@ TEST(FullscreenStacking, FullscreenRestoresBorderOnExit) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowBorderWidth{ win, 3 });
+    h.core.dispatch(command::atom::SetWindowBorderWidth{ win, 3 });
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     EXPECT_EQ(h.core.window_state_any(win)->border_width, 0);
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
     auto w = h.core.window_state_any(win);
     // After fullscreen exit, arrange() may set border to theme default.
     // The saved border is restored but arrange can overwrite it.
@@ -214,10 +214,10 @@ TEST(FullscreenStacking, RemoveFullscreenWindowExitsMode) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     EXPECT_EQ(h.core.workspace_states()[0].mode, WorkspaceMode::Fullscreen);
 
-    h.core.dispatch(command::RemoveWindowFromAllWorkspaces{ win });
+    h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ win });
     EXPECT_EQ(h.core.workspace_states()[0].mode, WorkspaceMode::Normal);
 }
 
@@ -232,11 +232,11 @@ TEST(FullscreenStacking, RaiseDocksEmittedOnEnterAndExit) {
     WindowId win = h.map_window(0x1000, 0);
     h.core.take_core_events(); // drain initial events
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     auto events = h.core.take_core_events();
     EXPECT_TRUE(has_domain_event<event::RaiseDocks>(events));
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
     events = h.core.take_core_events();
     EXPECT_TRUE(has_domain_event<event::RaiseDocks>(events));
 }
@@ -249,10 +249,10 @@ TEST(FullscreenStacking, FullscreenCoversFullMonitorWithInset) {
     TestHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
     h.start();
 
-    h.core.dispatch(command::ApplyMonitorTopInset{ 20 });
+    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 });
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
     auto w = h.core.window_state_any(win);
     ASSERT_TRUE(w);

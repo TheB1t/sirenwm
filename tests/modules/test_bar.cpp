@@ -14,7 +14,7 @@ TEST(Bar, FocusChangeDoesNotCrash) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::FocusWindow{ win });
+    h.core.dispatch(command::atom::FocusWindow{ win });
     h.emit(event::FocusChanged{ win });
 }
 
@@ -23,7 +23,7 @@ TEST(Bar, WorkspaceSwitchDoesNotCrash) {
     h.use<BarModule>();
     h.start();
 
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     h.emit(event::WorkspaceSwitched{ 1 });
 }
 

@@ -114,7 +114,7 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
 }
 
 static void apply_window_metadata(Core& core, WindowId window, WindowMetadata meta) {
-    (void)core.dispatch(command::SetWindowMetadata{
+    (void)core.dispatch(command::atom::SetWindowMetadata{
             .window             = window,
             .wm_instance        = std::move(meta.wm_instance),
             .wm_class           = std::move(meta.wm_class),
@@ -185,7 +185,7 @@ static void place_window_on_monitor(Core& core,
     if (!crosses && !resized && !moved)
         return;
 
-    (void)core.dispatch(command::SetWindowGeometry{ window, { nx, ny }, { nw, nh } });
+    (void)core.dispatch(command::atom::SetWindowGeometry{ window, { nx, ny }, { nw, nh } });
     core.update_window(window);
 }
 
@@ -268,7 +268,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         }
         first_configure_pos_.erase(ev->window);
 
-        (void)core.dispatch(command::EnsureWindow{
+        (void)core.dispatch(command::atom::EnsureWindow{
             .window       = ev->window,
             .workspace_id = ws_id_hint,
         });
@@ -309,16 +309,16 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
                 ev->window,
                 mapped_window->self_managed ? "self-managed (Wine/Proton)" : "borderless",
                 phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
-            (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
+            (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
             if (!mapped_window->self_managed) {
                 // Non-self-managed: WM controls geometry — zero the border and
                 // pin to physical monitor bounds.
-                (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
+                (void)core.dispatch(command::atom::SetWindowBorderWidth{ ev->window, 0 });
                 if (auto* xw_bw = x11_window(ev->window)) {
                     uint32_t zero_bw = 0;
                     xw_bw->configure(XCB_CONFIG_WINDOW_BORDER_WIDTH, &zero_bw);
                 }
-                (void)core.dispatch(command::SetWindowGeometry{
+                (void)core.dispatch(command::atom::SetWindowGeometry{
                     ev->window, phy_pos, phy_size });
             }
             // Self-managed (Wine/Proton): do NOT touch the X border.  Wine
@@ -335,7 +335,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
             LOG_DEBUG("MapRequest(%d): re-map of borderless, repinning geometry at %d,%d %dx%d",
                 ev->window, phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
-            (void)core.dispatch(command::SetWindowGeometry{
+            (void)core.dispatch(command::atom::SetWindowGeometry{
                 ev->window, phy_pos, phy_size });
             mapped_window = core.window_state_any(ev->window);
         }
@@ -371,8 +371,8 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     }
 
     if (ws_visible) {
-        (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
-        (void)core.dispatch(command::MapWindow{ ev->window });
+        (void)core.dispatch(command::atom::SetWindowHiddenByWorkspace{ ev->window, false });
+        (void)core.dispatch(command::atom::MapWindow{ ev->window });
     } else {
         // Map briefly so the client receives MapNotify and initialises its
         // renderer, then set IconicState and unmap.  Without the initial map,
@@ -386,14 +386,14 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             xw->note_wm_unmap();
             xw->unmap();
         }
-        (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, true });
-        (void)core.dispatch(command::SetWindowMapped{ ev->window, false });
+        (void)core.dispatch(command::atom::SetWindowHiddenByWorkspace{ ev->window, true });
+        (void)core.dispatch(command::atom::SetWindowMapped{ ev->window, false });
     }
 
     runtime.emit(event::WindowMapped{ ev->window });
     notify(event::WindowMapped{ ev->window });
 
-    (void)core.dispatch(command::ReconcileNow{});
+    (void)core.dispatch(command::atom::ReconcileNow{});
 
     bool suppress_focus = core.consume_window_suppress_focus_once(ev->window);
 
@@ -401,7 +401,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         ws_visible &&
         mapped_window &&
         mapped_window->is_visible()) {
-        (void)core.dispatch(command::FocusWindow{ ev->window });
+        (void)core.dispatch(command::atom::FocusWindow{ ev->window });
         request_focus(ev->window, kFocusEWMH);
     } else {
         restore_visible_focus();
@@ -420,7 +420,7 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
     auto* xw               = x11_window(ev->window);
     bool  pending_wm_unmap = xw && xw->pending_wm_unmaps > 0;
 
-    (void)core.dispatch(command::SetWindowMapped{ ev->window, !pending_wm_unmap });
+    (void)core.dispatch(command::atom::SetWindowMapped{ ev->window, !pending_wm_unmap });
     if (!pending_wm_unmap) {
         // Only clear hidden_by_workspace if the window's workspace is currently active.
         // If the window mapped on an inactive workspace (e.g. rule-routed), the WM will
@@ -429,7 +429,7 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
         int  ws_id     = core.workspace_of_window(ev->window);
         bool ws_active = ws_id >= 0 && core.is_workspace_visible(ws_id);
         if (ws_active)
-            (void)core.dispatch(command::SetWindowHiddenByWorkspace{ ev->window, false });
+            (void)core.dispatch(command::atom::SetWindowHiddenByWorkspace{ ev->window, false });
     }
 
     // Override-redirect windows (menus, tooltips) must appear above bars, not below.
@@ -493,7 +493,7 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     auto win_state       = core.window_state_any(ev->window);
     bool was_borderless  = win_state && win_state->borderless;
     bool was_fullscreen  = win_state && win_state->fullscreen;
-    (void)core.dispatch(command::SetWindowMapped{ ev->window, false });
+    (void)core.dispatch(command::atom::SetWindowMapped{ ev->window, false });
 
     // Borderless/fullscreen windows (games, media viewers) that unmap themselves
     // are fully withdrawn from WM management. On the next MapRequest the WM will
@@ -501,11 +501,11 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     // client-closed overlay on the next workspace switch.
     if (was_borderless || was_fullscreen) {
         first_configure_pos_.erase(ev->window);
-        (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
+        (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
         runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         if (ws_visible) {
-            (void)core.dispatch(command::ReconcileNow{});
+            (void)core.dispatch(command::atom::ReconcileNow{});
             restore_visible_focus();
         }
         LOG_DEBUG("UnmapNotify(%d): borderless client withdrawal, unmanaging", ev->window);
@@ -520,11 +520,11 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
 
     // Client-initiated unmap on a visible workspace — full withdrawal.
     first_configure_pos_.erase(ev->window);
-    (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
+    (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
     runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     if (ws_visible) {
-        (void)core.dispatch(command::ReconcileNow{});
+        (void)core.dispatch(command::atom::ReconcileNow{});
         restore_visible_focus();
     }
 
@@ -550,7 +550,7 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
     runtime.emit(event::DestroyNotify{ ev->window });
     // Remove from core FIRST — this destroys the X11Window object,
     // so no further backend operations can target this window.
-    (void)core.dispatch(command::RemoveWindowFromAllWorkspaces{ ev->window });
+    (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
 
     // Skip EWMH property updates on the destroyed window — any ChangeProperty
     // would produce a BadWindow error. Only update the client list on root.
@@ -558,7 +558,7 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
     ewmh_update_client_list();
 
     if (ws_visible) {
-        (void)core.dispatch(command::ReconcileNow{});
+        (void)core.dispatch(command::atom::ReconcileNow{});
         restore_visible_focus();
     }
 
@@ -592,10 +592,10 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                         // Self-managed: mark borderless only, do not override geometry.
                         LOG_INFO("PropertyNotify(%d): MOTIF no-decorations (self-managed), marking borderless",
                             ev->window);
-                        (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
-                        (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
+                        (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
+                        (void)core.dispatch(command::atom::SetWindowBorderWidth{ ev->window, 0 });
                         runtime.emit(event::RaiseDocks{});
-                        (void)core.dispatch(command::ReconcileNow{});
+                        (void)core.dispatch(command::atom::ReconcileNow{});
                     } else {
                         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
                         const auto& mons    = core.monitor_states();
@@ -603,13 +603,13 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
                             LOG_INFO("PropertyNotify(%d): MOTIF no-decorations, promoting to borderless at %d,%d %dx%d",
                                 ev->window, phy_pos.x(), phy_pos.y(), phy_size.x(), phy_size.y());
-                            (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
-                            (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, 0 });
-                            (void)core.dispatch(command::SetWindowGeometry{
+                            (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
+                            (void)core.dispatch(command::atom::SetWindowBorderWidth{ ev->window, 0 });
+                            (void)core.dispatch(command::atom::SetWindowGeometry{
                                 ev->window, phy_pos,
                                 phy_size });
                             runtime.emit(event::RaiseDocks{});
-                            (void)core.dispatch(command::ReconcileNow{});
+                            (void)core.dispatch(command::atom::ReconcileNow{});
                         }
                     }
                 }
@@ -622,10 +622,10 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
             if (trans != XCB_WINDOW_NONE && core.window_state_any(trans)) {
                 int parent_ws = core.workspace_of_window(trans);
                 if (parent_ws >= 0) {
-                    (void)core.dispatch(command::SetWindowSuppressFocusOnce{ ev->window, true });
-                    (void)core.dispatch(command::MoveWindowToWorkspace{ ev->window, parent_ws });
+                    (void)core.dispatch(command::atom::SetWindowSuppressFocusOnce{ ev->window, true });
+                    (void)core.dispatch(command::atom::MoveWindowToWorkspace{ ev->window, parent_ws });
                 }
-                (void)core.dispatch(command::SetWindowFloating{ ev->window, true });
+                (void)core.dispatch(command::atom::SetWindowFloating{ ev->window, true });
 
                 int  ws_id      = core.workspace_of_window(ev->window);
                 bool ws_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
@@ -640,7 +640,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                     if (target_mon >= 0 && target_mon < (int)mons.size())
                         place_window_on_monitor(core, xconn, ev->window, mons[target_mon], true);
                 }
-                (void)core.dispatch(command::ReconcileNow{});
+                (void)core.dispatch(command::atom::ReconcileNow{});
             }
         }
 
@@ -735,7 +735,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     bool static_gravity = window->preserve_position;
 
     if ((m & XCB_CONFIG_WINDOW_BORDER_WIDTH) && !borderless && !window->is_self_managed())
-        (void)core.dispatch(command::SetWindowBorderWidth{ ev->window, ev->border_width });
+        (void)core.dispatch(command::atom::SetWindowBorderWidth{ ev->window, ev->border_width });
     // Reject restack requests from fullscreen windows — raise docks instead.
     // Restack (sibling/stack_mode) is X11-specific and applied directly without routing through core.
     if (m & XCB_CONFIG_WINDOW_STACK_MODE) {
@@ -771,7 +771,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
                 LOG_INFO(
                     "ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
                     ev->window, ev->width, ev->height, mon.width(), usable_h);
-                (void)core.dispatch(command::SetWindowBorderless{ ev->window, true });
+                (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
                 borderless    = true;
                 borderless_fs = true;
                 // Override to full monitor area (client requested reduced size due to _NET_WM_STRUT).
@@ -831,9 +831,9 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
             }
         }
 
-        (void)core.dispatch(command::SetWindowGeometry{ ev->window, { nx, ny }, { nw, nh } });
+        (void)core.dispatch(command::atom::SetWindowGeometry{ ev->window, { nx, ny }, { nw, nh } });
         if (borderless_fs)
-            (void)core.dispatch(command::ReconcileNow{});
+            (void)core.dispatch(command::atom::ReconcileNow{});
 
         // ICCCM §4.1.5: send synthetic ConfigureNotify after accepting a request.
         // For StaticGravity, report inner-origin coords (outer + bw) back to client.
@@ -864,7 +864,7 @@ void X11Backend::handle_configure_notify(xcb_configure_notify_event_t* ev) {
     if (!window || ev->override_redirect)
         return;
 
-    (void)core.dispatch(command::SyncWindowFromConfigureNotify{
+    (void)core.dispatch(command::atom::SyncWindowFromConfigureNotify{
         ev->window,
         { ev->x, ev->y },
         { ev->width, ev->height },
@@ -956,7 +956,7 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
     // The actual X focus has already been set by whichever path triggered this
     // FocusIn (EnterNotify, button press, EWMH, keybinding). Here we only need
     // to keep the WM's internal focused-window pointer in sync.
-    (void)core.dispatch(command::FocusWindow{ ev->event });
+    (void)core.dispatch(command::atom::FocusWindow{ ev->event });
 }
 
 void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
@@ -1046,7 +1046,7 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     // the correct monitor without requiring a click first.
     core.focus_monitor_at_point(ev->root_x, ev->root_y);
 
-    (void)core.dispatch(command::FocusWindow{ ev->event });
+    (void)core.dispatch(command::atom::FocusWindow{ ev->event });
     // Request focus at kPointer priority — applied after apply_core_backend_effects()
     // so pointer always wins over stale workspace-switch FocusWindow effects.
     request_focus(ev->event, kFocusPointer);

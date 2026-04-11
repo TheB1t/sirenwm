@@ -10,11 +10,45 @@
 #include <vec.hpp>
 #include <window_state.hpp>
 
+// ---------------------------------------------------------------------------
+// Command surface — two typed layers over the core reducer.
+//
+//   command::atom::      primitive operations on the core model. Executed
+//                        directly by the core. Every other command
+//                        decomposes into a sequence of atoms.
+//
+//   command::composite:: sugar scenarios that read state and then emit one
+//                        or more atoms. Convenient for call sites that do
+//                        not want to orchestrate the read-modify-write dance
+//                        themselves.
+//
+// The core exposes two reducer entry points: `dispatch(CommandAtom)` and
+// `dispatch(CommandComposite)`. Each variant is visited to the corresponding
+// per-type overload. There is deliberately no "Command" umbrella — callers
+// must pick their layer explicitly.
+// ---------------------------------------------------------------------------
+
 namespace command {
 
-// Core write intents (CQRS-lite):
-// - reducers mutate authoritative state
-// - all runtime writes pass through this command surface
+// Raw observable facts about a window supplied by the backend at map time.
+// No policy decisions — just what the protocol says. Shared by atom::
+// SetWindowMetadata.
+struct WindowHints {
+    bool  no_decorations = false; // _MOTIF_WM_HINTS decorations == 0
+    bool  fixed_size     = false; // min == max in WM_NORMAL_HINTS
+    bool  never_focus    = false; // WM_HINTS.input == False
+    bool  urgent         = false; // WM_HINTS UrgencyHint bit set
+    bool  static_gravity = false; // WM_NORMAL_HINTS StaticGravity
+    bool  covers_monitor = false; // outer size >= any monitor usable area at map time
+    bool  pre_fullscreen = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
+    bool  is_xembed      = false; // _XEMBED_INFO present — not self-managed
+    Vec2i size_min;               // WM_NORMAL_HINTS PMinSize  (0,0 = none)
+    Vec2i size_max;               // WM_NORMAL_HINTS PMaxSize  (0,0 = none)
+    Vec2i size_inc;               // WM_NORMAL_HINTS PResizeInc (0,0 = any)
+    Vec2i size_base;              // WM_NORMAL_HINTS PBaseSize (0,0 = none)
+};
+
+namespace atom {
 
 struct FocusWindow {
     WindowId window = NO_WINDOW;
@@ -28,10 +62,6 @@ struct SwitchWorkspace {
 struct MoveWindowToWorkspace {
     WindowId window       = NO_WINDOW;
     int      workspace_id = -1;
-};
-
-struct MoveFocusedWindowToWorkspace {
-    int workspace_id = -1;
 };
 
 struct MapWindow {
@@ -56,23 +86,6 @@ struct EnsureWindow {
 struct AssignWindowWorkspace {
     WindowId window       = NO_WINDOW;
     int      workspace_id = -1;
-};
-
-// Raw observable facts about a window supplied by the backend at map time.
-// No policy decisions — just what the protocol says.
-struct WindowHints {
-    bool  no_decorations = false; // _MOTIF_WM_HINTS decorations == 0
-    bool  fixed_size     = false; // min == max in WM_NORMAL_HINTS
-    bool  never_focus    = false; // WM_HINTS.input == False
-    bool  urgent         = false; // WM_HINTS UrgencyHint bit set
-    bool  static_gravity = false; // WM_NORMAL_HINTS StaticGravity
-    bool  covers_monitor = false; // outer size >= any monitor usable area at map time
-    bool  pre_fullscreen = false; // had _NET_WM_STATE_FULLSCREEN before MapRequest
-    bool  is_xembed      = false; // _XEMBED_INFO present — not self-managed
-    Vec2i size_min;               // WM_NORMAL_HINTS PMinSize  (0,0 = none)
-    Vec2i size_max;               // WM_NORMAL_HINTS PMaxSize  (0,0 = none)
-    Vec2i size_inc;               // WM_NORMAL_HINTS PResizeInc (0,0 = any)
-    Vec2i size_base;              // WM_NORMAL_HINTS PBaseSize (0,0 = none)
 };
 
 struct SetWindowMetadata {
@@ -109,26 +122,19 @@ struct SetWindowBorderless {
     bool     borderless = false;
 };
 
-struct ToggleWindowFloating {
-    WindowId window = NO_WINDOW;
-};
-
-struct FocusNextWindow {};
-struct FocusPrevWindow {};
-struct ToggleFocusedWindowFloating {};
-struct SwitchWorkspaceLocalIndex {
-    int local_index = -1;
-};
 struct HideWindow {
     WindowId window = NO_WINDOW;
 };
+
 struct ApplyMonitorTopology {
     std::vector<Monitor> monitors;
 };
+
 struct ApplyMonitorTopInset {
     int inset_px    = 0;
     int monitor_idx = -1;  // -1 = apply to every monitor
 };
+
 struct ApplyMonitorBottomInset {
     int inset_px    = 0;
     int monitor_idx = -1;  // -1 = apply to every monitor
@@ -137,24 +143,22 @@ struct ApplyMonitorBottomInset {
 struct SetLayout {
     std::string name;
 };
+
 struct SetMasterFactor {
     float value = 0.0f;
 };
-struct AdjustMasterFactor {
-    float delta = 0.0f;
-};
-struct IncMaster {
-    int delta = 0;
-};
+
 struct FocusMonitor {
     int monitor_index = -1;
 };
+
 struct MoveWindowToMonitor {
     WindowId window        = NO_WINDOW;
     int      monitor_index = -1;
 };
-struct Zoom {};
+
 struct ReconcileNow {};
+
 struct RemoveWindowFromAllWorkspaces {
     WindowId window = NO_WINDOW;
 };
@@ -187,45 +191,80 @@ struct SyncWindowFromConfigureNotify {
     uint32_t border_width = 0;
 };
 
-using CoreCommand = std::variant<
-    FocusWindow,
-    SwitchWorkspace,
-    MoveWindowToWorkspace,
-    MoveFocusedWindowToWorkspace,
-    MapWindow,
-    UnmapWindow,
-    SetWindowFullscreen,
-    EnsureWindow,
-    AssignWindowWorkspace,
-    SetWindowMetadata,
-    SetWindowMapped,
-    SetWindowHiddenByWorkspace,
-    SetWindowSuppressFocusOnce,
-    SetWindowFloating,
-    SetWindowBorderless,
-    ToggleWindowFloating,
-    FocusNextWindow,
-    FocusPrevWindow,
-    ToggleFocusedWindowFloating,
-    SwitchWorkspaceLocalIndex,
-    HideWindow,
-    ApplyMonitorTopology,
-    ApplyMonitorTopInset,
-    ApplyMonitorBottomInset,
-    SetLayout,
-    SetMasterFactor,
-    AdjustMasterFactor,
-    IncMaster,
-    FocusMonitor,
-    MoveWindowToMonitor,
-    Zoom,
-    ReconcileNow,
-    RemoveWindowFromAllWorkspaces,
-    SetWindowGeometry,
-    SetWindowPosition,
-    SetWindowSize,
-    SetWindowBorderWidth,
-    SyncWindowFromConfigureNotify
+} // namespace atom
+
+namespace composite {
+
+struct ToggleWindowFloating {
+    WindowId window = NO_WINDOW;
+};
+
+struct MoveFocusedWindowToWorkspace {
+    int workspace_id = -1;
+};
+
+struct FocusNextWindow {};
+struct FocusPrevWindow {};
+struct ToggleFocusedWindowFloating {};
+
+struct SwitchWorkspaceLocalIndex {
+    int local_index = -1;
+};
+
+struct AdjustMasterFactor {
+    float delta = 0.0f;
+};
+
+struct IncMaster {
+    int delta = 0;
+};
+
+struct Zoom {};
+
+} // namespace composite
+
+using CommandAtom = std::variant<
+    atom::FocusWindow,
+    atom::SwitchWorkspace,
+    atom::MoveWindowToWorkspace,
+    atom::MapWindow,
+    atom::UnmapWindow,
+    atom::SetWindowFullscreen,
+    atom::EnsureWindow,
+    atom::AssignWindowWorkspace,
+    atom::SetWindowMetadata,
+    atom::SetWindowMapped,
+    atom::SetWindowHiddenByWorkspace,
+    atom::SetWindowSuppressFocusOnce,
+    atom::SetWindowFloating,
+    atom::SetWindowBorderless,
+    atom::HideWindow,
+    atom::ApplyMonitorTopology,
+    atom::ApplyMonitorTopInset,
+    atom::ApplyMonitorBottomInset,
+    atom::SetLayout,
+    atom::SetMasterFactor,
+    atom::FocusMonitor,
+    atom::MoveWindowToMonitor,
+    atom::ReconcileNow,
+    atom::RemoveWindowFromAllWorkspaces,
+    atom::SetWindowGeometry,
+    atom::SetWindowPosition,
+    atom::SetWindowSize,
+    atom::SetWindowBorderWidth,
+    atom::SyncWindowFromConfigureNotify
+>;
+
+using CommandComposite = std::variant<
+    composite::ToggleWindowFloating,
+    composite::MoveFocusedWindowToWorkspace,
+    composite::FocusNextWindow,
+    composite::FocusPrevWindow,
+    composite::ToggleFocusedWindowFloating,
+    composite::SwitchWorkspaceLocalIndex,
+    composite::AdjustMasterFactor,
+    composite::IncMaster,
+    composite::Zoom
 >;
 
 } // namespace command

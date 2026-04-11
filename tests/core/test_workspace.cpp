@@ -13,7 +13,7 @@ TEST(Workspace, SwitchChangesActiveWorkspace) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     EXPECT_EQ(h.core.active_workspace_on_monitor(0), 1);
 }
 
@@ -22,7 +22,7 @@ TEST(Workspace, MoveWindowToWorkspace) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     EXPECT_EQ(h.core.workspace_of_window(win), 1);
 }
 
@@ -31,9 +31,9 @@ TEST(Workspace, WindowHiddenAfterMoveToInactiveWorkspace) {
     h.start();
 
     // ws 0 is active; move window to ws 1 which is not active
-    h.core.dispatch(command::SwitchWorkspace{ 0, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
@@ -47,10 +47,10 @@ TEST(Workspace, FocusWindowUpdatesState) {
     WindowId a = h.map_window(0x1001, 0);
     WindowId b = h.map_window(0x1002, 0);
 
-    h.core.dispatch(command::FocusWindow{ a });
+    h.core.dispatch(command::atom::FocusWindow{ a });
     EXPECT_EQ(h.core.focus_state().window, a);
 
-    h.core.dispatch(command::FocusWindow{ b });
+    h.core.dispatch(command::atom::FocusWindow{ b });
     EXPECT_EQ(h.core.focus_state().window, b);
 }
 
@@ -59,10 +59,10 @@ TEST(Workspace, SwitchBackRestoresWindows) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     EXPECT_FALSE(h.core.window_state_any(win)->is_visible());
 
-    h.core.dispatch(command::SwitchWorkspace{ 0, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });
     EXPECT_TRUE(h.core.window_state_any(win)->is_visible());
 }
 
@@ -77,7 +77,7 @@ TEST(Monitor, FocusMonitorUpdatesFocusedIndex) {
     });
     h.start();
 
-    h.core.dispatch(command::FocusMonitor{ 1 });
+    h.core.dispatch(command::atom::FocusMonitor{ 1 });
     EXPECT_EQ(h.core.focused_monitor_index(), 1);
 }
 
@@ -106,10 +106,10 @@ TEST(Window, ToggleFloating) {
     WindowId win = h.map_window(0x1000, 0);
     bool     was = h.core.window_state_any(win)->floating;
 
-    h.core.dispatch(command::ToggleWindowFloating{ win });
+    h.core.dispatch(command::composite::ToggleWindowFloating{ win });
     EXPECT_NE(h.core.window_state_any(win)->floating, was);
 
-    h.core.dispatch(command::ToggleWindowFloating{ win });
+    h.core.dispatch(command::composite::ToggleWindowFloating{ win });
     EXPECT_EQ(h.core.window_state_any(win)->floating, was);
 }
 
@@ -128,9 +128,9 @@ TEST(Window, FullscreenCrossMonitorMove) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
-    bool moved = h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    bool moved = h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     EXPECT_TRUE(moved);
     EXPECT_EQ(h.core.workspace_of_window(win), 1);
 
@@ -152,9 +152,9 @@ TEST(Window, BorderlessCrossMonitorMove) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
 
-    bool moved = h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    bool moved = h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     EXPECT_TRUE(moved);
     EXPECT_EQ(h.core.workspace_of_window(win), 1);
 
@@ -174,7 +174,7 @@ TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
     h.start();
     h.core.take_core_events(); // drain
 
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     auto events = h.core.take_core_events();
 
     bool found = false;
@@ -195,7 +195,7 @@ TEST(Workspace, MoveWindowEmitsAssignedEvent) {
     WindowId win = h.map_window(0x1000, 0);
     h.core.take_core_events(); // drain
 
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto events = h.core.take_core_events();
 
     bool found = false;
@@ -216,7 +216,7 @@ TEST(Workspace, BorderlessEmitsBorderlessActivatedEvent) {
     WindowId win = h.map_window(0x1000, 0);
     h.core.take_core_events(); // drain
 
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
     auto events = h.core.take_core_events();
 
     bool found = false;
@@ -235,10 +235,10 @@ TEST(Workspace, ClearLastBorderlessEmitsDeactivatedEvent) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
     h.core.take_core_events(); // drain
 
-    h.core.dispatch(command::SetWindowBorderless{ win, false });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, false });
     auto events = h.core.take_core_events();
 
     bool found = false;
@@ -262,9 +262,9 @@ TEST(Workspace, ZoomSwapsFocusedWithMaster) {
     h.map_window(0x2000, 0);
     WindowId w3 = h.map_window(0x3000, 0);
 
-    h.core.dispatch(command::FocusWindow{ w3 });
+    h.core.dispatch(command::atom::FocusWindow{ w3 });
 
-    bool ok = h.core.dispatch(command::Zoom{});
+    bool ok = h.core.dispatch(command::composite::Zoom{});
     EXPECT_TRUE(ok);
 
     auto& wst = h.core.workspace_states()[0];
@@ -277,7 +277,7 @@ TEST(Workspace, ZoomOnSingleWindowReturnsFalse) {
     h.start();
 
     h.map_window(0x1000, 0);
-    bool ok = h.core.dispatch(command::Zoom{});
+    bool ok = h.core.dispatch(command::composite::Zoom{});
     EXPECT_FALSE(ok);
 }
 
@@ -289,10 +289,10 @@ TEST(Workspace, IncMasterChangesCount) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::IncMaster{ 1 });
+    h.core.dispatch(command::composite::IncMaster{ 1 });
     EXPECT_EQ(h.core.cfg().nmaster, 2);
 
-    h.core.dispatch(command::IncMaster{ -1 });
+    h.core.dispatch(command::composite::IncMaster{ -1 });
     EXPECT_EQ(h.core.cfg().nmaster, 1);
 }
 
@@ -301,7 +301,7 @@ TEST(Workspace, AdjustMasterFactorChangesRatio) {
     h.start();
 
     double before = h.core.cfg().master_factor;
-    h.core.dispatch(command::AdjustMasterFactor{ 0.05 });
+    h.core.dispatch(command::composite::AdjustMasterFactor{ 0.05 });
     double after = h.core.cfg().master_factor;
     EXPECT_GT(after, before);
 }
@@ -317,7 +317,7 @@ TEST(Workspace, HideWindowMakesInvisible) {
     WindowId win = h.map_window(0x1000, 0);
     EXPECT_TRUE(h.core.window_state_any(win)->is_visible());
 
-    h.core.dispatch(command::HideWindow{ win });
+    h.core.dispatch(command::atom::HideWindow{ win });
     EXPECT_FALSE(h.core.window_state_any(win)->is_visible());
 }
 
@@ -328,7 +328,7 @@ TEST(Workspace, HideWindowEmitsUnmap) {
     WindowId win = h.map_window(0x1000, 0);
     h.core.take_backend_effects(); // drain
 
-    h.core.dispatch(command::HideWindow{ win });
+    h.core.dispatch(command::atom::HideWindow{ win });
     auto effects = h.core.take_backend_effects();
 
     bool found = false;

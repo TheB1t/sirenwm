@@ -16,10 +16,10 @@ TEST(Focus, FocusWindowSetsState) {
     WindowId a = h.map_window(0x1001, 0);
     WindowId b = h.map_window(0x1002, 0);
 
-    h.core.dispatch(command::FocusWindow{ a });
+    h.core.dispatch(command::atom::FocusWindow{ a });
     EXPECT_EQ(h.core.focus_state().window, a);
 
-    h.core.dispatch(command::FocusWindow{ b });
+    h.core.dispatch(command::atom::FocusWindow{ b });
     EXPECT_EQ(h.core.focus_state().window, b);
 }
 
@@ -28,10 +28,10 @@ TEST(Focus, FocusWindowOnNonExistentIsNoop) {
     h.start();
 
     WindowId a = h.map_window(0x1001, 0);
-    h.core.dispatch(command::FocusWindow{ a });
+    h.core.dispatch(command::atom::FocusWindow{ a });
 
     // Focus a window that doesn't exist — state should not change
-    h.core.dispatch(command::FocusWindow{ 0xDEAD });
+    h.core.dispatch(command::atom::FocusWindow{ 0xDEAD });
     // We can't guarantee the state didn't flicker, but it must be valid
     // (existing window or NO_WINDOW)
     WindowId w = h.core.focus_state().window;
@@ -51,9 +51,9 @@ TEST(Focus, FocusNextCyclesThroughWindows) {
     WindowId c = h.map_window(0x2003, 0);
 
     // FocusNextWindow emits a FocusWindow backend effect pointing to the new window.
-    h.core.dispatch(command::FocusWindow{ a });
+    h.core.dispatch(command::atom::FocusWindow{ a });
     h.core.take_backend_effects(); // drain
-    h.core.dispatch(command::FocusNextWindow{});
+    h.core.dispatch(command::composite::FocusNextWindow{});
 
     auto     fx = h.core.take_backend_effects();
     // There must be a FocusWindow effect for some window that is not a
@@ -79,9 +79,9 @@ TEST(Focus, FocusPrevCyclesThroughWindows) {
     WindowId b = h.map_window(0x3002, 0);
     WindowId c = h.map_window(0x3003, 0);
 
-    h.core.dispatch(command::FocusWindow{ a });
+    h.core.dispatch(command::atom::FocusWindow{ a });
     h.core.take_backend_effects();
-    h.core.dispatch(command::FocusPrevWindow{});
+    h.core.dispatch(command::composite::FocusPrevWindow{});
 
     auto     fx          = h.core.take_backend_effects();
     bool     found_focus = false;
@@ -106,9 +106,9 @@ TEST(Focus, FocusNextWrapsAround) {
     WindowId b = h.map_window(0x4002, 0);
 
     // FocusNext twice in a 2-window workspace should result in focus effects.
-    h.core.dispatch(command::FocusWindow{ a });
-    h.core.dispatch(command::FocusNextWindow{});
-    h.core.dispatch(command::FocusNextWindow{});
+    h.core.dispatch(command::atom::FocusWindow{ a });
+    h.core.dispatch(command::composite::FocusNextWindow{});
+    h.core.dispatch(command::composite::FocusNextWindow{});
 
     // After two steps, a FocusWindow effect must have been emitted each time.
     auto fx        = h.core.take_backend_effects();
@@ -126,11 +126,11 @@ TEST(Focus, FocusNextOnSingleWindowStaysFocused) {
     h.start();
 
     WindowId a = h.map_window(0x5001, 0);
-    h.core.dispatch(command::FocusWindow{ a });
+    h.core.dispatch(command::atom::FocusWindow{ a });
     // With one window FocusNextWindow still returns true and
     // emits a FocusWindow effect for the same window.
     h.core.take_backend_effects();
-    h.core.dispatch(command::FocusNextWindow{});
+    h.core.dispatch(command::composite::FocusNextWindow{});
     // Must not crash; effect may or may not be emitted for same window.
     // Just verify the window still exists.
     EXPECT_NE(h.core.window_state_any(a), nullptr);
@@ -147,12 +147,12 @@ TEST(Focus, FocusRestoredAfterWorkspaceSwitch) {
     // ws 0: two windows, focus b
     WindowId a = h.map_window(0x6001, 0);
     WindowId b = h.map_window(0x6002, 0);
-    h.core.dispatch(command::FocusWindow{ b });
+    h.core.dispatch(command::atom::FocusWindow{ b });
 
     // Switch to ws 1
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     // Switch back to ws 0
-    h.core.dispatch(command::SwitchWorkspace{ 0, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });
 
     // focus_state for ws 0 should restore to b (or a valid window)
     WindowId w = h.core.focus_state().window;
@@ -166,10 +166,10 @@ TEST(Focus, FocusFollowsActiveMonitorAfterSwitch) {
     });
     h.start();
 
-    h.core.dispatch(command::FocusMonitor{ 0 });
+    h.core.dispatch(command::atom::FocusMonitor{ 0 });
     EXPECT_EQ(h.core.focused_monitor_index(), 0);
 
-    h.core.dispatch(command::FocusMonitor{ 1 });
+    h.core.dispatch(command::atom::FocusMonitor{ 1 });
     EXPECT_EQ(h.core.focused_monitor_index(), 1);
 }
 
@@ -182,7 +182,7 @@ TEST(Focus, SuppressFocusOncePreventsFocusOnFirstCall) {
     h.start();
 
     WindowId win = h.map_window(0x7001, 0);
-    h.core.dispatch(command::SetWindowSuppressFocusOnce{ win, true });
+    h.core.dispatch(command::atom::SetWindowSuppressFocusOnce{ win, true });
 
     // consume_window_suppress_focus_once returns true → caller should skip focus
     EXPECT_TRUE(h.core.consume_window_suppress_focus_once(win));
@@ -193,7 +193,7 @@ TEST(Focus, SuppressFocusOnceConsumedOnce) {
     h.start();
 
     WindowId win = h.map_window(0x7002, 0);
-    h.core.dispatch(command::SetWindowSuppressFocusOnce{ win, true });
+    h.core.dispatch(command::atom::SetWindowSuppressFocusOnce{ win, true });
 
     h.core.consume_window_suppress_focus_once(win); // consume
     // second call: flag is gone
@@ -219,9 +219,9 @@ TEST(Focus, FocusFallbackAfterWindowRemoval) {
 
     WindowId a = h.map_window(0x8001, 0);
     WindowId b = h.map_window(0x8002, 0);
-    h.core.dispatch(command::FocusWindow{ b });
+    h.core.dispatch(command::atom::FocusWindow{ b });
 
-    h.core.dispatch(command::RemoveWindowFromAllWorkspaces{ b });
+    h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ b });
     // After b is gone, focus may fall back to a or to NO_WINDOW
     // (core doesn't auto-pick focus without a backend driving it, but
     //  the state must be consistent — b must no longer be tracked)
@@ -239,9 +239,9 @@ TEST(Focus, ToggleFocusedWindowFloating) {
     h.start();
 
     WindowId win = h.map_window(0x9001, 0);
-    h.core.dispatch(command::FocusWindow{ win });
+    h.core.dispatch(command::atom::FocusWindow{ win });
 
     bool was = h.core.window_state_any(win)->floating;
-    h.core.dispatch(command::ToggleFocusedWindowFloating{});
+    h.core.dispatch(command::composite::ToggleFocusedWindowFloating{});
     EXPECT_NE(h.core.window_state_any(win)->floating, was);
 }

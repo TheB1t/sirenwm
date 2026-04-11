@@ -13,14 +13,14 @@
 static WindowId make_classified_window(TestHarness& h, WindowId id,
     const std::string& wm_class, const std::string& wm_instance = "",
     WindowType type = WindowType::Normal) {
-    h.core.dispatch(command::EnsureWindow{ id, 0 });
-    command::SetWindowMetadata meta;
+    h.core.dispatch(command::atom::EnsureWindow{ id, 0 });
+    command::atom::SetWindowMetadata meta;
     meta.window      = id;
     meta.wm_class    = wm_class;
     meta.wm_instance = wm_instance.empty() ? wm_class : wm_instance;
     meta.type        = type;
     h.core.dispatch(meta);
-    h.core.dispatch(command::SetWindowMapped{ id, true });
+    h.core.dispatch(command::atom::SetWindowMapped{ id, true });
     return id;
 }
 
@@ -58,7 +58,7 @@ TEST(Rules, SetFloatingByIdWorks) {
     WindowId win = make_classified_window(h, 0x1000, "steam");
     EXPECT_FALSE(h.core.window_state_any(win)->floating);
 
-    h.core.dispatch(command::SetWindowFloating{ win, true });
+    h.core.dispatch(command::atom::SetWindowFloating{ win, true });
     EXPECT_TRUE(h.core.window_state_any(win)->floating);
 }
 
@@ -71,8 +71,8 @@ TEST(Rules, MoveWindowToWorkspaceByIdWorks) {
     WindowId win = make_classified_window(h, 0x1000, "firefox");
     EXPECT_EQ(h.core.workspace_of_window(win), 0);
 
-    h.core.dispatch(command::SetWindowSuppressFocusOnce{ win, true });
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h.core.dispatch(command::atom::SetWindowSuppressFocusOnce{ win, true });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     EXPECT_EQ(h.core.workspace_of_window(win), 1);
 }
 
@@ -83,7 +83,7 @@ TEST(Rules, DialogTypeWindowShouldFloat) {
 
     WindowId win = make_classified_window(h, 0x1000, "someapp", "someapp", WindowType::Dialog);
     // Simulate what rules.lua does on window_rules event for dialog type.
-    h.core.dispatch(command::SetWindowFloating{ win, true });
+    h.core.dispatch(command::atom::SetWindowFloating{ win, true });
     EXPECT_TRUE(h.core.window_state_any(win)->floating);
 }
 

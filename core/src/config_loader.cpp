@@ -196,7 +196,7 @@ static int lua_root_restart(LuaContext&, void* userdata) {
 // siren.ws.switch(n)  — 1-indexed absolute workspace index
 static int lua_workspace_switch(LuaContext& lua, void* userdata) {
     int n = (int)lua.check_integer(1);
-    (void)loader_core(userdata).dispatch(command::SwitchWorkspace{ n - 1, std::nullopt });
+    (void)loader_core(userdata).dispatch(command::atom::SwitchWorkspace{ n - 1, std::nullopt });
     return 0;
 }
 
@@ -262,7 +262,7 @@ static int lua_monitor_list(LuaContext& lua, void* userdata) {
 // siren.monitor.focus(n) — focus monitor n (1-indexed)
 static int lua_monitor_focus(LuaContext& lua, void* userdata) {
     int n = lua.to_integer(1) - 1; // convert to 0-indexed
-    (void)loader_core(userdata).dispatch(command::FocusMonitor{ n });
+    (void)loader_core(userdata).dispatch(command::atom::FocusMonitor{ n });
     return 0;
 }
 
@@ -272,10 +272,10 @@ static int lua_win_move_to_monitor(LuaContext& lua, void* userdata) {
     if (lua.arg_count() >= 2) {
         WindowId id = (WindowId)lua.check_integer(1);
         int      n  = (int)lua.check_integer(2) - 1;
-        (void)loader_core(userdata).dispatch(command::MoveWindowToMonitor{ id, n });
+        (void)loader_core(userdata).dispatch(command::atom::MoveWindowToMonitor{ id, n });
     } else {
         int n = (int)lua.check_integer(1) - 1;
-        (void)loader_core(userdata).dispatch(command::MoveWindowToMonitor{ NO_WINDOW, n });
+        (void)loader_core(userdata).dispatch(command::atom::MoveWindowToMonitor{ NO_WINDOW, n });
     }
     return 0;
 }
@@ -298,18 +298,18 @@ static int lua_win_close(LuaContext&, void* userdata) {
 }
 
 static int lua_win_focus_next(LuaContext&, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::FocusNextWindow{});
+    (void)loader_core(userdata).dispatch(command::composite::FocusNextWindow{});
     return 0;
 }
 
 static int lua_win_focus_prev(LuaContext&, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::FocusPrevWindow{});
+    (void)loader_core(userdata).dispatch(command::composite::FocusPrevWindow{});
     return 0;
 }
 
 // siren.win.toggle_floating()
 static int lua_win_toggle_floating(LuaContext&, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::ToggleFocusedWindowFloating{});
+    (void)loader_core(userdata).dispatch(command::composite::ToggleFocusedWindowFloating{});
     return 0;
 }
 
@@ -317,7 +317,7 @@ static int lua_win_toggle_floating(LuaContext&, void* userdata) {
 static int lua_win_set_floating(LuaContext& lua, void* userdata) {
     WindowId id       = (WindowId)lua.check_integer(1);
     bool     floating = lua.to_bool(2);
-    (void)loader_core(userdata).dispatch(command::SetWindowFloating{ id, floating });
+    (void)loader_core(userdata).dispatch(command::atom::SetWindowFloating{ id, floating });
     return 0;
 }
 
@@ -327,11 +327,11 @@ static int lua_win_move_to(LuaContext& lua, void* userdata) {
     if (lua.arg_count() >= 2) {
         WindowId id = (WindowId)lua.check_integer(1);
         int      ws = (int)lua.check_integer(2) - 1;
-        (void)loader_core(userdata).dispatch(command::SetWindowSuppressFocusOnce{ id, true });
-        (void)loader_core(userdata).dispatch(command::MoveWindowToWorkspace{ id, ws });
+        (void)loader_core(userdata).dispatch(command::atom::SetWindowSuppressFocusOnce{ id, true });
+        (void)loader_core(userdata).dispatch(command::atom::MoveWindowToWorkspace{ id, ws });
     } else {
         int n = (int)lua.check_integer(1);
-        (void)loader_core(userdata).dispatch(command::MoveFocusedWindowToWorkspace{ n - 1 });
+        (void)loader_core(userdata).dispatch(command::composite::MoveFocusedWindowToWorkspace{ n - 1 });
     }
     return 0;
 }
@@ -341,22 +341,22 @@ static int lua_win_move_to(LuaContext& lua, void* userdata) {
 // ---------------------------------------------------------------------------
 
 static int lua_layout_zoom(LuaContext&, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::Zoom{});
+    (void)loader_core(userdata).dispatch(command::composite::Zoom{});
     return 0;
 }
 
 static int lua_layout_set(LuaContext& lua, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::SetLayout{ lua.check_string(1) });
+    (void)loader_core(userdata).dispatch(command::atom::SetLayout{ lua.check_string(1) });
     return 0;
 }
 
 static int lua_layout_adj_master(LuaContext& lua, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::AdjustMasterFactor{ (float)lua.check_number(1) });
+    (void)loader_core(userdata).dispatch(command::composite::AdjustMasterFactor{ (float)lua.check_number(1) });
     return 0;
 }
 
 static int lua_layout_inc_master(LuaContext& lua, void* userdata) {
-    (void)loader_core(userdata).dispatch(command::IncMaster{ (int)lua.check_integer(1) });
+    (void)loader_core(userdata).dispatch(command::composite::IncMaster{ (int)lua.check_integer(1) });
     return 0;
 }
 

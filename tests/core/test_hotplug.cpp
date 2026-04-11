@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 static void apply_topology(Core& core, std::vector<Monitor> mons) {
-    core.dispatch(command::ApplyMonitorTopology{ std::move(mons) });
+    core.dispatch(command::atom::ApplyMonitorTopology{ std::move(mons) });
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ TEST(Hotplug, TopInsetAdjustsMonitorGeometry) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::ApplyMonitorTopInset{ 20 });
+    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 });
     EXPECT_EQ(h.core.monitor_top_inset(), 20);
 }
 
@@ -160,7 +160,7 @@ TEST(Hotplug, BottomInsetAdjustsMonitorGeometry) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::ApplyMonitorBottomInset{ 24 });
+    h.core.dispatch(command::atom::ApplyMonitorBottomInset{ 24 });
     EXPECT_EQ(h.core.monitor_bottom_inset(), 24);
 }
 
@@ -168,8 +168,8 @@ TEST(Hotplug, InsetIsIdempotentWhenSameValue) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::ApplyMonitorTopInset{ 20 });
-    h.core.dispatch(command::ApplyMonitorTopInset{ 20 }); // same value twice — no-op
+    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 });
+    h.core.dispatch(command::atom::ApplyMonitorTopInset{ 20 }); // same value twice — no-op
     EXPECT_EQ(h.core.monitor_top_inset(), 20);
 }
 
@@ -191,7 +191,7 @@ TEST(Hotplug, MoveWindowToMonitorChangesWorkspace) {
     WindowId win = h.map_window(0x4000, ws_mon0);
     EXPECT_EQ(h.core.workspace_of_window(win), ws_mon0);
 
-    h.core.dispatch(command::MoveWindowToMonitor{ win, 1 });
+    h.core.dispatch(command::atom::MoveWindowToMonitor{ win, 1 });
 
     // Window should now be on monitor 1's active workspace
     EXPECT_EQ(h.core.workspace_of_window(win), ws_mon1);
@@ -208,7 +208,7 @@ TEST(Hotplug, MoveWindowToSameMonitorIsNoop) {
     WindowId win = h.map_window(0x5000, ws0);
 
     // Move to same monitor (0) — should stay on same workspace
-    h.core.dispatch(command::MoveWindowToMonitor{ win, 0 });
+    h.core.dispatch(command::atom::MoveWindowToMonitor{ win, 0 });
     EXPECT_EQ(h.core.workspace_of_window(win), ws0);
 }
 
