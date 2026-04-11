@@ -226,47 +226,53 @@ class Core {
 
         const layout::Config& cfg() const { return layout_cfg; }
 
-        using Command = command::CoreCommand;
+        // Two layered reducer entry points. Callers pick their layer
+        // explicitly — there is no umbrella "Command" type.
+        bool dispatch(const command::CommandAtom& cmd);
+        bool dispatch(const command::CommandComposite& cmd);
 
-        bool dispatch(const Command& cmd);
-        bool dispatch(const command::FocusWindow& cmd);
-        bool dispatch(const command::SwitchWorkspace& cmd);
-        bool dispatch(const command::MoveWindowToWorkspace& cmd);
-        bool dispatch(const command::MoveFocusedWindowToWorkspace& cmd);
-        bool dispatch(const command::MapWindow& cmd);
-        bool dispatch(const command::UnmapWindow& cmd);
-        bool dispatch(const command::SetWindowFullscreen& cmd);
-        bool dispatch(const command::EnsureWindow& cmd);
-        bool dispatch(const command::AssignWindowWorkspace& cmd);
-        bool dispatch(const command::SetWindowMetadata& cmd);
-        bool dispatch(const command::SetWindowMapped& cmd);
-        bool dispatch(const command::SetWindowHiddenByWorkspace& cmd);
-        bool dispatch(const command::SetWindowSuppressFocusOnce& cmd);
-        bool dispatch(const command::SetWindowFloating& cmd);
-        bool dispatch(const command::SetWindowBorderless& cmd);
-        bool dispatch(const command::ToggleWindowFloating& cmd);
-        bool dispatch(const command::FocusNextWindow& cmd);
-        bool dispatch(const command::FocusPrevWindow& cmd);
-        bool dispatch(const command::FocusMonitor& cmd);
-        bool dispatch(const command::MoveWindowToMonitor& cmd);
-        bool dispatch(const command::ToggleFocusedWindowFloating& cmd);
-        bool dispatch(const command::SwitchWorkspaceLocalIndex& cmd);
-        bool dispatch(const command::HideWindow& cmd);
-        bool dispatch(const command::ApplyMonitorTopology& cmd);
-        bool dispatch(const command::ApplyMonitorTopInset& cmd);
-        bool dispatch(const command::ApplyMonitorBottomInset& cmd);
-        bool dispatch(const command::SetLayout& cmd);
-        bool dispatch(const command::SetMasterFactor& cmd);
-        bool dispatch(const command::AdjustMasterFactor& cmd);
-        bool dispatch(const command::IncMaster& cmd);
-        bool dispatch(const command::Zoom& cmd);
-        bool dispatch(const command::ReconcileNow& cmd);
-        bool dispatch(const command::RemoveWindowFromAllWorkspaces& cmd);
-        bool dispatch(const command::SetWindowGeometry& cmd);
-        bool dispatch(const command::SetWindowPosition& cmd);
-        bool dispatch(const command::SetWindowSize& cmd);
-        bool dispatch(const command::SetWindowBorderWidth& cmd);
-        bool dispatch(const command::SyncWindowFromConfigureNotify& cmd);
+        // Per-type atom overloads — direct primitive operations on the model.
+        bool dispatch(const command::atom::FocusWindow& cmd);
+        bool dispatch(const command::atom::SwitchWorkspace& cmd);
+        bool dispatch(const command::atom::MoveWindowToWorkspace& cmd);
+        bool dispatch(const command::atom::MapWindow& cmd);
+        bool dispatch(const command::atom::UnmapWindow& cmd);
+        bool dispatch(const command::atom::SetWindowFullscreen& cmd);
+        bool dispatch(const command::atom::EnsureWindow& cmd);
+        bool dispatch(const command::atom::AssignWindowWorkspace& cmd);
+        bool dispatch(const command::atom::SetWindowMetadata& cmd);
+        bool dispatch(const command::atom::SetWindowMapped& cmd);
+        bool dispatch(const command::atom::SetWindowHiddenByWorkspace& cmd);
+        bool dispatch(const command::atom::SetWindowSuppressFocusOnce& cmd);
+        bool dispatch(const command::atom::SetWindowFloating& cmd);
+        bool dispatch(const command::atom::SetWindowBorderless& cmd);
+        bool dispatch(const command::atom::HideWindow& cmd);
+        bool dispatch(const command::atom::ApplyMonitorTopology& cmd);
+        bool dispatch(const command::atom::ApplyMonitorTopInset& cmd);
+        bool dispatch(const command::atom::ApplyMonitorBottomInset& cmd);
+        bool dispatch(const command::atom::SetLayout& cmd);
+        bool dispatch(const command::atom::SetMasterFactor& cmd);
+        bool dispatch(const command::atom::FocusMonitor& cmd);
+        bool dispatch(const command::atom::MoveWindowToMonitor& cmd);
+        bool dispatch(const command::atom::ReconcileNow& cmd);
+        bool dispatch(const command::atom::RemoveWindowFromAllWorkspaces& cmd);
+        bool dispatch(const command::atom::SetWindowGeometry& cmd);
+        bool dispatch(const command::atom::SetWindowPosition& cmd);
+        bool dispatch(const command::atom::SetWindowSize& cmd);
+        bool dispatch(const command::atom::SetWindowBorderWidth& cmd);
+        bool dispatch(const command::atom::SyncWindowFromConfigureNotify& cmd);
+
+        // Per-type composite overloads — sugar scenarios that read state and
+        // then emit one or more atoms under the hood.
+        bool dispatch(const command::composite::ToggleWindowFloating& cmd);
+        bool dispatch(const command::composite::MoveFocusedWindowToWorkspace& cmd);
+        bool dispatch(const command::composite::FocusNextWindow& cmd);
+        bool dispatch(const command::composite::FocusPrevWindow& cmd);
+        bool dispatch(const command::composite::ToggleFocusedWindowFloating& cmd);
+        bool dispatch(const command::composite::SwitchWorkspaceLocalIndex& cmd);
+        bool dispatch(const command::composite::AdjustMasterFactor& cmd);
+        bool dispatch(const command::composite::IncMaster& cmd);
+        bool dispatch(const command::composite::Zoom& cmd);
 
         const std::vector<MonitorState>& monitor_states() const {
             return wsman.all_monitor_states();

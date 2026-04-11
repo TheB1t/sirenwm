@@ -99,7 +99,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             continue;
 
         int restore_ws_id = snap.from_restart ? snap.restart_workspace_id : -1;
-        (void)core.dispatch(command::EnsureWindow{
+        (void)core.dispatch(command::atom::EnsureWindow{
                 .window       = snap.window,
                 .workspace_id = restore_ws_id,
             });
@@ -107,7 +107,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         command::WindowHints hints{};
         hints.no_decorations = snap.hints.no_decorations;
         hints.fixed_size     = snap.hints.fixed_size;
-        (void)core.dispatch(command::SetWindowMetadata{
+        (void)core.dispatch(command::atom::SetWindowMetadata{
                 .window      = snap.window,
                 .wm_instance = snap.wm_instance,
                 .wm_class    = snap.wm_class,
@@ -115,41 +115,41 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .hints       = hints,
             });
 
-        (void)core.dispatch(command::SetWindowMapped{
+        (void)core.dispatch(command::atom::SetWindowMapped{
                 .window = snap.window,
                 .mapped = snap.currently_viewable,
             });
-        (void)core.dispatch(command::SetWindowHiddenByWorkspace{
+        (void)core.dispatch(command::atom::SetWindowHiddenByWorkspace{
                 .window = snap.window,
                 .hidden = true,
             });
 
         if (snap.from_restart) {
             if (restore_ws_id >= 0 && restore_ws_id < core.workspace_count())
-                (void)core.dispatch(command::AssignWindowWorkspace{ snap.window, restore_ws_id });
-            (void)core.dispatch(command::SetWindowFloating{
+                (void)core.dispatch(command::atom::AssignWindowWorkspace{ snap.window, restore_ws_id });
+            (void)core.dispatch(command::atom::SetWindowFloating{
                     .window   = snap.window,
                     .floating = snap.restart_floating,
                 });
             if (snap.restart_fullscreen)
-                (void)core.dispatch(command::SetWindowFullscreen{
+                (void)core.dispatch(command::atom::SetWindowFullscreen{
                         .window            = snap.window,
                         .enabled           = true,
                         .preserve_geometry = false,
                     });
             if (snap.restart_borderless) {
-                (void)core.dispatch(command::SetWindowBorderless{
+                (void)core.dispatch(command::atom::SetWindowBorderless{
                         .window     = snap.window,
                         .borderless = true,
                     });
-                (void)core.dispatch(command::FocusWindow{ snap.window });
+                (void)core.dispatch(command::atom::FocusWindow{ snap.window });
             }
             if (snap.restart_hidden_explicitly)
-                (void)core.dispatch(command::HideWindow{ snap.window });
+                (void)core.dispatch(command::atom::HideWindow{ snap.window });
         }
 
         if (snap.has_geometry)
-            (void)core.dispatch(command::SetWindowGeometry{
+            (void)core.dispatch(command::atom::SetWindowGeometry{
                     snap.window, snap.geo_pos, snap.geo_size });
 
         runtime.emit(event::ApplyWindowRules{ snap.window, snap.from_restart });
@@ -176,7 +176,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             else
                 ws_id = mons[(size_t)i].active_ws;
             if (ws_id >= 0) {
-                (void)core.dispatch(command::SwitchWorkspace{ ws_id, i });
+                (void)core.dispatch(command::atom::SwitchWorkspace{ ws_id, i });
                 any_switched = true;
             }
         }
@@ -186,12 +186,12 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         if (fmon >= 0 && fmon < (int)mons.size())
             ws_id = mons[(size_t)fmon].active_ws;
         if (ws_id >= 0) {
-            (void)core.dispatch(command::SwitchWorkspace{ ws_id, std::nullopt });
+            (void)core.dispatch(command::atom::SwitchWorkspace{ ws_id, std::nullopt });
             any_switched = true;
         }
     }
     if (!any_switched)
-        (void)core.dispatch(command::ReconcileNow{});
+        (void)core.dispatch(command::atom::ReconcileNow{});
 
     LOG_INFO("adopt: restored %d existing window(s) at runtime start", adopted);
 }
@@ -509,7 +509,7 @@ void Runtime::apply_and_refresh_monitors() {
     for (auto& m : monitors)
         LOG_INFO("  %s: %dx%d+%d+%d", m.name.c_str(), m.width(), m.height(), m.x(), m.y());
 
-    (void)core_.dispatch(command::ApplyMonitorTopology{ std::move(monitors) });
+    (void)core_.dispatch(command::atom::ApplyMonitorTopology{ std::move(monitors) });
 }
 
 void Runtime::dispatch_display_change() {
@@ -891,12 +891,12 @@ bool Runtime::process_pending_reload() {
         bool        any  = false;
         for (int i = 0; i < (int)mons.size() && i < (int)saved_ws.size(); i++) {
             if (saved_ws[(size_t)i] >= 0 && saved_ws[(size_t)i] < core_.workspace_count()) {
-                (void)core_.dispatch(command::SwitchWorkspace{ saved_ws[(size_t)i], i });
+                (void)core_.dispatch(command::atom::SwitchWorkspace{ saved_ws[(size_t)i], i });
                 any = true;
             }
         }
         if (!any)
-            (void)core_.dispatch(command::ReconcileNow{});
+            (void)core_.dispatch(command::atom::ReconcileNow{});
 
         emit(event::ConfigReloaded{});
     }

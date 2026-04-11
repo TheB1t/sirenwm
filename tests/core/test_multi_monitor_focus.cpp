@@ -40,20 +40,20 @@ static std::unique_ptr<TestHarness> make_dual() {
 TEST(MultiMonitorFocus, FocusMonitorSwitchesCorrectly) {
     auto h = make_dual();
 
-    h->core.dispatch(command::FocusMonitor{ 0 });
+    h->core.dispatch(command::atom::FocusMonitor{ 0 });
     EXPECT_EQ(h->core.focused_monitor_index(), 0);
 
-    h->core.dispatch(command::FocusMonitor{ 1 });
+    h->core.dispatch(command::atom::FocusMonitor{ 1 });
     EXPECT_EQ(h->core.focused_monitor_index(), 1);
 }
 
 TEST(MultiMonitorFocus, FocusMonitorEmitsFocusRootOnOldMonitor) {
     auto h = make_dual();
 
-    h->core.dispatch(command::FocusMonitor{ 0 });
+    h->core.dispatch(command::atom::FocusMonitor{ 0 });
     drain(h->core);
 
-    h->core.dispatch(command::FocusMonitor{ 1 });
+    h->core.dispatch(command::atom::FocusMonitor{ 1 });
     auto effects = drain(h->core);
 
     // When switching monitors, X focus is cleared first (FocusRoot)
@@ -75,7 +75,7 @@ TEST(MultiMonitorFocus, WindowsOnDifferentMonitorsIndependent) {
     EXPECT_EQ(h->core.workspace_of_window(w2), 1);
 
     // Focusing w1 doesn't affect w2's existence
-    h->core.dispatch(command::FocusWindow{ w1 });
+    h->core.dispatch(command::atom::FocusWindow{ w1 });
     EXPECT_NE(h->core.window_state_any(w2), nullptr);
 }
 
@@ -90,8 +90,8 @@ TEST(MultiMonitorFocus, WorkspaceSwitchIsolatedPerMonitor) {
     WindowId w2 = h->map_window(0x2000, 1); // ws 1 on monitor 1
 
     // Switch workspace on monitor 0 to ws 2
-    h->core.dispatch(command::FocusMonitor{ 0 });
-    h->core.dispatch(command::SwitchWorkspace{ 2, 0 });
+    h->core.dispatch(command::atom::FocusMonitor{ 0 });
+    h->core.dispatch(command::atom::SwitchWorkspace{ 2, 0 });
 
     // w1 should now be hidden (ws 0 is no longer active on monitor 0)
     auto s1 = h->core.window_state_any(w1);
@@ -110,10 +110,10 @@ TEST(MultiMonitorFocus, FocusFollowsWindowToOtherMonitor) {
     auto     h = make_dual();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::FocusWindow{ win });
+    h->core.dispatch(command::atom::FocusWindow{ win });
     drain(h->core);
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto effects = drain(h->core);
 
     // Window moved to visible ws on monitor 1 — should get focus
@@ -128,7 +128,7 @@ TEST(MultiMonitorFocus, MoveToMonitorUsesActiveWorkspace) {
     auto     h = make_dual();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::MoveWindowToMonitor{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToMonitor{ win, 1 });
 
     // Window should land on monitor 1's active workspace (1)
     int target_ws = h->core.active_workspace_on_monitor(1);
@@ -145,7 +145,7 @@ TEST(MultiMonitorFocus, FullscreenOnOneMonitorDoesNotAffectOther) {
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
 
-    h->core.dispatch(command::SetWindowFullscreen{ w1, true });
+    h->core.dispatch(command::atom::SetWindowFullscreen{ w1, true });
 
     // ws 0 should be fullscreen mode
     EXPECT_EQ(h->core.workspace_states()[0].mode, WorkspaceMode::Fullscreen);
@@ -166,11 +166,11 @@ TEST(MultiMonitorFocus, FocusNextStaysOnCurrentWorkspace) {
     WindowId w2 = h->map_window(0x2000, 0);
     WindowId w3 = h->map_window(0x3000, 1); // different workspace
 
-    h->core.dispatch(command::FocusMonitor{ 0 });
-    h->core.dispatch(command::FocusWindow{ w1 });
+    h->core.dispatch(command::atom::FocusMonitor{ 0 });
+    h->core.dispatch(command::atom::FocusWindow{ w1 });
     drain(h->core);
 
-    h->core.dispatch(command::FocusNextWindow{});
+    h->core.dispatch(command::composite::FocusNextWindow{});
     auto effects = drain(h->core);
 
     // Focus should stay on ws 0 windows (w1 or w2), not jump to w3
@@ -192,8 +192,8 @@ TEST(MultiMonitorFocus, FullscreenOnBothMonitors) {
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
 
-    h->core.dispatch(command::SetWindowFullscreen{ w1, true });
-    h->core.dispatch(command::SetWindowFullscreen{ w2, true });
+    h->core.dispatch(command::atom::SetWindowFullscreen{ w1, true });
+    h->core.dispatch(command::atom::SetWindowFullscreen{ w2, true });
 
     EXPECT_EQ(h->core.workspace_states()[0].mode, WorkspaceMode::Fullscreen);
     EXPECT_EQ(h->core.workspace_states()[1].mode, WorkspaceMode::Fullscreen);
@@ -217,10 +217,10 @@ TEST(MultiMonitorFocus, RemoveWindowOnOtherMonitorSafe) {
     WindowId w1 = h->map_window(0x1000, 0);
     WindowId w2 = h->map_window(0x2000, 1);
 
-    h->core.dispatch(command::FocusMonitor{ 0 });
-    h->core.dispatch(command::FocusWindow{ w1 });
+    h->core.dispatch(command::atom::FocusMonitor{ 0 });
+    h->core.dispatch(command::atom::FocusWindow{ w1 });
 
-    h->core.dispatch(command::RemoveWindowFromAllWorkspaces{ w2 });
+    h->core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ w2 });
 
     // w1 should still be valid and focused
     EXPECT_NE(h->core.window_state_any(w1), nullptr);
@@ -237,7 +237,7 @@ TEST(MultiMonitorFocus, BorderlessActivatedHasCorrectMonitor) {
     WindowId win = h->map_window(0x2000, 1);
     h->core.take_core_events(); // drain
 
-    h->core.dispatch(command::SetWindowBorderless{ win, true });
+    h->core.dispatch(command::atom::SetWindowBorderless{ win, true });
     auto events = h->core.take_core_events();
 
     bool found = false;
@@ -258,11 +258,11 @@ TEST(MultiMonitorFocus, BorderlessActivatedHasCorrectMonitor) {
 TEST(MultiMonitorFocus, InsetAffectsTiledNotFullscreen) {
     auto h = make_dual();
 
-    h->core.dispatch(command::ApplyMonitorTopInset{ 30 });
+    h->core.dispatch(command::atom::ApplyMonitorTopInset{ 30 });
 
     WindowId tiled = h->map_window(0x1000, 0);
     WindowId fs    = h->map_window(0x2000, 0);
-    h->core.dispatch(command::SetWindowFullscreen{ fs, true });
+    h->core.dispatch(command::atom::SetWindowFullscreen{ fs, true });
 
     auto st = h->core.window_state_any(tiled);
     auto sf = h->core.window_state_any(fs);

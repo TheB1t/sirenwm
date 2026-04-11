@@ -79,7 +79,7 @@ TEST(Reload, ActiveWorkspaceClampedAfterShrink) {
 
     // Switch to last workspace
     int last_ws = h.core.workspace_count() - 1;
-    h.core.dispatch(command::SwitchWorkspace{ last_ws, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ last_ws, std::nullopt });
     EXPECT_EQ(h.core.active_workspace_on_monitor(0), last_ws);
 
     // Shrink to 1 workspace

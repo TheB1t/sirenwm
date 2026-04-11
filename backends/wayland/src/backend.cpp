@@ -459,7 +459,7 @@ void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
         if (wlr_xdg_surface* xdg = wlr_xdg_surface_try_from_wlr_surface(surface)) {
             for (auto& [id, wls] : surfaces_) {
                 if (wls && wls->xdg_surface() == xdg) {
-                    core_.dispatch(command::FocusWindow{ id });
+                    core_.dispatch(command::atom::FocusWindow{ id });
                     break;
                 }
             }

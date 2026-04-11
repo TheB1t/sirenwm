@@ -51,7 +51,7 @@ TEST(CrossMonitor, MoveWindowToMonitorBasic) {
     WindowId win = h->map_window(0x1000, 0);
     EXPECT_EQ(h->core.workspace_of_window(win), 0);
 
-    bool ok = h->core.dispatch(command::MoveWindowToMonitor{ win, 1 });
+    bool ok = h->core.dispatch(command::atom::MoveWindowToMonitor{ win, 1 });
     EXPECT_TRUE(ok);
     EXPECT_EQ(h->core.workspace_of_window(win), 1);
 }
@@ -60,9 +60,9 @@ TEST(CrossMonitor, MoveWindowToMonitorNoWindowUsesFocused) {
     auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::FocusWindow{ win });
+    h->core.dispatch(command::atom::FocusWindow{ win });
 
-    bool ok = h->core.dispatch(command::MoveWindowToMonitor{ NO_WINDOW, 1 });
+    bool ok = h->core.dispatch(command::atom::MoveWindowToMonitor{ NO_WINDOW, 1 });
     EXPECT_TRUE(ok);
     EXPECT_EQ(h->core.workspace_of_window(win), 1);
 }
@@ -71,7 +71,7 @@ TEST(CrossMonitor, MoveWindowToMonitorInvalidMonitor) {
     auto     h   = make_dual_monitor();
     WindowId win = h->map_window(0x1000, 0);
 
-    bool     ok = h->core.dispatch(command::MoveWindowToMonitor{ win, 99 });
+    bool     ok = h->core.dispatch(command::atom::MoveWindowToMonitor{ win, 99 });
     EXPECT_FALSE(ok);
     EXPECT_EQ(h->core.workspace_of_window(win), 0);
 }
@@ -84,10 +84,10 @@ TEST(CrossMonitor, FullscreenMoveUpdatesSourceWorkspaceMode) {
     auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::SetWindowFullscreen{ win, true });
+    h->core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     EXPECT_EQ(h->core.workspace_states()[0].mode, WorkspaceMode::Fullscreen);
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
 
     // Source workspace should exit fullscreen mode
     EXPECT_EQ(h->core.workspace_states()[0].mode, WorkspaceMode::Normal);
@@ -99,14 +99,14 @@ TEST(CrossMonitor, BorderlessMoveRepinsGeometry) {
     auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::SetWindowBorderless{ win, true });
+    h->core.dispatch(command::atom::SetWindowBorderless{ win, true });
 
     // Should be pinned to primary (1920x1080)
     auto w = h->core.window_state_any(win);
     EXPECT_EQ(w->size().x(), 1920);
     EXPECT_EQ(w->size().y(), 1080);
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
 
     // Should be re-pinned to secondary (2560x1440)
     w = h->core.window_state_any(win);
@@ -119,10 +119,10 @@ TEST(CrossMonitor, FullscreenMoveEmitsAssignedEvent) {
     auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::SetWindowFullscreen{ win, true });
+    h->core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     h->core.take_core_events(); // drain
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto events = h->core.take_core_events();
 
     bool found = false;
@@ -143,7 +143,7 @@ TEST(CrossMonitor, NormalWindowMoveDoesNotTriggerFullscreenEval) {
     WindowId win = h->map_window(0x1000, 0);
     drain(h->core);
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
 
     // Both workspaces should stay Normal
     EXPECT_EQ(h->core.workspace_states()[0].mode, WorkspaceMode::Normal);
@@ -160,7 +160,7 @@ TEST(CrossMonitor, FocusFollowsMovedWindowToVisibleWorkspace) {
     WindowId win = h->map_window(0x1000, 0);
     drain(h->core);
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto effects = drain(h->core);
 
     // Window moved to visible workspace 1 — should get focus
@@ -174,7 +174,7 @@ TEST(CrossMonitor, FocusDoesNotFollowMoveToInvisibleWorkspace) {
     drain(h->core);
 
     // workspace 2 is not visible on any monitor
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 2 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 2 });
     auto effects = drain(h->core);
 
     EXPECT_FALSE(has_effect(effects, BackendEffectKind::FocusWindow, win));
@@ -188,10 +188,10 @@ TEST(CrossMonitor, BorderlessActivatedEmittedAfterMove) {
     auto     h = make_dual_monitor();
 
     WindowId win = h->map_window(0x1000, 0);
-    h->core.dispatch(command::SetWindowBorderless{ win, true });
+    h->core.dispatch(command::atom::SetWindowBorderless{ win, true });
     h->core.take_core_events(); // drain
 
-    h->core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto events = h->core.take_core_events();
 
     // Focus changed event should fire, which is what triggers
@@ -215,16 +215,16 @@ TEST(CrossMonitor, MoveAcrossThreeMonitors) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
     // Move left -> center
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto w = h.core.window_state_any(win);
     EXPECT_EQ(w->pos().x(), 1920);
     EXPECT_EQ(w->size().x(), 2560);
 
     // Move center -> right
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 2 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 2 });
     w = h.core.window_state_any(win);
     EXPECT_EQ(w->pos().x(), 4480);
     EXPECT_EQ(w->size().x(), 1280);

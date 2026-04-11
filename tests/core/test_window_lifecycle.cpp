@@ -13,7 +13,7 @@ TEST(WindowLifecycle, NewWindowIsTracked) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x1000, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x1000, 0 });
     EXPECT_NE(h.core.window_state_any(0x1000), nullptr);
 }
 
@@ -21,9 +21,9 @@ TEST(WindowLifecycle, MetadataStoredCorrectly) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x2000, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x2000, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window      = 0x2000;
     meta.wm_class    = "firefox";
     meta.wm_instance = "Navigator";
@@ -40,8 +40,8 @@ TEST(WindowLifecycle, MappedWindowIsVisible) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x3000, 0 });
-    h.core.dispatch(command::SetWindowMapped{ 0x3000, true });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x3000, 0 });
+    h.core.dispatch(command::atom::SetWindowMapped{ 0x3000, true });
 
     auto ws = h.core.window_state_any(0x3000);
     ASSERT_NE(ws, nullptr);
@@ -53,9 +53,9 @@ TEST(WindowLifecycle, UnmappedWindowIsNotVisible) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x3000, 0 });
-    h.core.dispatch(command::SetWindowMapped{ 0x3000, true });
-    h.core.dispatch(command::SetWindowMapped{ 0x3000, false });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x3000, 0 });
+    h.core.dispatch(command::atom::SetWindowMapped{ 0x3000, true });
+    h.core.dispatch(command::atom::SetWindowMapped{ 0x3000, false });
 
     auto ws = h.core.window_state_any(0x3000);
     ASSERT_NE(ws, nullptr);
@@ -67,9 +67,9 @@ TEST(WindowLifecycle, RemoveWindowCleansUp) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x4000, 0 });
-    h.core.dispatch(command::SetWindowMapped{ 0x4000, true });
-    h.core.dispatch(command::RemoveWindowFromAllWorkspaces{ 0x4000 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x4000, 0 });
+    h.core.dispatch(command::atom::SetWindowMapped{ 0x4000, true });
+    h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ 0x4000 });
 
     EXPECT_EQ(h.core.window_state_any(0x4000), nullptr);
 }
@@ -82,9 +82,9 @@ TEST(WindowLifecycle, FixedSizeHintSetsFlag) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x5000, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x5000, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window           = 0x5000;
     meta.hints.fixed_size = true;
     h.core.dispatch(meta);
@@ -98,9 +98,9 @@ TEST(WindowLifecycle, NoInputFocusHintSetsFlag) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x5001, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x5001, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window            = 0x5001;
     meta.hints.never_focus = true;
     h.core.dispatch(meta);
@@ -114,9 +114,9 @@ TEST(WindowLifecycle, StaticGravityHintSetsPreservePosition) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x5002, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x5002, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window               = 0x5002;
     meta.hints.static_gravity = true;
     h.core.dispatch(meta);
@@ -134,9 +134,9 @@ TEST(WindowLifecycle, DialogTypeIsRecognized) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x6000, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x6000, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window = 0x6000;
     meta.type   = WindowType::Dialog;
     h.core.dispatch(meta);
@@ -150,9 +150,9 @@ TEST(WindowLifecycle, ModalTypeIsDialog) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x6001, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x6001, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window = 0x6001;
     meta.type   = WindowType::Modal;
     h.core.dispatch(meta);
@@ -170,9 +170,9 @@ TEST(WindowLifecycle, CoversMonitorHintSetsSelfManaged) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x7000, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x7000, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window               = 0x7000;
     meta.hints.covers_monitor = true;
     // self_managed requires: pre_fullscreen && covers_monitor && !is_xembed
@@ -189,9 +189,9 @@ TEST(WindowLifecycle, CoversMonitorWithoutPreFullscreenIsNotSelfManaged) {
     TestHarness h;
     h.start();
 
-    h.core.dispatch(command::EnsureWindow{ 0x7001, 0 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x7001, 0 });
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window               = 0x7001;
     meta.hints.covers_monitor = true;
     meta.hints.pre_fullscreen = false; // no pre-fullscreen → wm-borderless, not self-managed
@@ -214,7 +214,7 @@ TEST(WindowLifecycle, HideWindowHidesExplicitly) {
     WindowId win = h.map_window(0x8000, 0);
     EXPECT_TRUE(h.core.window_state_any(win)->is_visible());
 
-    h.core.dispatch(command::HideWindow{ win });
+    h.core.dispatch(command::atom::HideWindow{ win });
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
     EXPECT_FALSE(ws->is_visible());
@@ -230,7 +230,7 @@ TEST(WindowLifecycle, SuppressFocusOnceIsConsumed) {
     h.start();
 
     WindowId win = h.map_window(0x9000, 0);
-    h.core.dispatch(command::SetWindowSuppressFocusOnce{ win, true });
+    h.core.dispatch(command::atom::SetWindowSuppressFocusOnce{ win, true });
 
     EXPECT_TRUE(h.core.consume_window_suppress_focus_once(win));
     // second call: already consumed
@@ -246,7 +246,7 @@ TEST(WindowLifecycle, BorderWidthIsStored) {
     h.start();
 
     WindowId win = h.map_window(0xA000, 0);
-    h.core.dispatch(command::SetWindowBorderWidth{ win, 3 });
+    h.core.dispatch(command::atom::SetWindowBorderWidth{ win, 3 });
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
@@ -262,7 +262,7 @@ TEST(WindowLifecycle, SetWindowPositionUpdatesCoords) {
     h.start();
 
     WindowId win = h.map_window(0xB000, 0);
-    h.core.dispatch(command::SetWindowPosition{ win, { 42, 100 } });
+    h.core.dispatch(command::atom::SetWindowPosition{ win, { 42, 100 } });
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
@@ -275,7 +275,7 @@ TEST(WindowLifecycle, SetWindowSizeUpdatesDimensions) {
     h.start();
 
     WindowId win = h.map_window(0xC000, 0);
-    h.core.dispatch(command::SetWindowSize{ win, { 800, 600 } });
+    h.core.dispatch(command::atom::SetWindowSize{ win, { 800, 600 } });
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
@@ -288,7 +288,7 @@ TEST(WindowLifecycle, SetWindowGeometrySetsAll) {
     h.start();
 
     WindowId win = h.map_window(0xD000, 0);
-    h.core.dispatch(command::SetWindowGeometry{ win, { 10, 20 }, { 320, 240 } });
+    h.core.dispatch(command::atom::SetWindowGeometry{ win, { 10, 20 }, { 320, 240 } });
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
@@ -307,7 +307,7 @@ TEST(WindowLifecycle, SetWindowBorderlessSetsFlag) {
     h.start();
 
     WindowId win = h.map_window(0xE000, 0);
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
 
     EXPECT_TRUE(h.core.window_state_any(win)->borderless);
 }
@@ -317,8 +317,8 @@ TEST(WindowLifecycle, SetWindowBorderlessClearsFlag) {
     h.start();
 
     WindowId win = h.map_window(0xE001, 0);
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
-    h.core.dispatch(command::SetWindowBorderless{ win, false });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, false });
 
     EXPECT_FALSE(h.core.window_state_any(win)->borderless);
 }
@@ -332,7 +332,7 @@ TEST(WindowLifecycle, FullscreenSetsFlag) {
     h.start();
 
     WindowId win = h.map_window(0xF000, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
     EXPECT_TRUE(h.core.is_window_fullscreen(win));
 }
@@ -342,8 +342,8 @@ TEST(WindowLifecycle, FullscreenClearsFlagOnDisable) {
     h.start();
 
     WindowId win = h.map_window(0xF001, 0);
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
 
     EXPECT_FALSE(h.core.is_window_fullscreen(win));
 }

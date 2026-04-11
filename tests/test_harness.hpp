@@ -7,7 +7,7 @@
 //   TestHarness h({ make_monitor(...) });   // custom topology
 //   h.use<RulesModule>();                   // load specific modules
 //   h.start();                              // call on_start on all modules
-//   h.core.dispatch(command::MapWindow{…}); // drive the state machine
+//   h.core.dispatch(command::atom::MapWindow{…}); // drive the state machine
 
 #include <core.hpp>
 #include <module_registry.hpp>
@@ -57,8 +57,8 @@ struct TestHarness {
 
     // Simulate a window being mapped: create it in core and return its id.
     WindowId map_window(WindowId id, int ws = 0) {
-        core.dispatch(command::EnsureWindow{ id, ws });
-        core.dispatch(command::SetWindowMapped{ id, true });
+        core.dispatch(command::atom::EnsureWindow{ id, ws });
+        core.dispatch(command::atom::SetWindowMapped{ id, true });
         return id;
     }
 

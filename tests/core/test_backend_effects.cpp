@@ -30,8 +30,8 @@ TEST(BackendEffects, MapWindowEmitsMapEffect) {
     h.start();
 
     // MapWindow command (not SetWindowMapped) emits the MapWindow effect.
-    h.core.dispatch(command::EnsureWindow{ 0x1000, 0 });
-    h.core.dispatch(command::MapWindow{ 0x1000 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x1000, 0 });
+    h.core.dispatch(command::atom::MapWindow{ 0x1000 });
 
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::MapWindow, 0x1000));
@@ -42,11 +42,11 @@ TEST(BackendEffects, UnmapWindowEmitsUnmapEffect) {
     h.start();
 
     // UnmapWindow command emits the UnmapWindow effect.
-    h.core.dispatch(command::EnsureWindow{ 0x1000, 0 });
-    h.core.dispatch(command::MapWindow{ 0x1000 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0x1000, 0 });
+    h.core.dispatch(command::atom::MapWindow{ 0x1000 });
     drain(h.core); // discard map effects
 
-    h.core.dispatch(command::UnmapWindow{ 0x1000 });
+    h.core.dispatch(command::atom::UnmapWindow{ 0x1000 });
 
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UnmapWindow, 0x1000));
@@ -65,7 +65,7 @@ TEST(BackendEffects, FocusNextWindowEmitsFocusEffect) {
     h.map_window(0x1002, 0);
     drain(h.core);
 
-    h.core.dispatch(command::FocusNextWindow{});
+    h.core.dispatch(command::composite::FocusNextWindow{});
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::FocusWindow));
 }
@@ -78,7 +78,7 @@ TEST(BackendEffects, FocusPrevWindowEmitsFocusEffect) {
     h.map_window(0x1002, 0);
     drain(h.core);
 
-    h.core.dispatch(command::FocusPrevWindow{});
+    h.core.dispatch(command::composite::FocusPrevWindow{});
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::FocusWindow));
 }
@@ -96,7 +96,7 @@ TEST(BackendEffects, WorkspaceSwitchHidesOldWindows) {
     drain(h.core);
 
     // Switch to ws 1 — normal window should be unmapped
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UnmapWindow, win));
 }
@@ -108,11 +108,11 @@ TEST(BackendEffects, WorkspaceSwitchShowsNewWindows) {
     // Put a normal window on ws 1
     WindowId win = h.map_window(0x1000, 1);
     // Switch to ws 0 first so ws 1 is inactive
-    h.core.dispatch(command::SwitchWorkspace{ 0, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });
     drain(h.core);
 
     // Switch to ws 1 — normal window should be mapped
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::MapWindow, win));
 }
@@ -130,7 +130,7 @@ TEST(BackendEffects, FocusRootWhenSwitchingToEmptyWorkspace) {
     drain(h.core);
 
     // Switch to ws 1 (empty) — sync_current_focus will emit FocusRoot.
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::FocusRoot));
 }
@@ -146,7 +146,7 @@ TEST(BackendEffects, SetWindowGeometryEmitsUpdateEffect) {
     WindowId win = h.map_window(0x1000, 0);
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowGeometry{ win, { 100, 200 }, { 640, 480 } });
+    h.core.dispatch(command::atom::SetWindowGeometry{ win, { 100, 200 }, { 640, 480 } });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UpdateWindow, win));
 }
@@ -163,7 +163,7 @@ TEST(BackendEffects, MoveToInactiveWorkspaceEmitsUnmap) {
     WindowId win = h.map_window(0x1000, 0);
     drain(h.core);
 
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 1 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UnmapWindow, win));
 }
@@ -177,11 +177,11 @@ TEST(BackendEffects, MoveToActiveWorkspaceEmitsMap) {
     drain(h.core);
 
     // Switch to ws 1 so the window becomes visible
-    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     drain(h.core);
 
     // Move back to ws 0 which is now inactive — window gets unmapped
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 0 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 0 });
     auto fx = drain(h.core);
     // ws 0 is inactive from this monitor's perspective, window is unmapped
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UnmapWindow, win));
@@ -198,12 +198,12 @@ TEST(BackendEffects, FullscreenEmitsUpdate) {
     WindowId win = h.map_window(0x1000, 0);
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UpdateWindow, win));
 
     drain(h.core);
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
     fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UpdateWindow, win));
 }
@@ -220,7 +220,7 @@ TEST(BackendEffects, EffectsArePerWindow) {
     WindowId b = h.map_window(0x2002, 0);
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowGeometry{ a, { 0, 0 }, { 320, 240 } });
+    h.core.dispatch(command::atom::SetWindowGeometry{ a, { 0, 0 }, { 320, 240 } });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::UpdateWindow, a));
     // b should NOT have an effect here

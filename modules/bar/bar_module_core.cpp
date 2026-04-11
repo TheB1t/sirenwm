@@ -436,8 +436,8 @@ void BarModule::rebuild_bars() {
             }
         }
 
-        (void)core().dispatch(command::ApplyMonitorTopInset{ top_h, i });
-        (void)core().dispatch(command::ApplyMonitorBottomInset{ bottom_h, i });
+        (void)core().dispatch(command::atom::ApplyMonitorTopInset{ top_h, i });
+        (void)core().dispatch(command::atom::ApplyMonitorBottomInset{ bottom_h, i });
     }
 }
 
@@ -599,7 +599,7 @@ void BarModule::on(event::ButtonEv ev) {
             continue;
         int ws = tag_at(ev.window, ev.event_pos.x());
         if (ws >= 0) {
-            (void)core().dispatch(command::SwitchWorkspace{ ws, b.window->monitor_index() });
+            (void)core().dispatch(command::atom::SwitchWorkspace{ ws, b.window->monitor_index() });
             redraw();
         }
         return;
@@ -615,7 +615,7 @@ void BarModule::on_reload() {
         apply_theme_to_monitor_cfg(mcfg, th);
 
     rebuild_bars();
-    (void)core().dispatch(command::ReconcileNow{});
+    (void)core().dispatch(command::atom::ReconcileNow{});
     rebuild_trays();
     rebalance_tray_icons();
     raise_all();
@@ -702,7 +702,7 @@ void BarModule::on(event::TrayIconDocked ev) {
 
 void BarModule::on(event::DisplayTopologyChanged) {
     rebuild_bars();
-    (void)core().dispatch(command::ReconcileNow{});
+    (void)core().dispatch(command::atom::ReconcileNow{});
     rebuild_trays();
     rebalance_tray_icons();
     raise_all();
@@ -724,7 +724,7 @@ void BarModule::on_start() {
         apply_theme_to_monitor_cfg(mcfg, th);
 
     rebuild_bars();
-    (void)core().dispatch(command::ReconcileNow{});
+    (void)core().dispatch(command::atom::ReconcileNow{});
 
     rebuild_trays();
 

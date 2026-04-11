@@ -187,7 +187,7 @@ void X11Backend::set_wm_state_normal(WindowId win) {
 }
 
 void X11Backend::ewmh_apply_fullscreen(WindowId win, bool enabled) {
-    (void)core.dispatch(command::SetWindowFullscreen{ win, enabled });
+    (void)core.dispatch(command::atom::SetWindowFullscreen{ win, enabled });
     ewmh_set_fullscreen_state_property(win, enabled);
 }
 
@@ -351,7 +351,7 @@ void X11Backend::notify(event::WindowMapped ev) {
         bool self_managed    = w && w->is_self_managed();
         if (!skip_fullscreen && ewmh_has_fullscreen_state(ev.window) && should_apply_fullscreen_now(core, ev.window)) {
             if (self_managed)
-                (void)core.dispatch(command::SetWindowFullscreen{
+                (void)core.dispatch(command::atom::SetWindowFullscreen{
                     ev.window, true, /*preserve_geometry=*/ true });
             else
                 ewmh_apply_fullscreen(ev.window, true);
@@ -492,7 +492,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         if (ws_id >= 0 && !core.is_workspace_visible(ws_id))
             return true;
 
-        (void)core.dispatch(command::FocusWindow{ ev.window });
+        (void)core.dispatch(command::atom::FocusWindow{ ev.window });
         request_focus(ev.window, kFocusEWMH);
         return true;
     }
@@ -501,7 +501,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         int ws_id = (int)ev.data[0];
         if (ws_id < 0 || ws_id >= core.workspace_count())
             return true;
-        (void)core.dispatch(command::SwitchWorkspace{ ws_id, std::nullopt });
+        (void)core.dispatch(command::atom::SwitchWorkspace{ ws_id, std::nullopt });
         return true;
     }
 
@@ -513,7 +513,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         if (!w)
             return true;
         LOG_DEBUG("ClientMessage(%d): _NET_WM_DESKTOP -> workspace %d", ev.window, ws_id);
-        (void)core.dispatch(command::MoveWindowToWorkspace{ ev.window, ws_id });
+        (void)core.dispatch(command::atom::MoveWindowToWorkspace{ ev.window, ws_id });
         return true;
     }
 

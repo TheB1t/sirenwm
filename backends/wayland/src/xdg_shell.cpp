@@ -72,14 +72,14 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
     raw->on_request_fullscreen_.connect(&toplevel->events.request_fullscreen,
         [this, raw](void*) {
             bool want = raw->toplevel()->requested.fullscreen;
-            core_.dispatch(command::SetWindowFullscreen{ raw->id, want, false });
+            core_.dispatch(command::atom::SetWindowFullscreen{ raw->id, want, false });
         });
 
     // Client-requested maximize: treat as fullscreen for tiling WMs.
     raw->on_request_maximize_.connect(&toplevel->events.request_maximize,
         [this, raw](void*) {
             bool want = raw->toplevel()->requested.maximized;
-            core_.dispatch(command::SetWindowFullscreen{ raw->id, want, false });
+            core_.dispatch(command::atom::SetWindowFullscreen{ raw->id, want, false });
         });
 
     // Client-requested interactive move/resize (e.g. title-bar drag).
@@ -106,7 +106,7 @@ void WaylandBackend::handle_surface_map(WlSurface* surf) {
 
     // Register with Core (calls back into create_window(surf->id) which moves
     // the surface from pending_ into surfaces_).
-    (void)core_.dispatch(command::EnsureWindow{ .window = surf->id });
+    (void)core_.dispatch(command::atom::EnsureWindow{ .window = surf->id });
 
     // Let rules/policy decide workspace, floating, fullscreen, etc.
     runtime_.emit(event::ApplyWindowRules{ surf->id });

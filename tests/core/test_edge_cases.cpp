@@ -38,9 +38,9 @@ TEST(EdgeCases, MoveFocusedWindowToWorkspace) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::FocusWindow{ win });
+    h.core.dispatch(command::atom::FocusWindow{ win });
 
-    bool ok = h.core.dispatch(command::MoveFocusedWindowToWorkspace{ 1 });
+    bool ok = h.core.dispatch(command::composite::MoveFocusedWindowToWorkspace{ 1 });
     EXPECT_TRUE(ok);
     EXPECT_EQ(h.core.workspace_of_window(win), 1);
 }
@@ -50,7 +50,7 @@ TEST(EdgeCases, MoveFocusedWindowNoFocusReturnsFalse) {
     h.start();
 
     // No windows at all — nothing focused
-    bool ok = h.core.dispatch(command::MoveFocusedWindowToWorkspace{ 1 });
+    bool ok = h.core.dispatch(command::composite::MoveFocusedWindowToWorkspace{ 1 });
     EXPECT_FALSE(ok);
 }
 
@@ -65,7 +65,7 @@ TEST(EdgeCases, AssignWindowWorkspaceBasic) {
     WindowId win = h.map_window(0x1000, 0);
     h.core.take_core_events(); // drain
 
-    bool ok = h.core.dispatch(command::AssignWindowWorkspace{ win, 2 });
+    bool ok = h.core.dispatch(command::atom::AssignWindowWorkspace{ win, 2 });
     EXPECT_TRUE(ok);
 
     auto events = h.core.take_core_events();
@@ -84,7 +84,7 @@ TEST(EdgeCases, AssignWindowWorkspaceNonexistent) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::AssignWindowWorkspace{ 0xDEAD, 1 });
+    bool ok = h.core.dispatch(command::atom::AssignWindowWorkspace{ 0xDEAD, 1 });
     EXPECT_FALSE(ok);
 }
 
@@ -97,12 +97,12 @@ TEST(EdgeCases, SetWindowHiddenByWorkspace) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowHiddenByWorkspace{ win, true });
+    h.core.dispatch(command::atom::SetWindowHiddenByWorkspace{ win, true });
 
     auto w = h.core.window_state_any(win);
     EXPECT_FALSE(w->is_visible());
 
-    h.core.dispatch(command::SetWindowHiddenByWorkspace{ win, false });
+    h.core.dispatch(command::atom::SetWindowHiddenByWorkspace{ win, false });
     w = h.core.window_state_any(win);
     EXPECT_TRUE(w->is_visible());
 }
@@ -119,7 +119,7 @@ TEST(EdgeCases, DoubleMapDoesNotDuplicate) {
     drain(h.core);
 
     // Map again
-    h.core.dispatch(command::MapWindow{ win });
+    h.core.dispatch(command::atom::MapWindow{ win });
     auto effects = drain(h.core);
 
     // Should NOT emit another MapWindow effect (already mapped)
@@ -131,11 +131,11 @@ TEST(EdgeCases, DoubleUnmapDoesNotDuplicate) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::UnmapWindow{ win });
+    h.core.dispatch(command::atom::UnmapWindow{ win });
     drain(h.core);
 
     // Unmap again
-    h.core.dispatch(command::UnmapWindow{ win });
+    h.core.dispatch(command::atom::UnmapWindow{ win });
     auto effects = drain(h.core);
 
     // Should NOT emit another UnmapWindow effect (already unmapped)
@@ -151,11 +151,11 @@ TEST(EdgeCases, FullscreenDisableOnNonFullscreenIsNoop) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFloating{ win, true });
-    h.core.dispatch(command::SetWindowGeometry{ win, {50, 50}, {400, 300} });
+    h.core.dispatch(command::atom::SetWindowFloating{ win, true });
+    h.core.dispatch(command::atom::SetWindowGeometry{ win, {50, 50}, {400, 300} });
 
     // Disable fullscreen when it's not enabled — should be harmless
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
 
     auto w = h.core.window_state_any(win);
     EXPECT_FALSE(w->fullscreen);
@@ -169,14 +169,14 @@ TEST(EdgeCases, FullscreenDoubleEnableDoesNotLoseOriginalGeometry) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowFloating{ win, true });
-    h.core.dispatch(command::SetWindowGeometry{ win, {50, 50}, {400, 300} });
+    h.core.dispatch(command::atom::SetWindowFloating{ win, true });
+    h.core.dispatch(command::atom::SetWindowGeometry{ win, {50, 50}, {400, 300} });
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     // Enable fullscreen again — should NOT overwrite saved pre-fullscreen geometry
-    h.core.dispatch(command::SetWindowFullscreen{ win, true });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
-    h.core.dispatch(command::SetWindowFullscreen{ win, false });
+    h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
     auto w = h.core.window_state_any(win);
     EXPECT_EQ(w->pos().x(), 50);
     EXPECT_EQ(w->pos().y(), 50);
@@ -188,7 +188,7 @@ TEST(EdgeCases, FullscreenNonexistentWindowReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::SetWindowFullscreen{ 0xDEAD, true });
+    bool ok = h.core.dispatch(command::atom::SetWindowFullscreen{ 0xDEAD, true });
     EXPECT_FALSE(ok);
 }
 
@@ -201,9 +201,9 @@ TEST(EdgeCases, BorderlessZerosBorderOnNonSelfManaged) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowBorderWidth{ win, 3 });
+    h.core.dispatch(command::atom::SetWindowBorderWidth{ win, 3 });
 
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
     auto w = h.core.window_state_any(win);
     EXPECT_EQ(w->border_width, 0);
 }
@@ -213,10 +213,10 @@ TEST(EdgeCases, BorderlessToNonBorderlessEmitsDeactivatedWhenNoOthersBorderless)
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::SetWindowBorderless{ win, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
     h.core.take_core_events(); // drain
 
-    h.core.dispatch(command::SetWindowBorderless{ win, false });
+    h.core.dispatch(command::atom::SetWindowBorderless{ win, false });
     auto events = h.core.take_core_events();
     EXPECT_TRUE(has_domain_event<event::BorderlessDeactivated>(events));
 }
@@ -227,12 +227,12 @@ TEST(EdgeCases, BorderlessDeactivatedNotEmittedWhenOthersBorderless) {
 
     WindowId a = h.map_window(0x1000, 0);
     WindowId b = h.map_window(0x2000, 0);
-    h.core.dispatch(command::SetWindowBorderless{ a, true });
-    h.core.dispatch(command::SetWindowBorderless{ b, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ a, true });
+    h.core.dispatch(command::atom::SetWindowBorderless{ b, true });
     h.core.take_core_events(); // drain
 
     // Remove borderless from a; b is still borderless
-    h.core.dispatch(command::SetWindowBorderless{ a, false });
+    h.core.dispatch(command::atom::SetWindowBorderless{ a, false });
     auto events = h.core.take_core_events();
     EXPECT_FALSE(has_domain_event<event::BorderlessDeactivated>(events));
 }
@@ -246,7 +246,7 @@ TEST(EdgeCases, EnsureWindowCreatesNew) {
     h.start();
 
     WindowId win = 0xABCD;
-    bool     ok  = h.core.dispatch(command::EnsureWindow{ win, 0 });
+    bool     ok  = h.core.dispatch(command::atom::EnsureWindow{ win, 0 });
     EXPECT_TRUE(ok);
     EXPECT_NE(h.core.window_state_any(win), nullptr);
 }
@@ -258,7 +258,7 @@ TEST(EdgeCases, EnsureWindowMovesExisting) {
     WindowId win = h.map_window(0x1000, 0);
     EXPECT_EQ(h.core.workspace_of_window(win), 0);
 
-    h.core.dispatch(command::EnsureWindow{ win, 1 });
+    h.core.dispatch(command::atom::EnsureWindow{ win, 1 });
     EXPECT_EQ(h.core.workspace_of_window(win), 1);
 }
 
@@ -266,7 +266,7 @@ TEST(EdgeCases, EnsureWindowNoWindowReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::EnsureWindow{ NO_WINDOW, 0 });
+    bool ok = h.core.dispatch(command::atom::EnsureWindow{ NO_WINDOW, 0 });
     EXPECT_FALSE(ok);
 }
 
@@ -281,7 +281,7 @@ TEST(EdgeCases, RemoveWindowCleansUp) {
     WindowId win = h.map_window(0x1000, 0);
     EXPECT_NE(h.core.window_state_any(win), nullptr);
 
-    h.core.dispatch(command::RemoveWindowFromAllWorkspaces{ win });
+    h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ win });
     EXPECT_EQ(h.core.window_state_any(win), nullptr);
 }
 
@@ -290,9 +290,9 @@ TEST(EdgeCases, RemoveWindowTwiceIsSafe) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::RemoveWindowFromAllWorkspaces{ win });
+    h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ win });
     // Second remove should not crash
-    h.core.dispatch(command::RemoveWindowFromAllWorkspaces{ win });
+    h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ win });
     EXPECT_EQ(h.core.window_state_any(win), nullptr);
 }
 
@@ -304,7 +304,7 @@ TEST(EdgeCases, FocusMonitorInvalidReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::FocusMonitor{ 99 });
+    bool ok = h.core.dispatch(command::atom::FocusMonitor{ 99 });
     EXPECT_FALSE(ok);
 }
 
@@ -316,7 +316,7 @@ TEST(EdgeCases, FocusMonitorEmitsWarpPointer) {
     h.start();
 
     drain(h.core);
-    h.core.dispatch(command::FocusMonitor{ 1 });
+    h.core.dispatch(command::atom::FocusMonitor{ 1 });
     auto effects = drain(h.core);
 
     EXPECT_TRUE(has_effect(effects, BackendEffectKind::WarpPointer));
@@ -334,13 +334,13 @@ TEST(EdgeCases, FocusMonitorRestoresLastFocusedWindow) {
 
     WindowId w1 = h.map_window(0x1000, 0);
     WindowId w2 = h.map_window(0x2000, 1);
-    h.core.dispatch(command::FocusWindow{ w1 });
-    h.core.dispatch(command::FocusMonitor{ 1 });
-    h.core.dispatch(command::FocusWindow{ w2 });
+    h.core.dispatch(command::atom::FocusWindow{ w1 });
+    h.core.dispatch(command::atom::FocusMonitor{ 1 });
+    h.core.dispatch(command::atom::FocusWindow{ w2 });
 
     // Switch back to monitor 0
     drain(h.core);
-    h.core.dispatch(command::FocusMonitor{ 0 });
+    h.core.dispatch(command::atom::FocusMonitor{ 0 });
     auto effects = drain(h.core);
 
     // Should emit FocusWindow for w1 (the last focused window on monitor 0)
@@ -355,7 +355,7 @@ TEST(EdgeCases, SetFloatingNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::SetWindowFloating{ 0xDEAD, true });
+    bool ok = h.core.dispatch(command::atom::SetWindowFloating{ 0xDEAD, true });
     EXPECT_FALSE(ok);
 }
 
@@ -363,7 +363,7 @@ TEST(EdgeCases, ToggleFloatingNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::ToggleWindowFloating{ 0xDEAD });
+    bool ok = h.core.dispatch(command::composite::ToggleWindowFloating{ 0xDEAD });
     EXPECT_FALSE(ok);
 }
 
@@ -375,7 +375,7 @@ TEST(EdgeCases, SetPositionNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::SetWindowPosition{ 0xDEAD, {0, 0} });
+    bool ok = h.core.dispatch(command::atom::SetWindowPosition{ 0xDEAD, {0, 0} });
     EXPECT_FALSE(ok);
 }
 
@@ -383,7 +383,7 @@ TEST(EdgeCases, SetSizeNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::SetWindowSize{ 0xDEAD, {100, 100} });
+    bool ok = h.core.dispatch(command::atom::SetWindowSize{ 0xDEAD, {100, 100} });
     EXPECT_FALSE(ok);
 }
 
@@ -391,7 +391,7 @@ TEST(EdgeCases, SetGeometryNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::SetWindowGeometry{ 0xDEAD, {0, 0}, {100, 100} });
+    bool ok = h.core.dispatch(command::atom::SetWindowGeometry{ 0xDEAD, {0, 0}, {100, 100} });
     EXPECT_FALSE(ok);
 }
 
@@ -399,7 +399,7 @@ TEST(EdgeCases, SetBorderWidthNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    bool ok = h.core.dispatch(command::SetWindowBorderWidth{ 0xDEAD, 5 });
+    bool ok = h.core.dispatch(command::atom::SetWindowBorderWidth{ 0xDEAD, 5 });
     EXPECT_FALSE(ok);
 }
 
@@ -415,7 +415,7 @@ TEST(EdgeCases, SwitchToSameWorkspaceDoesNotCrash) {
     h.core.take_core_events(); // drain
 
     // Switching to same workspace should not crash; event may or may not fire
-    h.core.dispatch(command::SwitchWorkspace{ 0, std::nullopt });
+    h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });
     // Window should still be visible and valid
     EXPECT_NE(h.core.window_state_any(win), nullptr);
     EXPECT_TRUE(h.core.window_state_any(win)->is_visible());
@@ -430,7 +430,7 @@ TEST(EdgeCases, MoveWindowToSameWorkspace) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.dispatch(command::MoveWindowToWorkspace{ win, 0 });
+    h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 0 });
     // Should still be on workspace 0, no crash
     EXPECT_EQ(h.core.workspace_of_window(win), 0);
 }
@@ -465,10 +465,10 @@ TEST(EdgeCases, MapOnInvisibleWorkspaceNoMapEffect) {
     h.start();
 
     // ws 0 is active; create window on ws 1 (not visible)
-    h.core.dispatch(command::EnsureWindow{ 0xABCD, 1 });
+    h.core.dispatch(command::atom::EnsureWindow{ 0xABCD, 1 });
     drain(h.core);
 
-    h.core.dispatch(command::SetWindowMapped{ 0xABCD, true });
+    h.core.dispatch(command::atom::SetWindowMapped{ 0xABCD, true });
     auto effects = drain(h.core);
 
     // Window is on invisible workspace, so MapWindow effect should NOT fire
@@ -483,7 +483,7 @@ TEST(EdgeCases, SetMetadataNonexistentReturnsFalse) {
     TestHarness h;
     h.start();
 
-    command::SetWindowMetadata meta;
+    command::atom::SetWindowMetadata meta;
     meta.window = 0xDEAD;
     bool                       ok = h.core.dispatch(meta);
     EXPECT_FALSE(ok);

@@ -599,7 +599,7 @@ void KeybindingsModule::on(event::ButtonEv ev) {
                         int cur_ws  = core().workspace_of_window(drag.window);
                         int dest_ws = mon.active_ws;
                         if (dest_ws >= 0 && dest_ws != cur_ws)
-                            (void)core().dispatch(command::MoveWindowToWorkspace{ drag.window, dest_ws });
+                            (void)core().dispatch(command::atom::MoveWindowToWorkspace{ drag.window, dest_ws });
                         break;
                     }
                 }
@@ -630,8 +630,8 @@ void KeybindingsModule::on(event::ButtonEv ev) {
         return;
 
     if (builtin == MouseAction::Float) {
-        (void)core().dispatch(command::ToggleWindowFloating{ ev.window });
-        (void)core().dispatch(command::ReconcileNow{});
+        (void)core().dispatch(command::composite::ToggleWindowFloating{ ev.window });
+        (void)core().dispatch(command::atom::ReconcileNow{});
         return;
     }
 
@@ -642,8 +642,8 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     drag.op             = (builtin == MouseAction::Move) ? DragOp::Move : DragOp::Resize;
 
     if (!core().is_window_floating(ev.window)) {
-        (void)core().dispatch(command::SetWindowFloating{ ev.window, true });
-        (void)core().dispatch(command::ReconcileNow{});
+        (void)core().dispatch(command::atom::SetWindowFloating{ ev.window, true });
+        (void)core().dispatch(command::atom::ReconcileNow{});
     }
 
     if (input_) {
@@ -665,7 +665,7 @@ void KeybindingsModule::on(event::ButtonEv ev) {
             drag.start_root = { warp.x(), warp.y() };
         }
 
-        (void)core().dispatch(command::FocusWindow{ ev.window });
+        (void)core().dispatch(command::atom::FocusWindow{ ev.window });
         runtime().emit(event::FocusChanged{ ev.window });
     }
 }
@@ -678,7 +678,7 @@ void KeybindingsModule::on(event::MotionEv ev) {
     int dy = ev.root_pos.y() - drag.start_root.y();
 
     if (drag.op == DragOp::Move) {
-        (void)core().dispatch(command::SetWindowPosition{
+        (void)core().dispatch(command::atom::SetWindowPosition{
             drag.window, { drag.start_win_pos.x() + dx, drag.start_win_pos.y() + dy }
         });
         return;
@@ -690,7 +690,7 @@ void KeybindingsModule::on(event::MotionEv ev) {
     static constexpr int MIN_WIN_SIZE = 32;
     int                  nw           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.x() - window->x());
     int                  nh           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.y() - window->y());
-    (void)core().dispatch(command::SetWindowSize{ drag.window, { nw, nh } });
+    (void)core().dispatch(command::atom::SetWindowSize{ drag.window, { nw, nh } });
 }
 
 void KeybindingsModule::on(event::FocusChanged ev) {

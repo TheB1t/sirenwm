@@ -267,8 +267,8 @@ void Core::arrange() {
                 auto w = wsman.find_window_in_all(win);
                 if (w && w->size_locked && w->width() > 0 && w->height() > 0)
                     size = w->size();
-                (void)dispatch(command::SetWindowGeometry{ win, pos, size });
-                (void)dispatch(command::SetWindowBorderWidth{ win, border_width });
+                (void)dispatch(command::atom::SetWindowGeometry{ win, pos, size });
+                (void)dispatch(command::atom::SetWindowBorderWidth{ win, border_width });
                 emit_backend_effect(BackendEffectKind::UpdateWindow, win);
             };
 
@@ -333,24 +333,30 @@ void Core::arrange() {
         for (auto& w : ws.windows) {
             if (!w || !w->is_visible() || !w->floating || w->fullscreen || w->borderless) continue;
             if (w->border_width == (uint32_t)settings.theme.border_thickness) continue;
-            (void)dispatch(command::SetWindowBorderWidth{ w->id,
+            (void)dispatch(command::atom::SetWindowBorderWidth{ w->id,
                                                           (uint32_t)settings.theme.border_thickness });
             emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);
         }
     }
 }
 
-bool Core::dispatch(const Command& cmd) {
+bool Core::dispatch(const command::CommandAtom& cmd) {
     return std::visit([this](const auto& c) {
                    return this->dispatch(c);
                }, cmd);
 }
 
-bool Core::dispatch(const command::FocusWindow& cmd) {
+bool Core::dispatch(const command::CommandComposite& cmd) {
+    return std::visit([this](const auto& c) {
+                   return this->dispatch(c);
+               }, cmd);
+}
+
+bool Core::dispatch(const command::atom::FocusWindow& cmd) {
     return wsman.focus_window(cmd.window);
 }
 
-bool Core::dispatch(const command::SwitchWorkspace& cmd) {
+bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {
     // Capture target monitor before switch_to so we know if it's the focused one.
     int target_mon = cmd.monitor_index.has_value() ? *cmd.monitor_index
                    : wsman.monitor_of_workspace(cmd.workspace_id);
@@ -376,7 +382,7 @@ bool Core::dispatch(const command::SwitchWorkspace& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
+bool Core::dispatch(const command::atom::MoveWindowToWorkspace& cmd) {
     if (cmd.workspace_id < 0 || cmd.workspace_id >= workspace_count())
         return false;
 
@@ -413,14 +419,14 @@ bool Core::dispatch(const command::MoveWindowToWorkspace& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::MoveFocusedWindowToWorkspace& cmd) {
+bool Core::dispatch(const command::composite::MoveFocusedWindowToWorkspace& cmd) {
     auto w = wsman.current().focused();
     if (!w)
         return false;
-    return dispatch(command::MoveWindowToWorkspace{ w->id, cmd.workspace_id });
+    return dispatch(command::atom::MoveWindowToWorkspace{ w->id, cmd.workspace_id });
 }
 
-bool Core::dispatch(const command::MapWindow& cmd) {
+bool Core::dispatch(const command::atom::MapWindow& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -432,7 +438,7 @@ bool Core::dispatch(const command::MapWindow& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::UnmapWindow& cmd) {
+bool Core::dispatch(const command::atom::UnmapWindow& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -443,7 +449,7 @@ bool Core::dispatch(const command::UnmapWindow& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
+bool Core::dispatch(const command::atom::SetWindowFullscreen& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -511,7 +517,7 @@ bool Core::dispatch(const command::SetWindowFullscreen& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::EnsureWindow& cmd) {
+bool Core::dispatch(const command::atom::EnsureWindow& cmd) {
     if (cmd.window == NO_WINDOW)
         return false;
 
@@ -526,7 +532,7 @@ bool Core::dispatch(const command::EnsureWindow& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::AssignWindowWorkspace& cmd) {
+bool Core::dispatch(const command::atom::AssignWindowWorkspace& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -535,7 +541,7 @@ bool Core::dispatch(const command::AssignWindowWorkspace& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowMetadata& cmd) {
+bool Core::dispatch(const command::atom::SetWindowMetadata& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -571,26 +577,26 @@ bool Core::dispatch(const command::SetWindowMetadata& cmd) {
     if (cmd.transient_for != NO_WINDOW) {
         int parent_ws = wsman.workspace_of_window(cmd.transient_for);
         if (parent_ws >= 0) {
-            dispatch(command::SetWindowSuppressFocusOnce{ cmd.window, true });
-            dispatch(command::AssignWindowWorkspace{ cmd.window, parent_ws });
+            dispatch(command::atom::SetWindowSuppressFocusOnce{ cmd.window, true });
+            dispatch(command::atom::AssignWindowWorkspace{ cmd.window, parent_ws });
         }
         if (!w->floating)
-            dispatch(command::SetWindowFloating{ cmd.window, true });
+            dispatch(command::atom::SetWindowFloating{ cmd.window, true });
     }
 
     // Dialog/utility/splash windows float by default.
     if (!w->floating && (w->is_dialog() || w->type == WindowType::Utility
         || w->type == WindowType::Splash || cmd.transient_for != NO_WINDOW))
-        dispatch(command::SetWindowFloating{ cmd.window, true });
+        dispatch(command::atom::SetWindowFloating{ cmd.window, true });
 
     // Fixed-size non-borderless windows float.
     if (!w->floating && !w->borderless && w->size_locked && !will_be_borderless)
-        dispatch(command::SetWindowFloating{ cmd.window, true });
+        dispatch(command::atom::SetWindowFloating{ cmd.window, true });
 
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowMapped& cmd) {
+bool Core::dispatch(const command::atom::SetWindowMapped& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -598,7 +604,7 @@ bool Core::dispatch(const command::SetWindowMapped& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowHiddenByWorkspace& cmd) {
+bool Core::dispatch(const command::atom::SetWindowHiddenByWorkspace& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -606,7 +612,7 @@ bool Core::dispatch(const command::SetWindowHiddenByWorkspace& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowSuppressFocusOnce& cmd) {
+bool Core::dispatch(const command::atom::SetWindowSuppressFocusOnce& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -614,7 +620,7 @@ bool Core::dispatch(const command::SetWindowSuppressFocusOnce& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowFloating& cmd) {
+bool Core::dispatch(const command::atom::SetWindowFloating& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -622,7 +628,7 @@ bool Core::dispatch(const command::SetWindowFloating& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowBorderless& cmd) {
+bool Core::dispatch(const command::atom::SetWindowBorderless& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -657,7 +663,7 @@ bool Core::dispatch(const command::SetWindowBorderless& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::ToggleWindowFloating& cmd) {
+bool Core::dispatch(const command::composite::ToggleWindowFloating& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -665,7 +671,7 @@ bool Core::dispatch(const command::ToggleWindowFloating& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::FocusNextWindow&) {
+bool Core::dispatch(const command::composite::FocusNextWindow&) {
     auto w = wsman.focus_next();
     if (!w || !w->is_visible()) {
         emit_focus_changed(NO_WINDOW);
@@ -676,7 +682,7 @@ bool Core::dispatch(const command::FocusNextWindow&) {
     return true;
 }
 
-bool Core::dispatch(const command::FocusPrevWindow&) {
+bool Core::dispatch(const command::composite::FocusPrevWindow&) {
     auto w = wsman.focus_prev();
     if (!w || !w->is_visible()) {
         emit_focus_changed(NO_WINDOW);
@@ -687,7 +693,7 @@ bool Core::dispatch(const command::FocusPrevWindow&) {
     return true;
 }
 
-bool Core::dispatch(const command::FocusMonitor& cmd) {
+bool Core::dispatch(const command::atom::FocusMonitor& cmd) {
     int  n   = cmd.monitor_index;
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
@@ -716,7 +722,7 @@ bool Core::dispatch(const command::FocusMonitor& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::MoveWindowToMonitor& cmd) {
+bool Core::dispatch(const command::atom::MoveWindowToMonitor& cmd) {
     int  n   = cmd.monitor_index;
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
@@ -727,19 +733,19 @@ bool Core::dispatch(const command::MoveWindowToMonitor& cmd) {
         if (!w) return false;
         win = w->id;
     }
-    return dispatch(command::MoveWindowToWorkspace{ win, mon->active_ws });
+    return dispatch(command::atom::MoveWindowToWorkspace{ win, mon->active_ws });
 }
 
-bool Core::dispatch(const command::ToggleFocusedWindowFloating&) {
+bool Core::dispatch(const command::composite::ToggleFocusedWindowFloating&) {
     auto w = wsman.current().focused();
     if (!w)
         return false;
-    (void)dispatch(command::ToggleWindowFloating{ w->id });
+    (void)dispatch(command::composite::ToggleWindowFloating{ w->id });
     arrange();
     return true;
 }
 
-bool Core::dispatch(const command::SwitchWorkspaceLocalIndex& cmd) {
+bool Core::dispatch(const command::composite::SwitchWorkspaceLocalIndex& cmd) {
     int mon = wsman.get_focused_monitor();
     if (!wsman.switch_local_index(mon, cmd.local_index))
         return false;
@@ -750,7 +756,7 @@ bool Core::dispatch(const command::SwitchWorkspaceLocalIndex& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::HideWindow& cmd) {
+bool Core::dispatch(const command::atom::HideWindow& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -761,7 +767,7 @@ bool Core::dispatch(const command::HideWindow& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::ApplyMonitorTopology& cmd) {
+bool Core::dispatch(const command::atom::ApplyMonitorTopology& cmd) {
     wsman.set_monitors(cmd.monitors);
     // New monitors come in fresh with top/bottom insets = 0; no reset needed.
     wsman.assign_workspaces(settings.monitor_aliases,
@@ -771,7 +777,7 @@ bool Core::dispatch(const command::ApplyMonitorTopology& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::ApplyMonitorTopInset& cmd) {
+bool Core::dispatch(const command::atom::ApplyMonitorTopInset& cmd) {
     const auto& mons = wsman.all_monitor_states();
     auto        apply_to = [&](int i) {
             int delta = cmd.inset_px - mons[i].top_inset();
@@ -786,7 +792,7 @@ bool Core::dispatch(const command::ApplyMonitorTopInset& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::ApplyMonitorBottomInset& cmd) {
+bool Core::dispatch(const command::atom::ApplyMonitorBottomInset& cmd) {
     const auto& mons = wsman.all_monitor_states();
     auto        apply_to = [&](int i) {
             int delta = cmd.inset_px - mons[i].bottom_inset();
@@ -801,7 +807,7 @@ bool Core::dispatch(const command::ApplyMonitorBottomInset& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetLayout& cmd) {
+bool Core::dispatch(const command::atom::SetLayout& cmd) {
     if (!layouts.count(cmd.name)) {
         LOG_ERR("set_layout: unknown layout '%s'", cmd.name.c_str());
         return false;
@@ -811,37 +817,37 @@ bool Core::dispatch(const command::SetLayout& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetMasterFactor& cmd) {
+bool Core::dispatch(const command::atom::SetMasterFactor& cmd) {
     layout_cfg.master_factor = std::clamp(cmd.value, 0.1f, 0.9f);
     arrange();
     return true;
 }
 
-bool Core::dispatch(const command::AdjustMasterFactor& cmd) {
+bool Core::dispatch(const command::composite::AdjustMasterFactor& cmd) {
     layout_cfg.master_factor = std::clamp(layout_cfg.master_factor + cmd.delta, 0.1f, 0.9f);
     arrange();
     return true;
 }
 
-bool Core::dispatch(const command::IncMaster& cmd) {
+bool Core::dispatch(const command::composite::IncMaster& cmd) {
     layout_cfg.nmaster = std::max(1, layout_cfg.nmaster + cmd.delta);
     arrange();
     return true;
 }
 
-bool Core::dispatch(const command::Zoom&) {
+bool Core::dispatch(const command::composite::Zoom&) {
     if (!wsman.zoom_focused())
         return false;
     arrange();
     return true;
 }
 
-bool Core::dispatch(const command::ReconcileNow&) {
+bool Core::dispatch(const command::atom::ReconcileNow&) {
     arrange();
     return true;
 }
 
-bool Core::dispatch(const command::RemoveWindowFromAllWorkspaces& cmd) {
+bool Core::dispatch(const command::atom::RemoveWindowFromAllWorkspaces& cmd) {
     int ws_id = wsman.workspace_of_window(cmd.window);
     wsman.remove_window_from_all(cmd.window);
     pending_window_flushes.erase(cmd.window);
@@ -850,7 +856,7 @@ bool Core::dispatch(const command::RemoveWindowFromAllWorkspaces& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowGeometry& cmd) {
+bool Core::dispatch(const command::atom::SetWindowGeometry& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -860,7 +866,7 @@ bool Core::dispatch(const command::SetWindowGeometry& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowPosition& cmd) {
+bool Core::dispatch(const command::atom::SetWindowPosition& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -869,7 +875,7 @@ bool Core::dispatch(const command::SetWindowPosition& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowSize& cmd) {
+bool Core::dispatch(const command::atom::SetWindowSize& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -880,7 +886,7 @@ bool Core::dispatch(const command::SetWindowSize& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SetWindowBorderWidth& cmd) {
+bool Core::dispatch(const command::atom::SetWindowBorderWidth& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
@@ -889,7 +895,7 @@ bool Core::dispatch(const command::SetWindowBorderWidth& cmd) {
     return true;
 }
 
-bool Core::dispatch(const command::SyncWindowFromConfigureNotify& cmd) {
+bool Core::dispatch(const command::atom::SyncWindowFromConfigureNotify& cmd) {
     auto w = wsman.find_window_in_all(cmd.window);
     if (!w)
         return false;
