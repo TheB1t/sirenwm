@@ -104,15 +104,15 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .workspace_id = restore_ws_id,
             });
 
+        command::WindowHints hints{};
+        hints.no_decorations = snap.hints.no_decorations;
+        hints.fixed_size     = snap.hints.fixed_size;
         (void)core.dispatch(command::SetWindowMetadata{
-                .window             = snap.window,
-                .wm_instance        = snap.wm_instance,
-                .wm_class           = snap.wm_class,
-                .type               = snap.type,
-                .hints              = {
-                    .no_decorations = snap.hints.no_decorations,
-                    .fixed_size     = snap.hints.fixed_size,
-                },
+                .window      = snap.window,
+                .wm_instance = snap.wm_instance,
+                .wm_class    = snap.wm_class,
+                .type        = snap.type,
+                .hints       = hints,
             });
 
         (void)core.dispatch(command::SetWindowMapped{

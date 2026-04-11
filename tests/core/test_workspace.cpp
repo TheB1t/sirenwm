@@ -174,7 +174,7 @@ TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
     h.start();
     h.core.take_core_events(); // drain
 
-    h.core.dispatch(command::SwitchWorkspace{ 1 });
+    h.core.dispatch(command::SwitchWorkspace{ 1, std::nullopt });
     auto events = h.core.take_core_events();
 
     bool found = false;
@@ -258,8 +258,8 @@ TEST(Workspace, ZoomSwapsFocusedWithMaster) {
     TestHarness h;
     h.start();
 
-    WindowId w1 = h.map_window(0x1000, 0);
-    WindowId w2 = h.map_window(0x2000, 0);
+    h.map_window(0x1000, 0);
+    h.map_window(0x2000, 0);
     WindowId w3 = h.map_window(0x3000, 0);
 
     h.core.dispatch(command::FocusWindow{ w3 });

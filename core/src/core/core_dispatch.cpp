@@ -45,7 +45,7 @@ std::optional<WindowFlush> Core::take_window_flush(WindowId win) {
 }
 
 void Core::emit_backend_effect(BackendEffectKind kind, WindowId window) {
-    pending_backend_effects.push_back(BackendEffect{ kind, window });
+    pending_backend_effects.push_back(BackendEffect{ kind, window, {} });
 }
 
 void Core::emit_warp_pointer(Vec2i16 pos) {
