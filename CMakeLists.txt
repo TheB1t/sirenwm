@@ -23,6 +23,18 @@ set(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}")
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 
+# Promote a curated set of warnings to hard errors. Keeps the build honest
+# without dragging in the whole -Werror firehose (which is hostile to third-
+# party headers pulled via pkg-config / FetchContent).
+add_compile_options(
+    -Werror=return-type
+    -Werror=unused-variable
+    -Werror=unused-function
+    -Werror=unused-value
+    -Werror=unused-but-set-variable
+    -Werror=missing-field-initializers
+)
+
 include(cmake/SirenwmModule.cmake)
 
 # ---------------------------------------------------------------------------
