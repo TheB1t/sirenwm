@@ -1,5 +1,6 @@
 #include <x11_ports.hpp>
 
+#include <core.hpp>
 #include <xconn.hpp>
 #include <xcb/atom.hpp>
 #include <log.hpp>
@@ -660,6 +661,33 @@ create_tray_host(XConnection& xconn,
     uint32_t bg_pixel,
     bool own_selection) {
     return std::make_unique<X11TrayHost>(xconn, owner_bar_window, bar_x, bar_y, bar_h, bg_pixel, own_selection);
+}
+
+namespace {
+
+class X11TrayHostPort final : public backend::TrayHostPort {
+    public:
+        X11TrayHostPort(XConnection& xconn, Core& core)
+            : xconn_(xconn), core_(core) {}
+
+        std::unique_ptr<backend::TrayHost>
+        create(WindowId owner_bar_window, int bar_x, int bar_y, int bar_h, bool own_selection) override {
+            const auto& bg_str = core_.current_settings().theme.bg;
+            uint32_t    bg     = bg_str.empty() ? xconn_.screen_black_pixel()
+                                                : XConnection::parse_color_hex(bg_str);
+            return create_tray_host(xconn_, owner_bar_window, bar_x, bar_y, bar_h, bg, own_selection);
+        }
+
+    private:
+        XConnection& xconn_;
+        Core&        core_;
+};
+
+} // namespace
+
+std::unique_ptr<backend::TrayHostPort>
+create_tray_host_port(XConnection& xconn, Core& core) {
+    return std::make_unique<X11TrayHostPort>(xconn, core);
 }
 
 } // namespace backend::x11

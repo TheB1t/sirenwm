@@ -111,6 +111,8 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .window      = snap.window,
                 .wm_instance = snap.wm_instance,
                 .wm_class    = snap.wm_class,
+                .title       = {},
+                .pid         = 0,
                 .type        = snap.type,
                 .hints       = hints,
             });
@@ -438,11 +440,7 @@ void Runtime::start() {
 
     // Query initial monitor list from backend and init core.
     {
-        std::vector<Monitor> initial_monitors;
-        if (auto* mp = backend_->monitor_port())
-            initial_monitors = mp->get_monitors();
-        else
-            LOG_WARN("backend has no monitor_port — starting with empty monitor list");
+        std::vector<Monitor> initial_monitors = ports().monitor.get_monitors();
         core_.init(std::move(initial_monitors));
     }
 
@@ -457,11 +455,9 @@ void Runtime::start() {
     // modules start so they can rely on both.
     setup_sigchld_pipe();
     apply_and_refresh_monitors();
-    if (auto* mp = backend_->monitor_port())
-        mp->select_change_events();
+    ports().monitor.select_change_events();
 
     for (auto& mod : modules) {
-        mod->bind_backend(*backend_);
         mod->on_start();
     }
     drain_core_events();
@@ -495,16 +491,11 @@ void Runtime::remove_receiver(IEventReceiver* /*receiver*/) {
 }
 
 void Runtime::apply_and_refresh_monitors() {
-    auto* mp = backend_ ? backend_->monitor_port() : nullptr;
-    if (!mp) {
-        LOG_ERR("monitors: backend does not provide MonitorPort");
-        return;
-    }
-
-    mp->apply_monitor_layout(monitor_layout::build(
+    auto& mp = ports().monitor;
+    mp.apply_monitor_layout(monitor_layout::build(
         core_config_.monitors.get(), core_config_.compose.get()));
 
-    auto monitors = mp->get_monitors();
+    auto monitors = mp.get_monitors();
     LOG_INFO("monitors: found %d monitor(s):", (int)monitors.size());
     for (auto& m : monitors)
         LOG_INFO("  %s: %dx%d+%d+%d", m.name.c_str(), m.width(), m.height(), m.x(), m.y());
@@ -628,6 +619,21 @@ const Backend& Runtime::backend() const {
         LOG_ERR("Runtime::backend() called before backend is bound"); std::abort();
     }
     return *backend_;
+}
+
+backend::BackendPorts Runtime::ports() {
+    if (!backend_) {
+        LOG_ERR("Runtime::ports() called before backend is bound"); std::abort();
+    }
+    return backend_->ports();
+}
+
+void Runtime::prepare_exec_restart() {
+    if (!backend_) {
+        LOG_ERR("Runtime::prepare_exec_restart() called before backend is bound");
+        std::abort();
+    }
+    backend_->prepare_exec_restart();
 }
 
 void Runtime::tick() {

@@ -5,6 +5,7 @@
 #include <lua_host.hpp>
 #include <log.hpp>
 #include <module_registry.hpp>
+#include <runtime.hpp>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -427,7 +428,7 @@ static int lua_sys_brightness(LuaContext& lua) {
 static SysinfoModule* g_instance = nullptr;
 
 backend::KeyboardPort* SysinfoModule::backend_keyboard_port() {
-    return backend().keyboard_port();
+    return &runtime().ports().keyboard;
 }
 
 static int lua_sys_kbd_layout(LuaContext& lua) {

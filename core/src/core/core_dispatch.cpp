@@ -539,6 +539,8 @@ bool Core::dispatch(const command::atom::SetWindowMetadata& cmd) {
         return false;
     w->wm_instance = cmd.wm_instance;
     w->wm_class    = cmd.wm_class;
+    w->title       = cmd.title;
+    w->pid         = cmd.pid;
     w->type        = cmd.type;
 
     // Classify from geometry hints supplied by the backend.
@@ -872,6 +874,14 @@ bool Core::dispatch(const command::atom::SyncWindowFromConfigureNotify& cmd) {
     if (!pending || !(pending->dirty & WindowFlush::Height))      w->height() = cmd.size.y();
     if (!pending || !(pending->dirty & WindowFlush::BorderWidth)) w->border_width = cmd.border_width;
 
+    return true;
+}
+
+bool Core::dispatch(const command::atom::CloseWindow& cmd) {
+    auto w = wsman.find_window_in_all(cmd.window);
+    if (!w)
+        return false;
+    emit_backend_effect(BackendEffectKind::CloseWindow, cmd.window);
     return true;
 }
 

@@ -87,6 +87,8 @@ struct WindowMetadata {
     bool        is_xembed            = false;
     // Relationship facts.
     WindowId    transient_for = NO_WINDOW;
+    std::string title;
+    uint32_t    pid = 0;
 };
 
 static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
@@ -112,6 +114,24 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
     out.wm_urgent         = wm_hints.urgent;
     out.wm_static_gravity = xconn.has_static_gravity(window);
     out.wm_no_decorations = xconn.motif_no_decorations(window);
+
+    static const auto  named       = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
+    static xcb_atom_t  net_wm_name = named.at("_NET_WM_NAME");
+    static xcb_atom_t  utf8_string = named.at("UTF8_STRING");
+    static xcb_atom_t  net_wm_pid  = named.at("_NET_WM_PID");
+    out.title = xconn.get_text_property(window, net_wm_name, utf8_string);
+    if (out.title.empty())
+        out.title = xconn.get_text_property(window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
+    if (net_wm_pid != XCB_ATOM_NONE) {
+        auto* conn   = const_cast<xcb_connection_t*>(xconn.raw_conn());
+        auto  cookie = xcb_get_property(conn, 0, window, net_wm_pid, XCB_ATOM_CARDINAL, 0, 1);
+        auto* reply  = xcb_get_property_reply(conn, cookie, nullptr);
+        if (reply) {
+            if (xcb_get_property_value_length(reply) >= 4)
+                out.pid = *(uint32_t*)xcb_get_property_value(reply);
+            free(reply);
+        }
+    }
     return out;
 }
 
@@ -120,6 +140,8 @@ static void apply_window_metadata(Core& core, WindowId window, WindowMetadata me
             .window             = window,
             .wm_instance        = std::move(meta.wm_instance),
             .wm_class           = std::move(meta.wm_class),
+            .title              = std::move(meta.title),
+            .pid                = meta.pid,
             .type               = meta.type,
             .hints              = {
                 .no_decorations = meta.wm_no_decorations,
@@ -572,14 +594,18 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
 void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
     auto window = core.window_state_any(ev->window);
     if (window) {
-        const auto&       atoms        = window_type_atoms(xconn);
-        static xcb_atom_t motif_atom   = xconn.intern_atoms({"_MOTIF_WM_HINTS"})["_MOTIF_WM_HINTS"];
-        bool              refresh_meta =
+        const auto&       atoms           = window_type_atoms(xconn);
+        static xcb_atom_t motif_atom      = xconn.intern_atoms({"_MOTIF_WM_HINTS"})["_MOTIF_WM_HINTS"];
+        static xcb_atom_t net_wm_name_prop =
+            xconn.intern_atoms({"_NET_WM_NAME"})["_NET_WM_NAME"];
+        bool              refresh_meta    =
             ev->atom == XCB_ATOM_WM_CLASS ||
             ev->atom == atoms.net_wm_window_type ||
             ev->atom == XCB_ATOM_WM_NORMAL_HINTS ||
             ev->atom == XCB_ATOM_WM_HINTS ||
-            ev->atom == motif_atom;
+            ev->atom == motif_atom ||
+            ev->atom == XCB_ATOM_WM_NAME ||
+            ev->atom == net_wm_name_prop;
         if (refresh_meta) {
             auto meta = read_window_metadata(xconn, ev->window);
             // Geometry facts are set once at MapRequest; reconstruct from current state on refresh.

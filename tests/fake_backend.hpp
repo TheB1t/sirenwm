@@ -147,10 +147,14 @@ class FakeBackend : public Backend {
         void render_frame() override {}
         void on_reload_applied() override {}
 
-        backend::InputPort*    input_port()    override { return &input_port_; }
-        backend::MonitorPort*  monitor_port()  override { return &monitor_port_; }
-        backend::RenderPort*   render_port()   override { return &render_port_; }
-        backend::KeyboardPort* keyboard_port() override { return &keyboard_port_; }
+        backend::BackendPorts ports() override {
+            return backend::BackendPorts{
+                .input    = input_port_,
+                .monitor  = monitor_port_,
+                .render   = render_port_,
+                .keyboard = keyboard_port_,
+            };
+        }
 
         // Accessors for test assertions
         FakeInputPort&    fake_input()    { return input_port_; }

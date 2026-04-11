@@ -534,11 +534,7 @@ void KeybindingsModule::on(event::KeyPressEv ev) {
 void KeybindingsModule::on_start() {
     apply_pending();
 
-    input_ = backend().input_port();
-    if (!input_) {
-        LOG_ERR("Keybindings: backend does not provide InputPort");
-        return;
-    }
+    input_ = &runtime().ports().input;
 
     for (auto& kb : core().get_keybindings())
         input_->grab_key(kb.keysym, kb.mods);

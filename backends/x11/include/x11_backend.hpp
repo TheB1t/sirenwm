@@ -11,6 +11,7 @@
 #include <backend/input_port.hpp>
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
+#include <backend/tray_host_port.hpp>
 #include <x11_window.hpp>
 #include <xconn.hpp>
 
@@ -29,13 +30,11 @@ class X11Backend final : public Backend {
         std::unique_ptr<backend::InputPort>    input_port_impl;
         std::unique_ptr<backend::MonitorPort>  monitor_port_impl;
         std::unique_ptr<backend::KeyboardPort> keyboard_port_impl;
+        std::unique_ptr<backend::TrayHostPort> tray_host_port_impl;
 #ifdef SIRENWM_DEBUG_UI
         std::unique_ptr<backend::GLPort> gl_port_impl;
 #endif
         xcb_key_symbols_t* key_syms = nullptr;
-        uint32_t net_wm_name        = 0;
-        uint32_t utf8_string        = 0;
-        uint32_t net_wm_pid         = 0;
 
         // Shared atoms for per-window operations (passed to X11Window instances).
         X11Atoms atoms_;
@@ -185,21 +184,10 @@ class X11Backend final : public Backend {
         void                   on(event::WindowAssignedToWorkspace ev) override;
         void                   on(event::FocusChanged ev) override;
         void                   on(event::WindowAdopted ev) override;
-        bool                   close_window(WindowId window) override;
         void                   shutdown() override;
         StartupSnapshot        scan_existing_windows() override;
-        backend::InputPort*    input_port()    override;
-        backend::MonitorPort*  monitor_port()  override;
-        backend::RenderPort*   render_port()   override;
-        backend::KeyboardPort* keyboard_port() override;
-        backend::GLPort*       gl_port()       override;
+        backend::BackendPorts  ports() override;
         xcb_key_symbols_t*     key_symbols();
-        std::unique_ptr<backend::TrayHost>
-                               create_tray_host(WindowId owner_bar_window, int bar_x, int bar_y,
-            int bar_h,
-            bool own_selection) override;
-        std::string                  window_title(WindowId window) const override;
-        uint32_t                     window_pid(WindowId window) const override;
         std::shared_ptr<swm::Window> create_window(WindowId id) override;
 
         void                         handle_generic_event(xcb_generic_event_t* ev);

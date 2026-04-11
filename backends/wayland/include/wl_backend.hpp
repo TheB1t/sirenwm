@@ -69,10 +69,7 @@ class WaylandBackend final : public Backend {
 
         bool                         close_window(WindowId win) override;
 
-        backend::InputPort*          input_port()    override;
-        backend::MonitorPort*        monitor_port()  override;
-        backend::RenderPort*         render_port()   override;
-        backend::KeyboardPort*       keyboard_port() override;
+        backend::BackendPorts        ports() override;
 
         std::string                  window_title(WindowId win) const override;
         uint32_t                     window_pid(WindowId win) const override;
