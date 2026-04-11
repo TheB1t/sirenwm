@@ -37,6 +37,7 @@ class IEventReceiver {
         virtual void on(event::BorderlessActivated)       {}
         virtual void on(event::BorderlessDeactivated)     {}
         virtual void on(event::WindowAdopted)             {}
+        virtual void on(const event::CustomEvent&)        {}
 
         // Mutable query
         virtual void on(event::ManageWindowQuery&)        {}
