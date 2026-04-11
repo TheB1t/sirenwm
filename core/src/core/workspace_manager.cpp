@@ -2,13 +2,22 @@
 #include <log.hpp>
 #include <algorithm>
 
-#ifndef NDEBUG
+// Always-on consistency check: logs an error in release, aborts in debug.
+// Runs only after mutations (not on the hot read path), so the overhead is acceptable.
+#ifdef NDEBUG
 #define WS_ASSERT_CONSISTENT() do { \
     if (!indexes_consistent()) \
-        LOG_ERR("WorkspaceManager: index consistency check FAILED at %s:%d", __FILE__, __LINE__); \
+        LOG_ERR("WorkspaceManager: index consistency check FAILED at %s:%d — state is corrupt", \
+            __FILE__, __LINE__); \
 } while (0)
 #else
-#define WS_ASSERT_CONSISTENT() ((void)0)
+#define WS_ASSERT_CONSISTENT() do { \
+    if (!indexes_consistent()) { \
+        LOG_ERR("WorkspaceManager: index consistency check FAILED at %s:%d — state is corrupt", \
+            __FILE__, __LINE__); \
+        std::abort(); \
+    } \
+} while (0)
 #endif
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -855,6 +864,7 @@ void WorkspaceManager::remove_window(WindowId win, int ws_id) {
         if (workspaces[ws_id].remove_window(win))
             unindex_window(win);
         WS_ASSERT_CONSISTENT();
+        sync_focus_state();
         return;
     }
     int active = active_ws_of_monitor(focused_monitor_);
@@ -862,6 +872,7 @@ void WorkspaceManager::remove_window(WindowId win, int ws_id) {
         if (workspaces[active].remove_window(win))
             unindex_window(win);
     WS_ASSERT_CONSISTENT();
+    sync_focus_state();
 }
 
 std::shared_ptr<swm::Window> WorkspaceManager::find_window(WindowId win, int ws_id) {
@@ -920,12 +931,14 @@ void WorkspaceManager::remove_window_from_all(WindowId win) {
         workspaces[it->second].remove_window(win);
         unindex_window(win);
         WS_ASSERT_CONSISTENT();
+        sync_focus_state();
         return;
     }
     for (auto& ws : workspaces)
         ws.remove_window(win);
     unindex_window(win);
     WS_ASSERT_CONSISTENT();
+    sync_focus_state();
 }
 
 void WorkspaceManager::move_window_to(int ws_id, std::shared_ptr<swm::Window> w) {
@@ -944,6 +957,7 @@ void WorkspaceManager::move_window_to(int ws_id, std::shared_ptr<swm::Window> w)
     workspaces[ws_id].add_window(w);
     index_window(win, w, ws_id);
     WS_ASSERT_CONSISTENT();
+    sync_focus_state();
 }
 
 bool WorkspaceManager::focus_window(WindowId win) {
@@ -979,11 +993,13 @@ bool WorkspaceManager::focus_window(WindowId win) {
 
 std::shared_ptr<swm::Window> WorkspaceManager::focus_next() {
     current().focus_next();
+    sync_focus_state();
     return current().focused();
 }
 
 std::shared_ptr<swm::Window> WorkspaceManager::focus_prev() {
     current().focus_prev();
+    sync_focus_state();
     return current().focused();
 }
 

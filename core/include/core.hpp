@@ -105,6 +105,17 @@ class Core {
         // Used by siren.layout.place() to place windows without passing Core through Lua.
         layout::PlacementSink* active_lua_sink_ = nullptr;
 
+        // RAII guard — sets active_lua_sink_ for the duration of a Lua layout call
+        // and clears it on destruction, even if an exception is thrown.
+        struct LuaSinkGuard {
+            Core*                  core_;
+            explicit LuaSinkGuard(Core* c, layout::PlacementSink* sink)
+                : core_(c) { core_->active_lua_sink_ = sink; }
+            ~LuaSinkGuard() { core_->active_lua_sink_ = nullptr; }
+            LuaSinkGuard(const LuaSinkGuard&)            = delete;
+            LuaSinkGuard& operator=(const LuaSinkGuard&) = delete;
+        };
+
         WorkspaceManager wsman;
         std::vector<BackendEffect> pending_backend_effects;
         std::unordered_map<WindowId, WindowFlush> pending_window_flushes;

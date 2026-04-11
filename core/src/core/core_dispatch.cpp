@@ -286,15 +286,14 @@ void Core::arrange() {
                 LOG_ERR("arrange: Lua layout '%s' requested but no Lua host bound", active_layout.c_str());
                 continue;
             }
-            active_lua_sink_ = &place;
             auto lua_it = lua_layouts.find(active_layout);
             if (lua_it == lua_layouts.end()) {
                 LOG_ERR("arrange: Lua layout '%s' not found", active_layout.c_str());
-                active_lua_sink_ = nullptr;
                 continue;
             }
-            const auto& ref = lua_it->second;
-            LuaContext  ctx = lua_host().context();
+            const auto& ref  = lua_it->second;
+            LuaContext   ctx  = lua_host().context();
+            LuaSinkGuard guard(this, &place); // cleared on scope exit
 
             lua_host().push_ref(ref);
 
@@ -326,7 +325,6 @@ void Core::arrange() {
             ctx.push_integer(cfg_from_theme.border);       ctx.set_field(-2, "border");
 
             lua_host().pcall(1, 0, active_layout.c_str());
-            active_lua_sink_ = nullptr;
         }
 
         // Apply theme border to floating windows — layout skips them, so their
