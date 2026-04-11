@@ -6,6 +6,7 @@
 
 #include <log.hpp>
 #include <module_registry.hpp>
+#include <protocol/keyboard.hpp>
 #include <runtime.hpp>
 
 // ---------------------------------------------------------------------------
@@ -148,7 +149,9 @@ void KeyboardModule::on(event::FocusChanged ev) {
 
     // Notify listeners (e.g. bar widgets) about the layout change.
     std::string layout = kp->current_layout();
-    runtime().emit(event::KeyboardLayoutChanged{ layout });
+    runtime().emit(event::CustomEvent{
+        MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
+    });
 }
 
 void KeyboardModule::on(event::WindowUnmapped ev) {

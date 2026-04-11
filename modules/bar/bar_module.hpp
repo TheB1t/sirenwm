@@ -48,7 +48,6 @@ class BarModule : public Module {
         void on(event::PropertyNotify ev) override;
         void on(event::WindowAssignedToWorkspace) override { rebalance_tray_icons(); redraw(); }
         void on(const event::CustomEvent& ev) override;
-        void on(event::KeyboardLayoutChanged) override { redraw(); }
 
     private:
         // Owned setting registered in RuntimeStore.
