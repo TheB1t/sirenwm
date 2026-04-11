@@ -38,17 +38,6 @@ bool should_apply_fullscreen_now(Core& core, WindowId win) {
     return true;
 }
 
-static uint32_t parse_color_hex(const std::string& s) {
-    // Accepts "#rrggbb" only.
-    if (s.size() == 7 && s[0] == '#') {
-        char*    end = nullptr;
-        uint32_t rgb = (uint32_t)strtoul(s.c_str() + 1, &end, 16);
-        if (end == s.c_str() + 7)
-            return rgb;
-    }
-    return 0;
-}
-
 } // namespace
 
 void X11Backend::reload_border_colors() {
@@ -56,8 +45,8 @@ void X11Backend::reload_border_colors() {
     const auto& focused   = theme.border_focused.empty()   ? theme.accent : theme.border_focused;
     const auto& unfocused = theme.border_unfocused.empty() ?
         (theme.alt_bg.empty() ? theme.bg : theme.alt_bg) : theme.border_unfocused;
-    border_focused_pixel   = parse_color_hex(focused);
-    border_unfocused_pixel = parse_color_hex(unfocused);
+    border_focused_pixel   = XConnection::parse_color_hex(focused);
+    border_unfocused_pixel = XConnection::parse_color_hex(unfocused);
 }
 
 void X11Backend::set_border_color(WindowId win, uint32_t pixel) {

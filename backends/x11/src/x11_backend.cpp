@@ -253,7 +253,9 @@ std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {
 
 std::unique_ptr<backend::TrayHost>
 X11Backend::create_tray_host(WindowId owner_bar_window, int bar_x, int bar_y, int bar_h, bool own_selection) {
-    uint32_t bg = xconn.screen_black_pixel();
+    const auto& bg_str = core.current_settings().theme.bg;
+    uint32_t    bg     = bg_str.empty() ? xconn.screen_black_pixel()
+                                        : XConnection::parse_color_hex(bg_str);
     return backend::x11::create_tray_host(xconn, owner_bar_window, bar_x, bar_y, bar_h, bg, own_selection);
 }
 

@@ -70,6 +70,18 @@ class XConnection {
         xcb_window_t  root_window()  const { return screen->root; }
         uint32_t screen_black_pixel() const { return screen ? screen->black_pixel : 0; }
 
+        // Parse "#rrggbb" hex color string to a 32-bit pixel value (BGR-packed for XCB).
+        // Returns 0 on parse failure.
+        static uint32_t parse_color_hex(const std::string& s) {
+            if (s.size() == 7 && s[0] == '#') {
+                char*    end = nullptr;
+                uint32_t rgb = (uint32_t)strtoul(s.c_str() + 1, &end, 16);
+                if (end == s.c_str() + 7)
+                    return rgb;
+            }
+            return 0;
+        }
+
         // Generic xcb call — marks connection dirty (needs flush).
         template<typename Func, typename... Args>
         auto call(Func f, Args&&... args) -> decltype(f(conn, std::forward<Args>(args)...)) {
