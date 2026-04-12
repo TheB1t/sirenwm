@@ -404,7 +404,10 @@ void X11Backend::update_focus(event::FocusChanged ev) {
         int mon_idx = core.monitor_of_workspace(ws_id);
         if (mon_idx >= 0)
             set_pointer_barriers(ev.window, mon_idx);
-    } else {
+    } else if (barrier_window_ != NO_WINDOW) {
+        // Only drop grab/barriers when leaving a previously barriered
+        // (borderless) window. Unconditional ungrab here would cancel our
+        // own drag/resize pointer grab on every focus change.
         xconn.ungrab_pointer();
         clear_pointer_barriers();
     }
