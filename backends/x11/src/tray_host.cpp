@@ -98,10 +98,9 @@ class X11TrayHost final : public backend::TrayHost {
             xcb_flush(conn_);
         }
 
-        void reposition(WindowId owner_bar_window, int bar_right_x, int bar_y) override {
+        void reposition(int bar_right_x, int bar_y) override {
             if (!conn_ || tray_win_ == XCB_WINDOW_NONE || tray_w_ == 0)
                 return;
-            bar_win_      = owner_bar_window;
             tray_pos_.x() = bar_right_x - tray_w_;
             tray_pos_.y() = bar_y;
             uint32_t vals[] = {
@@ -131,11 +130,11 @@ class X11TrayHost final : public backend::TrayHost {
             LOG_DEBUG("TrayHost 0x%x: attached to bar 0x%x at %d+%d", tray_win_, new_bar_win, tray_pos_.x(), tray_pos_.y());
         }
 
-        void raise(WindowId bar_sibling) override {
-            if (!conn_ || tray_win_ == XCB_WINDOW_NONE)
+        void raise() override {
+            if (!conn_ || tray_win_ == XCB_WINDOW_NONE || bar_win_ == XCB_WINDOW_NONE)
                 return;
             uint32_t vals[] = {
-                static_cast<uint32_t>(bar_sibling),
+                static_cast<uint32_t>(bar_win_),
                 XCB_STACK_MODE_ABOVE,
             };
             xcb_configure_window(conn_, tray_win_,

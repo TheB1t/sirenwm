@@ -1,11 +1,11 @@
 #pragma once
 
-#include <backend/render_port.hpp>
 #include <backend/tray_host.hpp>
 #include <bar/bar_state.hpp>
 #include <bar_config.hpp>
 #include <cairo/cairo.h>
 #include <pango/pangocairo.h>
+#include <surface.hpp>
 
 #include <string>
 #include <vector>
@@ -20,7 +20,7 @@ struct TagHit {
 
 class PaintContext {
     public:
-        PaintContext(backend::RenderWindow& window, const std::string& font_desc);
+        PaintContext(Surface& surface, const std::string& font_desc);
         ~PaintContext();
 
         int  width() const;
@@ -37,7 +37,7 @@ class PaintContext {
         void present();
 
     private:
-        backend::RenderWindow& window_;
+        Surface& surface_;
         PangoLayout* layout_             = nullptr;
         PangoFontDescription* font_desc_ = nullptr;
         cairo_t* cr_                     = nullptr;
@@ -63,7 +63,7 @@ class TitleWidget {
 class TrayWidget {
     public:
         int  reserved_width(const backend::TrayHost* tray) const;
-        void reposition(backend::TrayHost* tray, const backend::RenderWindow& bar) const;
+        void reposition(backend::TrayHost* tray, const Surface& bar) const;
 };
 
 } // namespace bar::widgets

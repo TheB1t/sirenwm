@@ -38,15 +38,11 @@ class X11RenderWindow final : public backend::RenderWindow {
                 return;
 
             auto atoms = xcb::intern_batch(conn_, {
-                "_NET_WM_STRUT_PARTIAL",
-                "_NET_WM_STRUT",
                 "_NET_WM_WINDOW_TYPE",
                 "_NET_WM_WINDOW_TYPE_DOCK",
                 "_NET_WM_STATE",
                 "_NET_WM_STATE_ABOVE",
             });
-            NET_WM_STRUT_PARTIAL_    = atoms["_NET_WM_STRUT_PARTIAL"];
-            NET_WM_STRUT_            = atoms["_NET_WM_STRUT"];
             NET_WM_WINDOW_TYPE_      = atoms["_NET_WM_WINDOW_TYPE"];
             NET_WM_WINDOW_TYPE_DOCK_ = atoms["_NET_WM_WINDOW_TYPE_DOCK"];
             NET_WM_STATE_            = atoms["_NET_WM_STATE"];
@@ -163,51 +159,6 @@ class X11RenderWindow final : public backend::RenderWindow {
             xcb_flush(conn_);
         }
 
-        void move_to(int x, int y) override {
-            if (!conn_ || win_ == XCB_WINDOW_NONE)
-                return;
-            x_ = x;
-            y_ = y;
-            uint32_t vals[] = {
-                static_cast<uint32_t>(x_),
-                static_cast<uint32_t>(y_),
-            };
-            xcb_configure_window(conn_, win_,
-                XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y,
-                vals);
-            xcb_flush(conn_);
-        }
-
-        void reserve_top_strut(int strut_height, int x_start, int x_end) override {
-            if (!conn_ || win_ == XCB_WINDOW_NONE ||
-                NET_WM_STRUT_PARTIAL_ == XCB_ATOM_NONE || NET_WM_STRUT_ == XCB_ATOM_NONE)
-                return;
-            uint32_t strut[12] = {};
-            strut[2] = static_cast<uint32_t>(std::max(0, strut_height));
-            strut[8] = static_cast<uint32_t>(std::max(0, x_start));
-            strut[9] = static_cast<uint32_t>(std::max(0, x_end));
-            xcb_change_property(conn_, XCB_PROP_MODE_REPLACE, win_,
-                NET_WM_STRUT_PARTIAL_, XCB_ATOM_CARDINAL, 32, 12, strut);
-            xcb_change_property(conn_, XCB_PROP_MODE_REPLACE, win_,
-                NET_WM_STRUT_, XCB_ATOM_CARDINAL, 32, 4, strut);
-            xcb_flush(conn_);
-        }
-
-        void reserve_bottom_strut(int strut_height, int x_start, int x_end) override {
-            if (!conn_ || win_ == XCB_WINDOW_NONE ||
-                NET_WM_STRUT_PARTIAL_ == XCB_ATOM_NONE || NET_WM_STRUT_ == XCB_ATOM_NONE)
-                return;
-            uint32_t strut[12] = {};
-            strut[3]  = static_cast<uint32_t>(std::max(0, strut_height));
-            strut[10] = static_cast<uint32_t>(std::max(0, x_start));
-            strut[11] = static_cast<uint32_t>(std::max(0, x_end));
-            xcb_change_property(conn_, XCB_PROP_MODE_REPLACE, win_,
-                NET_WM_STRUT_PARTIAL_, XCB_ATOM_CARDINAL, 32, 12, strut);
-            xcb_change_property(conn_, XCB_PROP_MODE_REPLACE, win_,
-                NET_WM_STRUT_, XCB_ATOM_CARDINAL, 32, 4, strut);
-            xcb_flush(conn_);
-        }
-
     private:
         XConnection&      xconn_;
         xcb_connection_t* conn_   = nullptr;
@@ -224,8 +175,6 @@ class X11RenderWindow final : public backend::RenderWindow {
         cairo_surface_t* surface_ = nullptr;
         cairo_t*         cr_      = nullptr;
 
-        xcb_atom_t NET_WM_STRUT_PARTIAL_    = XCB_ATOM_NONE;
-        xcb_atom_t NET_WM_STRUT_            = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_WINDOW_TYPE_      = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_WINDOW_TYPE_DOCK_ = XCB_ATOM_NONE;
         xcb_atom_t NET_WM_STATE_            = XCB_ATOM_NONE;

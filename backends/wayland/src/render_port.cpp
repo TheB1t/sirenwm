@@ -89,14 +89,6 @@ class WlRenderWindow final : public RenderWindow {
             if (tree_) wlr_scene_node_lower_to_bottom(&tree_->node);
         }
 
-        void move_to(int x, int y) override {
-            x_ = x; y_ = y;
-            if (tree_) wlr_scene_node_set_position(&tree_->node, x_, y_);
-        }
-
-        void reserve_top_strut(int, int, int) override {}
-        void reserve_bottom_strut(int, int, int) override {}
-
     private:
         int monitor_index_;
         int x_, y_, w_, h_;
@@ -210,14 +202,6 @@ class WlRenderWindow final : public RenderWindow {
         void lower() override {
             if (tree_) wlr_scene_node_lower_to_bottom(&tree_->node);
         }
-
-        void move_to(int x, int y) override {
-            x_ = x; y_ = y;
-            if (tree_) wlr_scene_node_set_position(&tree_->node, x_, y_);
-        }
-
-        void reserve_top_strut(int, int, int) override {}
-        void reserve_bottom_strut(int, int, int) override {}
 
     private:
         bool allocate_wlr_buffer() {

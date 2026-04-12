@@ -102,9 +102,6 @@ class FakeRenderWindow : public backend::RenderWindow {
         void set_visible(bool) override {}
         void raise() override {}
         void lower() override {}
-        void move_to(int, int) override {}
-        void reserve_top_strut(int, int, int) override {}
-        void reserve_bottom_strut(int, int, int) override {}
 };
 
 // ---------------------------------------------------------------------------
