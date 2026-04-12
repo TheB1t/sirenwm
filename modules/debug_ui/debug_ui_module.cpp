@@ -102,9 +102,9 @@ class DebugUIModule : public Module {
         void stop_timer();
 
         std::unique_ptr<backend::GLWindow> gl_window_;
-        bool imgui_initialized_ = false;
-        bool pending_close_     = false;
-        int  timer_fd_          = -1;
+        bool                               imgui_initialized_ = false;
+        bool                               pending_close_     = false;
+        Runtime::WatchedFdHandle           timer_;
         Clock::time_point start_time_;
         float last_frame_time_ = 0.0f;
 
@@ -352,29 +352,25 @@ void DebugUIModule::render_frame() {
 }
 
 void DebugUIModule::start_timer() {
-    if (timer_fd_ >= 0)
+    if (timer_)
         return;
-    timer_fd_ = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    if (timer_fd_ < 0)
+    int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (tfd < 0)
         return;
     // 20 Hz — smooth enough for interaction; ~5% CPU at ~2.5ms/frame.
     struct itimerspec ts = {};
     ts.it_interval = { 0, 50'000'000 };  // 50ms
     ts.it_value    = { 0, 50'000'000 };
-    timerfd_settime(timer_fd_, 0, &ts, nullptr);
-    runtime().watch_fd(timer_fd_, [this]() {
+    timerfd_settime(tfd, 0, &ts, nullptr);
+    timer_ = Runtime::WatchedFdHandle(runtime(), tfd, [this, tfd]() {
             uint64_t expirations = 0;
-            (void)read(timer_fd_, &expirations, sizeof(expirations));
+            (void)read(tfd, &expirations, sizeof(expirations));
             tick();
         });
 }
 
 void DebugUIModule::stop_timer() {
-    if (timer_fd_ >= 0) {
-        runtime().unwatch_fd(timer_fd_);
-        close(timer_fd_);
-        timer_fd_ = -1;
-    }
+    timer_.reset();
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <module.hpp>
+#include <runtime.hpp>
 #include <bar_config.hpp>
 #include <runtime_store.hpp>
 #include <bar/bar_state.hpp>
@@ -77,8 +78,9 @@ class BarModule : public Module {
 
         std::function<BarState(int mon_idx)> state_provider;
 
-        int wakeup_pipe[2] = { -1, -1 };
-        int timer_fd       = -1;            // timerfd for widget refresh (1s base tick)
+        int                      wakeup_pipe_wr_ = -1;  // write-end of wakeup pipe
+        Runtime::WatchedFdHandle wakeup_pipe_rd_;       // read-end, owns fd + watch
+        Runtime::WatchedFdHandle widget_timer_;         // timerfd for 1s widget tick
 
         struct MonRect { int idx; Vec2i pos; Vec2i size; std::string alias; };
 

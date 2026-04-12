@@ -703,20 +703,23 @@ void BarModule::on_start() {
 
     rebuild_trays();
 
-    if (pipe(wakeup_pipe) == 0) {
-        if (fcntl(wakeup_pipe[0], F_SETFL, O_NONBLOCK) < 0 ||
-            fcntl(wakeup_pipe[0], F_SETFD, FD_CLOEXEC) < 0 ||
-            fcntl(wakeup_pipe[1], F_SETFD, FD_CLOEXEC) < 0) {
+    int pipe_fds[2];
+    if (pipe(pipe_fds) == 0) {
+        if (fcntl(pipe_fds[0], F_SETFL, O_NONBLOCK) < 0 ||
+            fcntl(pipe_fds[0], F_SETFD, FD_CLOEXEC) < 0 ||
+            fcntl(pipe_fds[1], F_SETFD, FD_CLOEXEC) < 0) {
             LOG_ERR("bar: fcntl() failed on wakeup pipe");
-            close(wakeup_pipe[0]); wakeup_pipe[0] = -1;
-            close(wakeup_pipe[1]); wakeup_pipe[1] = -1;
+            close(pipe_fds[0]);
+            close(pipe_fds[1]);
         } else {
-            runtime().watch_fd(wakeup_pipe[0], [this]() {
+            int rd = pipe_fds[0];
+            wakeup_pipe_wr_ = pipe_fds[1];
+            wakeup_pipe_rd_ = Runtime::WatchedFdHandle(runtime(), rd, [this, rd]() {
                     // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
                     char buf[64];
                     ssize_t n;
                     do {
-                        n = read(wakeup_pipe[0], buf, sizeof(buf));
+                        n = read(rd, buf, sizeof(buf));
                     } while (n > 0 || (n < 0 && errno == EINTR));
                     redraw();
                 });
@@ -739,15 +742,15 @@ void BarModule::on_start() {
     }
 
     if (has_lua) {
-        timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-        if (timer_fd >= 0) {
+        int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+        if (tfd >= 0) {
             struct itimerspec ts = {};
             ts.it_value.tv_sec    = 1;
             ts.it_interval.tv_sec = 1;
-            timerfd_settime(timer_fd, 0, &ts, nullptr);
-            runtime().watch_fd(timer_fd, [this]() {
+            timerfd_settime(tfd, 0, &ts, nullptr);
+            widget_timer_ = Runtime::WatchedFdHandle(runtime(), tfd, [this, tfd]() {
                     uint64_t expirations;
-                    if (read(timer_fd, &expirations, sizeof(expirations)) > 0) {
+                    if (read(tfd, &expirations, sizeof(expirations)) > 0) {
                         refresh_widgets();
                         redraw();
                     }
