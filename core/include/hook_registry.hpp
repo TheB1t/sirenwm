@@ -13,9 +13,8 @@
 // overload so concrete subscribers override only the hooks they care about.
 // ---------------------------------------------------------------------------
 
-#include <vector>
-
 #include <backend/hooks.hpp>
+#include <pointer_registry.hpp>
 
 class IHookReceiver {
     public:
@@ -27,16 +26,11 @@ class IHookReceiver {
 };
 
 class HookRegistry {
-        std::vector<IHookReceiver*> receivers_;
+        PointerRegistry<IHookReceiver> receivers_;
 
     public:
-        void add(IHookReceiver* r) {
-            if (r) receivers_.push_back(r);
-        }
-
-        void remove(IHookReceiver* r) {
-            std::erase(receivers_, r);
-        }
+        void add(IHookReceiver* r)    { receivers_.add(r); }
+        void remove(IHookReceiver* r) { receivers_.remove(r); }
 
         template<typename H>
         void invoke(H& h) {

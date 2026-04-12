@@ -18,6 +18,7 @@
 #include <event_emitter.hpp>
 #include <event_queue.hpp>
 #include <hook_registry.hpp>
+#include <pointer_registry.hpp>
 #include <lua_host.hpp>
 #include <module.hpp>
 #include <runtime_store.hpp>
@@ -273,7 +274,7 @@ class Runtime : public IEventEmitter, public IEventSink {
         std::unordered_map<WindowId, Surface*> surface_by_id_;
 
         EventQueue                             event_queue_;
-        std::vector<IEventReceiver*>           extra_receivers_;
+        PointerRegistry<IEventReceiver>        extra_receivers_;
         HookRegistry                           hook_registry_;
 
         Backend&       backend();

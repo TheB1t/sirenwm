@@ -499,14 +499,11 @@ void Runtime::reload() {
 }
 
 void Runtime::add_receiver(IEventReceiver* receiver) {
-    if (!receiver) return;
-    for (auto* r : extra_receivers_)
-        if (r == receiver) return;
-    extra_receivers_.push_back(receiver);
+    extra_receivers_.add(receiver);
 }
 
 void Runtime::remove_receiver(IEventReceiver* receiver) {
-    std::erase(extra_receivers_, receiver);
+    extra_receivers_.remove(receiver);
 }
 
 void Runtime::drain_events() {

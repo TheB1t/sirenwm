@@ -115,7 +115,7 @@ void Core::sync_current_focus() {
 }
 
 void Core::emit_focus_changed(WindowId window) {
-    event_sink_->post_event(event::FocusChanged{ window });
+    post(event::FocusChanged{ window });
     if (window != NO_WINDOW) {
         int ws_id = wsman.workspace_of_window(window);
         if (ws_id >= 0)
@@ -147,11 +147,11 @@ void Core::evaluate_workspace_fullscreen(int ws_id) {
     if (has_fs && ws.mode != WorkspaceMode::Fullscreen) {
         LOG_DEBUG("ws[%d]: entering Fullscreen mode", ws_id);
         ws.mode = WorkspaceMode::Fullscreen;
-        emit_raise_docks();
+        post(event::RaiseDocks{});
     } else if (!has_fs && ws.mode == WorkspaceMode::Fullscreen) {
         LOG_DEBUG("ws[%d]: leaving Fullscreen mode", ws_id);
         ws.mode = WorkspaceMode::Normal;
-        emit_raise_docks();
+        post(event::RaiseDocks{});
     }
 
     if (ws.mode != WorkspaceMode::Fullscreen) return;
@@ -199,21 +199,6 @@ bool Core::focus_monitor_at_point(int x, int y) {
     return true;
 }
 
-void Core::emit_workspace_switched(int workspace_id) {
-    event_sink_->post_event(event::WorkspaceSwitched{ workspace_id });
-}
-
-void Core::emit_raise_docks() {
-    event_sink_->post_event(event::RaiseDocks{});
-}
-
-void Core::emit_display_topology_changed() {
-    event_sink_->post_event(event::DisplayTopologyChanged{});
-}
-
-void Core::emit_window_assigned_to_workspace(WindowId window, int workspace_id) {
-    event_sink_->post_event(event::WindowAssignedToWorkspace{ window, workspace_id });
-}
 
 void Core::init(std::vector<Monitor> initial_monitors) {
     register_layout("tile",      layout::tile);
@@ -370,7 +355,7 @@ bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {
         sync_current_focus();
 
     evaluate_workspace_fullscreen(cmd.workspace_id);
-    emit_workspace_switched(cmd.workspace_id);
+    post(event::WorkspaceSwitched{cmd.workspace_id});
     return true;
 }
 
@@ -386,7 +371,7 @@ bool Core::dispatch(const command::atom::MoveWindowToWorkspace& cmd) {
     bool is_fs     = w->borderless || w->fullscreen;
 
     wsman.move_window_to(cmd.workspace_id, w);
-    emit_window_assigned_to_workspace(cmd.window, cmd.workspace_id);
+    post(event::WindowAssignedToWorkspace{cmd.window, cmd.workspace_id});
 
     sync_workspace_visibility();
     arrange();
@@ -482,7 +467,7 @@ bool Core::dispatch(const command::atom::SetWindowFullscreen& cmd) {
             mark_window_dirty(cmd.window, WindowFlush::Geometry);
         }
         arrange();
-        emit_raise_docks();
+        post(event::RaiseDocks{});
         if (ws_id >= 0 && is_workspace_visible(ws_id) && w->is_visible()) {
             wsman.focus_window(cmd.window);
             emit_backend_effect(BackendEffectKind::FocusWindow, cmd.window);
@@ -505,7 +490,7 @@ bool Core::dispatch(const command::atom::SetWindowFullscreen& cmd) {
     arrange();
     if (ws_id >= 0)
         evaluate_workspace_fullscreen(ws_id);
-    emit_raise_docks();
+    post(event::RaiseDocks{});
     return true;
 }
 
@@ -529,7 +514,7 @@ bool Core::dispatch(const command::atom::AssignWindowWorkspace& cmd) {
     if (!w)
         return false;
     wsman.move_window_to(cmd.workspace_id, w);
-    emit_window_assigned_to_workspace(cmd.window, cmd.workspace_id);
+    post(event::WindowAssignedToWorkspace{cmd.window, cmd.workspace_id});
     return true;
 }
 
@@ -732,7 +717,7 @@ bool Core::dispatch(const command::composite::SwitchWorkspaceLocalIndex& cmd) {
     int ws_id = wsman.active_workspace(mon);
     reconcile();
     if (ws_id >= 0)
-        emit_workspace_switched(ws_id);
+        post(event::WorkspaceSwitched{ws_id});
     return true;
 }
 
@@ -752,7 +737,7 @@ bool Core::dispatch(const command::atom::ApplyMonitorTopology& cmd) {
     // New monitors come in fresh with top/bottom insets = 0; no reset needed.
     wsman.assign_workspaces(settings.monitor_aliases,
         settings.monitor_compose);
-    emit_display_topology_changed();
+    post(event::DisplayTopologyChanged{});
     reconcile();
     return true;
 }
