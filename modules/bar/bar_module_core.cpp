@@ -529,9 +529,9 @@ static void apply_theme_to_monitor_cfg(MonitorBarConfig& mcfg, const ThemeConfig
     if (mcfg.bottom.state == BarSideState::Custom) apply_theme_to_cfg(mcfg.bottom.cfg, th);
 }
 
-void BarModule::on(event::ExposeWindow ev) {
+void BarModule::on(event::ExposeSurface ev) {
     for (auto& b : all_bars_)
-        if (b.surface && b.surface->id() == ev.window) {
+        if (b.surface.get() == ev.surface) {
             redraw();
             return;
         }
@@ -585,21 +585,21 @@ void BarModule::on(event::PropertyNotify ev) {
 }
 
 void BarModule::on(event::ButtonEv ev) {
-    if (ev.release) {
-        for (auto& b : all_bars_)
-            if (b.tray && b.tray->handle_button_event(ev))
-                return;
-        return;
-    }
-
+    // Surface button events are re-emitted by Runtime as SurfaceButton — this
+    // handler only sees events targeting tray icon windows (or other unrelated
+    // windows, which we ignore).
     for (auto& b : all_bars_)
         if (b.tray && b.tray->handle_button_event(ev))
             return;
+}
 
+void BarModule::on(event::SurfaceButton ev) {
     for (auto& b : all_bars_) {
-        if (!b.is_top || !b.surface || b.surface->id() != ev.window)
+        if (!b.is_top || b.surface.get() != ev.surface)
             continue;
-        int ws = tag_at(ev.window, ev.event_pos.x());
+        if (ev.release)
+            return;
+        int ws = tag_at(b.surface.get(), ev.event_pos.x());
         if (ws >= 0) {
             (void)core().dispatch(command::atom::SwitchWorkspace{ ws, b.surface->monitor_index() });
             redraw();

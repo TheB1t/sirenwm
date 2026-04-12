@@ -21,6 +21,7 @@
 
 #include <runtime_state.hpp>
 
+#include <unordered_map>
 #include <unordered_set>
 
 namespace backend {
@@ -156,6 +157,12 @@ class Runtime : public IEventEmitter {
             lua_host_.on(ev);
         }
 
+        // Intercepting overloads: if the event targets a window owned by a
+        // Surface of ours, re-emit as the surface-scoped variant instead.
+        // Declared non-template so they win overload resolution over emit<Ev>.
+        void emit(event::ExposeWindow ev);
+        void emit(event::ButtonEv ev);
+
         template<typename Ev>
         bool emit_until_handled(Ev ev) {
             for (auto& m : modules)
@@ -202,7 +209,8 @@ class Runtime : public IEventEmitter {
         friend class Surface;
         void unregister_surface(Surface* s);
 
-        std::unordered_set<Surface*> surface_registry_;
+        std::unordered_set<Surface*>           surface_registry_;
+        std::unordered_map<WindowId, Surface*> surface_by_id_;
 
         Backend&       backend();
         const Backend& backend() const;

@@ -45,11 +45,6 @@ class Surface {
         Surface(Surface&&)                 = delete;
         Surface& operator=(Surface&&)      = delete;
 
-        // TODO: replace with Runtime-level event routing that resolves
-        // WindowId -> Surface* before emit (ExposeSurface / SurfaceButton).
-        // For now modules match X11 events against this id directly.
-        WindowId id() const;
-
         // Identity & geometry — immutable
         int monitor_index() const;
         int x() const;
@@ -70,6 +65,10 @@ class Surface {
         friend class Runtime;
 
         Surface(Runtime& runtime, std::unique_ptr<backend::RenderWindow> window);
+
+        // Backend identity — only Runtime needs this to maintain
+        // surface_by_id_ and dispatch incoming WindowId-scoped events.
+        WindowId id() const;
 
         backend::RenderWindow*       backend_window()       { return window_.get(); }
         const backend::RenderWindow* backend_window() const { return window_.get(); }
