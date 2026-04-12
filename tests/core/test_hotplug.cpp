@@ -219,14 +219,14 @@ TEST(Hotplug, MoveWindowToSameMonitorIsNoop) {
 TEST(Hotplug, TopologyChangeEmitsDomainEvent) {
     TestHarness h;
     h.start();
-    h.core.take_core_events(); // drain any startup events
+    h.take_core_events(); // drain any startup events
 
     apply_topology(h.core, {
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
 
-    auto evts  = h.core.take_core_events();
+    auto evts  = h.take_core_events();
     bool found = false;
     for (const auto& ev : evts) {
         if (std::holds_alternative<event::DisplayTopologyChanged>(ev)) {

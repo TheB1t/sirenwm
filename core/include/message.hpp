@@ -22,7 +22,7 @@
 //   };
 //   static_assert(Message<TrayRebalance>);
 //
-//   runtime.emit(event::CustomEvent{ MessageEnvelope::pack(TrayRebalance{0,3}) });
+//   runtime.post_event(event::CustomEvent{ MessageEnvelope::pack(TrayRebalance{0,3}) });
 //
 //   void on(const event::CustomEvent& ev) override {
 //       if (auto* p = ev.msg.unpack<TrayRebalance>())

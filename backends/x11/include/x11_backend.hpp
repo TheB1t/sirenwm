@@ -158,16 +158,17 @@ class X11Backend final : public Backend {
         void apply_xresources(Core& core);
         void restore_visible_focus();
         void update_focus(event::FocusChanged ev); // X11 state only, no emit
-        // notify() — internal dispatch for EWMH/ICCCM reactions to domain events
-        // Always includes runtime.emit so callers don't have to.
-        void notify(event::WindowMapped ev);
-        void notify(event::WindowUnmapped ev);
-        void notify(event::WorkspaceSwitched ev);
-        void notify(event::WindowAssignedToWorkspace ev);
+        // ewmh_on_* — synchronous EWMH/ICCCM reactions called from X event
+        // handlers BEFORE core.dispatch runs, because WindowUnmapped needs the
+        // live X11Window* that core.dispatch(RemoveWindowFromAllWorkspaces)
+        // destroys. Workspace/assignment variants fire from IEventReceiver::on
+        // overrides at the end of the tick via the unified event queue.
+        void ewmh_on_window_mapped(event::WindowMapped ev);
+        void ewmh_on_window_unmapped(event::WindowUnmapped ev);
+        void ewmh_on_workspace_switched(event::WorkspaceSwitched ev);
+        void ewmh_on_window_assigned_to_workspace(event::WindowAssignedToWorkspace ev);
         // handle() — EWMH request handlers that return a consumed flag
         bool handle(event::ClientMessageEv ev);
-        bool handle(event::CloseWindowRequest ev);
-        void handle(event::ManageWindowQuery& ev);
 
     public:
         X11Backend(Core& core, Runtime& runtime);
@@ -180,10 +181,17 @@ class X11Backend final : public Backend {
         void                   render_frame() override;
         void                   on_reload_applied() override;
         void                   on_start(Core& core) override;
+        // Domain-event overrides from IEventReceiver. WindowMapped/Unmapped
+        // are intentionally handled synchronously via ewmh_on_* — see comment
+        // on those declarations.
         void                   on(event::WorkspaceSwitched ev) override;
         void                   on(event::WindowAssignedToWorkspace ev) override;
         void                   on(event::FocusChanged ev) override;
         void                   on(event::WindowAdopted ev) override;
+
+        // IHookReceiver — synchronous filters.
+        void                   on_hook(hook::ShouldManageWindow& h) override;
+        void                   on_hook(hook::CloseWindow& h) override;
         void                   shutdown() override;
         StartupSnapshot        scan_existing_windows() override;
         backend::BackendPorts  ports() override;

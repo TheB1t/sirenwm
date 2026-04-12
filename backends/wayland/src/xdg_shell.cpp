@@ -61,11 +61,11 @@ void WaylandBackend::handle_new_xdg_surface(wlr_xdg_surface* xdg_surface) {
         });
     raw->on_set_title_.connect(&toplevel->events.set_title,
         [this, raw](void*) {
-            runtime_.emit(event::PropertyNotify{ raw->id, 0 });
+            runtime_.post_event(event::PropertyNotify{ raw->id, 0 });
         });
     raw->on_set_app_id_.connect(&toplevel->events.set_app_id,
         [this, raw](void*) {
-            runtime_.emit(event::PropertyNotify{ raw->id, 1 });
+            runtime_.post_event(event::PropertyNotify{ raw->id, 1 });
         });
 
     // Client-requested fullscreen toggle.
@@ -109,8 +109,8 @@ void WaylandBackend::handle_surface_map(WlSurface* surf) {
     (void)core_.dispatch(command::atom::EnsureWindow{ .window = surf->id });
 
     // Let rules/policy decide workspace, floating, fullscreen, etc.
-    runtime_.emit(event::ApplyWindowRules{ surf->id });
-    runtime_.emit(event::WindowMapped{ surf->id });
+    runtime_.invoke_hook(hook::WindowRules{ surf->id });
+    runtime_.post_event(event::WindowMapped{ surf->id });
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ void WaylandBackend::handle_surface_unmap(WlSurface* surf) {
     wlr_scene_node_set_enabled(&surf->scene_node()->node, false);
 
     LOG_INFO("WaylandBackend: surface %u unmapped", surf->id);
-    runtime_.emit(event::WindowUnmapped{ surf->id, false });
+    runtime_.post_event(event::WindowUnmapped{ surf->id, false });
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ void WaylandBackend::handle_surface_destroy(WlSurface* surf) {
     LOG_INFO("WaylandBackend: surface %u destroyed", surf->id);
 
     // Emit destroy before cleanup so Core can process the removal.
-    runtime_.emit(event::DestroyNotify{ surf->id });
+    runtime_.post_event(event::DestroyNotify{ surf->id });
 
     // Remove from both maps (one of them will be empty depending on whether
     // the surface was ever mapped).

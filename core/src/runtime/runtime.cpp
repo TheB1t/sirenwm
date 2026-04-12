@@ -95,11 +95,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         if (!snap.from_restart && !snap.default_manage)
             continue;
 
-        event::ManageWindowQuery q{ snap.window, true };
-        runtime.query(q, [](const event::ManageWindowQuery& s) {
-                return !s.manage;
-            });
-        if (!q.manage)
+        if (!runtime.invoke_hook(hook::ShouldManageWindow{ snap.window }).manage)
             continue;
 
         int restore_ws_id = snap.from_restart ? snap.restart_workspace_id : -1;
@@ -158,9 +154,9 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             (void)core.dispatch(command::atom::SetWindowGeometry{
                     snap.window, snap.geo_pos, snap.geo_size });
 
-        runtime.emit(event::ApplyWindowRules{ snap.window, snap.from_restart });
-        runtime.emit(event::WindowMapped{ snap.window });
-        backend.on(event::WindowAdopted{ snap.window, snap.currently_viewable });
+        runtime.invoke_hook(hook::WindowRules{ snap.window, snap.from_restart });
+        runtime.post_event(event::WindowMapped{ snap.window });
+        runtime.post_event(event::WindowAdopted{ snap.window, snap.currently_viewable });
 
         if (snap.from_restart)
             any_restart = true;
@@ -442,6 +438,14 @@ void Runtime::start() {
         LOG_ERR("Runtime::start() called before backend is bound"); std::abort();
     }
 
+    // Wire up the unified event pipeline:
+    //  - Core pushes domain events into the Runtime queue via this sink.
+    //  - Backend subscribes as a receiver to hear domain events after Core.
+    core_.set_event_sink(this);
+    add_receiver(backend_);
+    add_hook_receiver(&lua_host_);
+    add_hook_receiver(backend_);
+
     // Query initial monitor list from backend and init core.
     {
         std::vector<Monitor> initial_monitors = ports().monitor.get_monitors();
@@ -464,17 +468,22 @@ void Runtime::start() {
     for (auto& mod : modules) {
         mod->on_start();
     }
-    drain_core_events();
+    drain_events();
     backend_->on_start(core_);
     adopt_existing_windows(*this, core_, *backend_);
-    drain_core_events();
-    emit(event::RuntimeStarted{});
+    drain_events();
+    post_event(event::RuntimeStarted{});
+    drain_events();
 }
 
 void Runtime::stop(bool is_exec_restart) {
-    emit(event::RuntimeStopping{ is_exec_restart });
-    if (backend_)
+    post_event(event::RuntimeStopping{ is_exec_restart });
+    drain_events();
+    if (backend_) {
+        remove_receiver(backend_);
         backend_->shutdown();
+    }
+    core_.set_event_sink(nullptr);
     for (auto it = modules.rbegin(); it != modules.rend(); ++it)
         (*it)->on_stop(is_exec_restart);
     if (!surface_registry_.empty())
@@ -489,12 +498,32 @@ void Runtime::reload() {
         mod->on_reload();
 }
 
-void Runtime::add_receiver(IEventReceiver* /*receiver*/) {
-    // Module registration goes through use<T>(); external receivers not yet needed.
+void Runtime::add_receiver(IEventReceiver* receiver) {
+    if (!receiver) return;
+    for (auto* r : extra_receivers_)
+        if (r == receiver) return;
+    extra_receivers_.push_back(receiver);
 }
 
-void Runtime::remove_receiver(IEventReceiver* /*receiver*/) {
-    // Module deregistration handled by module lifecycle.
+void Runtime::remove_receiver(IEventReceiver* receiver) {
+    extra_receivers_.erase(
+        std::remove(extra_receivers_.begin(), extra_receivers_.end(), receiver),
+        extra_receivers_.end());
+}
+
+void Runtime::drain_events() {
+    event_queue_.drain([&](QueuedEvent& ev) {
+            for (auto& m : modules)
+                ev.deliver(*m);
+            ev.deliver(lua_host_);
+            for (auto* r : extra_receivers_)
+                ev.deliver(*r);
+        });
+}
+
+Surface* Runtime::resolve_surface(WindowId win) {
+    auto it = surface_by_id_.find(win);
+    return it != surface_by_id_.end() ? it->second : nullptr;
 }
 
 void Runtime::apply_and_refresh_monitors() {
@@ -568,7 +597,7 @@ void Runtime::reap_children() {
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
         if (backend_)
-            emit(event::ChildExited{ pid, exit_code });
+            post_event(event::ChildExited{ pid, exit_code });
     }
 }
 
@@ -600,17 +629,6 @@ void Runtime::dispatch_ready_fds(struct epoll_event* events, int count) {
             if (w.fd == fd) {
                 w.cb(); break;
             }
-    }
-}
-
-void Runtime::drain_core_events() {
-    auto events = core_.take_core_events();
-    for (const auto& ev : events) {
-        std::visit([&](const auto& e) {
-                emit(e);
-                if (backend_)
-                    backend_->on(e);
-            }, ev);
     }
 }
 
@@ -698,41 +716,6 @@ void Runtime::unregister_surface(Surface* s) {
         surface_by_id_.erase(s->id());
 }
 
-void Runtime::emit(event::ExposeWindow ev) {
-    auto it = surface_by_id_.find(ev.window);
-    if (it != surface_by_id_.end()) {
-        event::ExposeSurface surface_ev{ it->second };
-        for (auto& m : modules)
-            m->on(surface_ev);
-        lua_host_.on(surface_ev);
-        return;
-    }
-    for (auto& m : modules)
-        m->on(ev);
-    lua_host_.on(ev);
-}
-
-void Runtime::emit(event::ButtonEv ev) {
-    auto it = surface_by_id_.find(ev.window);
-    if (it != surface_by_id_.end()) {
-        event::SurfaceButton surface_ev{
-            .surface   = it->second,
-            .event_pos = ev.event_pos,
-            .time      = ev.time,
-            .button    = ev.button,
-            .state     = ev.state,
-            .release   = ev.release,
-        };
-        for (auto& m : modules)
-            m->on(surface_ev);
-        lua_host_.on(surface_ev);
-        return;
-    }
-    for (auto& m : modules)
-        m->on(ev);
-    lua_host_.on(ev);
-}
-
 void Runtime::tick() {
     constexpr std::size_t kMaxBackendEventsPerTick = 2048;
     constexpr int         kMaxEpollEvents          = 16;
@@ -744,13 +727,12 @@ void Runtime::tick() {
     backend_->pump_events(kMaxBackendEventsPerTick);
 
     bool reloaded = process_pending_reload();
-    if (reloaded)
+    if (reloaded) {
         backend_->on_reload_applied();
+        post_event(event::RaiseDocks{});
+    }
 
-    drain_core_events();
-
-    if (reloaded)
-        emit(event::RaiseDocks{});
+    drain_events();
 
     backend_->render_frame();
 }
@@ -1001,7 +983,7 @@ bool Runtime::process_pending_reload() {
         if (!any)
             (void)core_.dispatch(command::atom::ReconcileNow{});
 
-        emit(event::ConfigReloaded{});
+        post_event(event::ConfigReloaded{});
     }
 
     return true;

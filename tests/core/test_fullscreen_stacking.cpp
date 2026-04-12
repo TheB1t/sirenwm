@@ -230,14 +230,14 @@ TEST(FullscreenStacking, RaiseDocksEmittedOnEnterAndExit) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.take_core_events(); // drain initial events
+    h.take_core_events(); // drain initial events
 
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
-    auto events = h.core.take_core_events();
+    auto events = h.take_core_events();
     EXPECT_TRUE(has_domain_event<event::RaiseDocks>(events));
 
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
-    events = h.core.take_core_events();
+    events = h.take_core_events();
     EXPECT_TRUE(has_domain_event<event::RaiseDocks>(events));
 }
 

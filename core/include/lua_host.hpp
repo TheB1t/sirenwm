@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <event_receiver.hpp>
+#include <hook_registry.hpp>
 
 class Core;
 
@@ -93,7 +94,7 @@ class LuaRegistryRef {
         int raw_ref() const { return ref_; }
 };
 
-class LuaHost : public IEventReceiver {
+class LuaHost : public IEventReceiver, public IHookReceiver {
     void*    state_    = nullptr;
     uint64_t vm_epoch_ = 0;
     Core&    core_;
@@ -125,7 +126,6 @@ class LuaHost : public IEventReceiver {
         void on(event::WindowUnmapped ev)            override;
         void on(event::FocusChanged ev)              override;
         void on(event::WorkspaceSwitched ev)         override;
-        void on(event::ApplyWindowRules ev)          override;
         void on(event::DisplayTopologyChanged ev)    override;
         void on(event::RuntimeStarted ev)            override;
         void on(event::RuntimeStopping ev)           override;
@@ -133,6 +133,9 @@ class LuaHost : public IEventReceiver {
         void on(event::ChildExited ev)               override;
         void on(event::WindowAssignedToWorkspace ev) override;
         void on(const event::CustomEvent& ev)        override;
+
+        // IHookReceiver overrides — synchronous Lua-exposed filters
+        void on_hook(hook::WindowRules& h)           override;
 
         // Register siren.on(event, fn) from Lua — called by the C++ siren.on binding.
         void register_handler(const std::string& event, LuaRegistryRef handler);

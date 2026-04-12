@@ -149,7 +149,7 @@ void KeyboardModule::on(event::FocusChanged ev) {
 
     // Notify listeners (e.g. bar widgets) about the layout change.
     std::string layout = kp->current_layout();
-    runtime().emit(event::CustomEvent{
+    runtime().post_event(event::CustomEvent{
         MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
     });
 }

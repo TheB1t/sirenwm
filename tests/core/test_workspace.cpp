@@ -172,10 +172,10 @@ TEST(Window, BorderlessCrossMonitorMove) {
 TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
     TestHarness h;
     h.start();
-    h.core.take_core_events(); // drain
+    h.take_core_events(); // drain
 
     h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
-    auto events = h.core.take_core_events();
+    auto events = h.take_core_events();
 
     bool found = false;
     for (const auto& e : events) {
@@ -193,10 +193,10 @@ TEST(Workspace, MoveWindowEmitsAssignedEvent) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.take_core_events(); // drain
+    h.take_core_events(); // drain
 
     h.core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
-    auto events = h.core.take_core_events();
+    auto events = h.take_core_events();
 
     bool found = false;
     for (const auto& e : events) {

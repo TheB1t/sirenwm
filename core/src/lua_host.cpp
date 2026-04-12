@@ -521,19 +521,19 @@ void LuaHost::on(event::WorkspaceSwitched ev) {
 // -- window.rules ---------------------------------------------------------
 
 static int push_window_rules(LuaContext& lua, const void* ev_ptr, Core& core) {
-    auto* ev = static_cast<const event::ApplyWindowRules*>(ev_ptr);
+    auto* h = static_cast<const hook::WindowRules*>(ev_ptr);
     lua.new_table();
-    lua.push_integer(ev->window);
+    lua.push_integer(h->window);
     lua.set_field(-2, "id");
-    lua.push_bool(ev->from_restart);
+    lua.push_bool(h->from_restart);
     lua.set_field(-2, "from_restart");
-    auto ws = core.window_state_any(ev->window);
+    auto ws = core.window_state_any(h->window);
     if (ws) {
         lua.push_string(ws->wm_class);
         lua.set_field(-2, "class");
         lua.push_string(ws->wm_instance);
         lua.set_field(-2, "instance");
-        int ws_id = core.workspace_of_window(ev->window);
+        int ws_id = core.workspace_of_window(h->window);
         lua.push_integer(ws_id >= 0 ? ws_id + 1 : 0);
         lua.set_field(-2, "workspace");
         const char* type_str = "normal";
@@ -550,8 +550,8 @@ static int push_window_rules(LuaContext& lua, const void* ev_ptr, Core& core) {
     return 1;
 }
 
-void LuaHost::on(event::ApplyWindowRules ev) {
-    emit_to_lua("window.rules", push_window_rules, &ev, &core_);
+void LuaHost::on_hook(hook::WindowRules& h) {
+    emit_to_lua("window.rules", push_window_rules, &h, &core_);
 }
 
 // -- display.changed ------------------------------------------------------

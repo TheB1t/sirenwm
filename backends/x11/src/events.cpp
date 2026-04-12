@@ -222,13 +222,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         return;
     }
 
-    event::ManageWindowQuery map_q{ ev->window, true };
-    handle(map_q);
-    if (map_q.manage)
-        runtime.query(map_q, [](const event::ManageWindowQuery& s) {
-                return !s.manage;
-            });
-    if (!map_q.manage) {
+    if (!runtime.invoke_hook(hook::ShouldManageWindow{ ev->window }).manage) {
         xconn.call(xcb_map_window, ev->window);
         LOG_DEBUG("MapRequest(%d): unmanaged, mapping as-is", ev->window);
         return;
@@ -315,8 +309,14 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     xcb_window_t transient_for     = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
     bool         managed_transient = (transient_for != XCB_WINDOW_NONE) &&
         (core.workspace_of_window(transient_for) >= 0);
-    if (!managed_transient)
-        runtime.emit(event::ApplyWindowRules{ ev->window });
+    if (!managed_transient) {
+        // Rules must run before we read mapped_window->floating / borderless
+        // below: the Lua handler toggles those flags via siren.win.set_floating()
+        // etc., and we need the updated state to decide placement. Hooks are
+        // synchronous by design — subscribers run inline and the caller sees
+        // the mutated core state on return.
+        runtime.invoke_hook(hook::WindowRules{ ev->window });
+    }
 
     auto mapped_window = core.window_state_any(ev->window);
     int  ws_id         = core.workspace_of_window(ev->window);
@@ -406,7 +406,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             uint32_t off[1] = { (uint32_t)-32000 };
             xw->configure(XCB_CONFIG_WINDOW_X, off);
             xw->map();
-            notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false }); // WM_STATE → IconicState
+            ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false }); // WM_STATE → IconicState
             xw->note_wm_unmap();
             xw->unmap();
         }
@@ -414,8 +414,8 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         (void)core.dispatch(command::atom::SetWindowMapped{ ev->window, false });
     }
 
-    runtime.emit(event::WindowMapped{ ev->window });
-    notify(event::WindowMapped{ ev->window });
+    ewmh_on_window_mapped(event::WindowMapped{ ev->window });
+    runtime.post_event(event::WindowMapped{ ev->window });
 
     (void)core.dispatch(command::atom::ReconcileNow{});
 
@@ -458,7 +458,7 @@ void X11Backend::handle_map_notify(xcb_map_notify_event_t* ev) {
 
     // Override-redirect windows (menus, tooltips) must appear above bars, not below.
     if (!ev->override_redirect)
-        runtime.emit(event::RaiseDocks{});
+        runtime.post_event(event::RaiseDocks{});
 
     LOG_DEBUG("MapNotify(%d): parent %d%s", ev->window, ev->event,
         pending_wm_unmap ? " [pending unmap, keeping hidden]" : "");
@@ -476,7 +476,7 @@ void X11Backend::handle_reparent_notify(xcb_reparent_notify_event_t* ev) {
         // Reparents to non-root are either our own transfers or initial docks.
         if (has_xembed && ev->parent == root_window) {
             LOG_DEBUG("ReparentNotify(%u): xembed icon returned to root, re-adopting", ev->window);
-            runtime.emit(event::CustomEvent{
+            runtime.post_event(event::CustomEvent{
                 MessageEnvelope::pack(protocol::system_tray::IconDocked{ ev->window })
             });
         } else {
@@ -502,8 +502,8 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     bool ws_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
 
     if (!core.window_state_any(ev->window)) {
-        runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
-        notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         return;
     }
 
@@ -511,7 +511,7 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     auto* xw_unmap = x11_window(ev->window);
     if (xw_unmap && xw_unmap->consume_wm_unmap()) {
         LOG_DEBUG("UnmapNotify(%d): WM-initiated, ignoring", ev->window);
-        notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
+        ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
         return;
     }
 
@@ -528,8 +528,8 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     if (was_borderless || was_fullscreen) {
         first_configure_pos_.erase(ev->window);
         (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
-        runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
-        notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+        runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         if (ws_visible) {
             (void)core.dispatch(command::atom::ReconcileNow{});
             restore_visible_focus();
@@ -539,16 +539,16 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     }
 
     if (ws_hidden_unmap) {
-        runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
-        notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
+        ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
+        runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ false });
         return;
     }
 
     // Client-initiated unmap on a visible workspace — full withdrawal.
     first_configure_pos_.erase(ev->window);
     (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
-    runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
-    notify(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+    ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+    runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     if (ws_visible) {
         (void)core.dispatch(command::atom::ReconcileNow{});
         restore_visible_focus();
@@ -565,7 +565,7 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
         border_painted_focused_ = NO_WINDOW;
 
     if (!core.window_state_any(ev->window)) {
-        runtime.emit(event::DestroyNotify{ ev->window });
+        runtime.post_event(event::DestroyNotify{ ev->window });
         LOG_DEBUG("DestroyNotify(%d): unmanaged", ev->window);
         return;
     }
@@ -573,14 +573,14 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
     int  ws_id      = core.workspace_of_window(ev->window);
     bool ws_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
 
-    runtime.emit(event::DestroyNotify{ ev->window });
+    runtime.post_event(event::DestroyNotify{ ev->window });
     // Remove from core FIRST — this destroys the X11Window object,
     // so no further backend operations can target this window.
     (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
 
     // Skip EWMH property updates on the destroyed window — any ChangeProperty
     // would produce a BadWindow error. Only update the client list on root.
-    runtime.emit(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
+    runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     ewmh_update_client_list();
 
     if (ws_visible) {
@@ -624,7 +624,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                             ev->window);
                         (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
                         (void)core.dispatch(command::atom::SetWindowBorderWidth{ ev->window, 0 });
-                        runtime.emit(event::RaiseDocks{});
+                        runtime.post_event(event::RaiseDocks{});
                         (void)core.dispatch(command::atom::ReconcileNow{});
                     } else {
                         int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
@@ -638,7 +638,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                             (void)core.dispatch(command::atom::SetWindowGeometry{
                                 ev->window, phy_pos,
                                 phy_size });
-                            runtime.emit(event::RaiseDocks{});
+                            runtime.post_event(event::RaiseDocks{});
                             (void)core.dispatch(command::atom::ReconcileNow{});
                         }
                     }
@@ -675,7 +675,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
         }
 
     }
-    runtime.emit(event::PropertyNotify{ ev->window, ev->atom });
+    runtime.post_event(event::PropertyNotify{ ev->window, ev->atom });
 }
 
 void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
@@ -770,7 +770,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     // Restack (sibling/stack_mode) is X11-specific and applied directly without routing through core.
     if (m & XCB_CONFIG_WINDOW_STACK_MODE) {
         if (window->fullscreen) {
-            runtime.emit(event::RaiseDocks{});
+            runtime.post_event(event::RaiseDocks{});
         } else if (auto* xw = x11_window(ev->window)) {
             uint16_t restack_mask    = XCB_CONFIG_WINDOW_STACK_MODE;
             uint32_t restack_vals[2] = {};
@@ -811,7 +811,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
                 ev->height = (uint16_t)mon.height();
                 m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
                     | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-                runtime.emit(event::RaiseDocks{});
+                runtime.post_event(event::RaiseDocks{});
             }
         }
     }
@@ -888,7 +888,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
 
 void X11Backend::handle_configure_notify(xcb_configure_notify_event_t* ev) {
     // Always emit — tray needs ConfigureNotify to track icon resize.
-    runtime.emit(event::ConfigureNotify{ ev->window, { ev->x, ev->y }, { ev->width, ev->height } });
+    runtime.post_event(event::ConfigureNotify{ ev->window, { ev->x, ev->y }, { ev->width, ev->height } });
 
     auto window = core.window_state_any(ev->window);
     if (!window || ev->override_redirect)
@@ -941,7 +941,7 @@ void X11Backend::handle_key_event(xcb_key_press_event_t* ev) {
     uint32_t keysym = 0;
     if (auto* syms = key_symbols())
         keysym = xcb_key_symbols_get_keysym(syms, ev->detail, 0);
-    runtime.emit(event::KeyPressEv{ ev->state, ev->detail, keysym });
+    runtime.post_event(event::KeyPressEv{ ev->state, ev->detail, keysym });
 }
 
 void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
@@ -993,18 +993,30 @@ void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
     last_event_time_ = ev->time;
     last_pointer_    = { ev->root_x, ev->root_y };
 
-    if ((ev->response_type & ~0x80) == XCB_BUTTON_RELEASE) {
-        runtime.emit(make_button_ev(ev, true));
+    bool release = (ev->response_type & ~0x80) == XCB_BUTTON_RELEASE;
+    if (!release)
+        core.focus_monitor_at_point(ev->root_x, ev->root_y);
+
+    // Surface routing: buttons on Runtime-owned surfaces get a surface-scoped
+    // event with only local coords; everything else fans out as a regular
+    // ButtonEv with backend identity.
+    if (auto* surface = runtime.resolve_surface(ev->event)) {
+        runtime.post_event(event::SurfaceButton{
+            .surface   = surface,
+            .event_pos = { ev->event_x, ev->event_y },
+            .time      = ev->time,
+            .button    = ev->detail,
+            .state     = ev->state,
+            .release   = release,
+        });
         return;
     }
-
-    core.focus_monitor_at_point(ev->root_x, ev->root_y);
-    runtime.emit(make_button_ev(ev, false));
+    runtime.post_event(make_button_ev(ev, release));
 }
 
 void X11Backend::handle_motion_notify(xcb_motion_notify_event_t* ev) {
     last_pointer_ = { ev->root_x, ev->root_y };
-    runtime.emit(event::MotionEv{ ev->event, { ev->root_x, ev->root_y }, ev->state });
+    runtime.post_event(event::MotionEv{ ev->event, { ev->root_x, ev->root_y }, ev->state });
 }
 
 void X11Backend::handle_client_message(xcb_client_message_event_t* ev) {
@@ -1025,7 +1037,11 @@ void X11Backend::handle_client_message(xcb_client_message_event_t* ev) {
 }
 
 void X11Backend::handle_expose(xcb_expose_event_t* ev) {
-    runtime.emit(event::ExposeWindow{ ev->window });
+    if (auto* surface = runtime.resolve_surface(ev->window)) {
+        runtime.post_event(event::ExposeSurface{ surface });
+        return;
+    }
+    runtime.post_event(event::ExposeWindow{ ev->window });
 }
 
 void X11Backend::handle_no_exposure(xcb_no_exposure_event_t*) {}
@@ -1138,7 +1154,7 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
                 auto* kp = keyboard_port_impl.get();
                 if (kp) {
                     std::string layout = kp->current_layout();
-                    runtime.emit(event::CustomEvent{
+                    runtime.post_event(event::CustomEvent{
                         MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
                     });
                 }

@@ -29,7 +29,6 @@ class IEventReceiver {
         virtual void on(event::SurfaceButton)             {}
         virtual void on(event::MotionEv)                  {}
         virtual void on(event::KeyPressEv)                {}
-        virtual void on(event::ApplyWindowRules)          {}
         virtual void on(event::DestroyNotify)             {}
         virtual void on(event::ConfigureNotify)           {}
         virtual void on(event::PropertyNotify)            {}
@@ -37,10 +36,10 @@ class IEventReceiver {
         virtual void on(event::WindowAdopted)             {}
         virtual void on(const event::CustomEvent&)        {}
 
-        // Mutable query
-        virtual void on(event::ManageWindowQuery&)        {}
-
-        // Stoppable (return true = handled, stops further dispatch)
+        // Stoppable (return true = handled, stops further dispatch).
+        // ClientMessageEv remains stoppable for X11 EWMH request handling —
+        // the backend consumes the message and returns true to prevent
+        // further propagation. This is an event, not a hook, because it
+        // fans out across multiple receivers and the stop is optional.
         virtual bool on(event::ClientMessageEv)           { return false; }
-        virtual bool on(event::CloseWindowRequest)        { return false; }
 };
