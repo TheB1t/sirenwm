@@ -805,10 +805,10 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
                 borderless    = true;
                 borderless_fs = true;
                 // Override to full monitor area (client requested reduced size due to _NET_WM_STRUT).
-                ev->x      = (int16_t)mon.x();
-                ev->y      = (int16_t)mon.y();
-                ev->width  = (uint16_t)mon.width();
-                ev->height = (uint16_t)mon.height();
+                ev->x      = static_cast<int16_t>(std::clamp(mon.x(), -32768, 32767));
+                ev->y      = static_cast<int16_t>(std::clamp(mon.y(), -32768, 32767));
+                ev->width  = static_cast<uint16_t>(std::min(mon.width(), 65535));
+                ev->height = static_cast<uint16_t>(std::min(mon.height(), 65535));
                 m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
                     | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
                 runtime.post_event(event::RaiseDocks{});
