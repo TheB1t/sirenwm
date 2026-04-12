@@ -70,6 +70,7 @@ Runtime::Runtime(ModuleRegistry& module_registry)
 static int g_sigchld_pipe_wr = -1;
 
 static void sigchld_handler(int) {
+    int saved_errno = errno;
     if (g_sigchld_pipe_wr >= 0) {
         char    b = 1;
         ssize_t r;
@@ -77,6 +78,7 @@ static void sigchld_handler(int) {
             r = write(g_sigchld_pipe_wr, &b, 1);
         } while (r < 0 && errno == EINTR);
     }
+    errno = saved_errno;
 }
 
 namespace {
