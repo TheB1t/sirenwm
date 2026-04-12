@@ -242,7 +242,7 @@ void Core::arrange() {
                 // Fixed-size windows (min==max hints): honour their own size,
                 // only let the layout set the position.
                 auto w = wsman.find_window_in_all(win);
-                if (w && w->size_locked && w->width() > 0 && w->height() > 0)
+                if (w && w->size_locked && w->size().x() > 0 && w->size().y() > 0)
                     size = w->size();
                 (void)dispatch(command::atom::SetWindowGeometry{ win, pos, size });
                 (void)dispatch(command::atom::SetWindowBorderWidth{ win, border_width });
@@ -853,10 +853,10 @@ bool Core::dispatch(const command::atom::SyncWindowFromConfigureNotify& cmd) {
     auto               it      = pending_window_flushes.find(cmd.window);
     const WindowFlush* pending = (it == pending_window_flushes.end()) ? nullptr : &it->second;
 
-    if (!pending || !(pending->dirty & WindowFlush::X))           w->x() = cmd.pos.x();
-    if (!pending || !(pending->dirty & WindowFlush::Y))           w->y() = cmd.pos.y();
-    if (!pending || !(pending->dirty & WindowFlush::Width))       w->width() = cmd.size.x();
-    if (!pending || !(pending->dirty & WindowFlush::Height))      w->height() = cmd.size.y();
+    if (!pending || !(pending->dirty & WindowFlush::X))           w->pos().x() = cmd.pos.x();
+    if (!pending || !(pending->dirty & WindowFlush::Y))           w->pos().y() = cmd.pos.y();
+    if (!pending || !(pending->dirty & WindowFlush::Width))       w->size().x() = cmd.size.x();
+    if (!pending || !(pending->dirty & WindowFlush::Height))      w->size().y() = cmd.size.y();
     if (!pending || !(pending->dirty & WindowFlush::BorderWidth)) w->border_width = cmd.border_width;
 
     return true;

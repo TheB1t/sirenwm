@@ -7,8 +7,6 @@
 #include <utility>
 #include <vector>
 #include <atomic>
-#include <sys/epoll.h>
-#include <unistd.h>
 
 #include <backend/backend_ports.hpp>
 #include <backend/events.hpp>
@@ -16,6 +14,7 @@
 #include <core.hpp>
 #include <core_config.hpp>
 #include <event_emitter.hpp>
+#include <event_loop.hpp>
 #include <event_queue.hpp>
 #include <hook_registry.hpp>
 #include <pointer_registry.hpp>
@@ -65,12 +64,7 @@ class Runtime : public IEventEmitter, public IEventSink {
         int sigchld_pipe_rd_ = -1;
         int sigchld_pipe_wr_ = -1;
 
-        struct WatchedFd {
-            int                   fd;
-            std::function<void()> cb;
-        };
-        std::vector<WatchedFd> watched_fds;
-        int epoll_fd_ = -1;
+        EventLoop event_loop_;
 
         RuntimeState state_ = RuntimeState::Idle;
 
@@ -210,42 +204,7 @@ class Runtime : public IEventEmitter, public IEventSink {
         int get_backend_extension_event_base() const { return backend_extension_event_base; }
         void dispatch_display_change();
 
-        void watch_fd(int fd, std::function<void()> cb);
-        void unwatch_fd(int fd);
-        void dispatch_ready_fds(struct epoll_event* events, int count);
-
-        // RAII handle around watch_fd: unwatches on destruction and closes
-        // the owned fd. Modules hold this instead of juggling
-        // unwatch → close ordering manually.
-        class WatchedFdHandle {
-            Runtime* rt_ = nullptr;
-            int      fd_ = -1;
-            public:
-                WatchedFdHandle() = default;
-                WatchedFdHandle(Runtime& rt, int fd, std::function<void()> cb)
-                    : rt_(&rt), fd_(fd) {
-                    rt.watch_fd(fd, std::move(cb));
-                }
-                WatchedFdHandle(const WatchedFdHandle&)            = delete;
-                WatchedFdHandle& operator=(const WatchedFdHandle&) = delete;
-                WatchedFdHandle(WatchedFdHandle&& o) noexcept
-                    : rt_(o.rt_), fd_(o.fd_) { o.rt_ = nullptr; o.fd_ = -1; }
-                WatchedFdHandle& operator=(WatchedFdHandle&& o) noexcept {
-                    if (this != &o) { reset(); rt_ = o.rt_; fd_ = o.fd_;
-                                      o.rt_ = nullptr; o.fd_ = -1; }
-                    return *this;
-                }
-                ~WatchedFdHandle() { reset(); }
-
-                int  fd() const { return fd_; }
-                explicit operator bool() const { return fd_ >= 0; }
-
-                void reset() {
-                    if (fd_ >= 0 && rt_) rt_->unwatch_fd(fd_);
-                    if (fd_ >= 0) ::close(fd_);
-                    rt_ = nullptr; fd_ = -1;
-                }
-        };
+        EventLoop& event_loop() { return event_loop_; }
 
         // Bind a concrete backend. Called by RuntimeOf<B> constructor and test harnesses.
         void bind_backend(Backend& b) { backend_ = &b; }

@@ -176,7 +176,7 @@ static void place_window_on_monitor(Core& core,
     WindowId window,
     const Monitor& mon,
     bool prefer_center) {
-    if (window == NO_WINDOW || mon.width() <= 0 || mon.height() <= 0)
+    if (window == NO_WINDOW || mon.size().x() <= 0 || mon.size().y() <= 0)
         return;
 
     auto geo = xconn.get_window_geometry(window);
@@ -188,22 +188,22 @@ static void place_window_on_monitor(Core& core,
     int gw = std::max<int>(1, geo->width);
     int gh = std::max<int>(1, geo->height);
 
-    int nw = std::min(gw, mon.width());
-    int nh = std::min(gh, mon.height());
+    int nw = std::min(gw, mon.size().x());
+    int nh = std::min(gh, mon.size().y());
 
     int nx = gx;
     int ny = gy;
     if (prefer_center) {
-        nx = mon.x() + (mon.width() - nw) / 2;
-        ny = mon.y() + (mon.height() - nh) / 2;
+        nx = mon.pos().x() + (mon.size().x() - nw) / 2;
+        ny = mon.pos().y() + (mon.size().y() - nh) / 2;
     } else {
-        nx = std::clamp(nx, mon.x(), mon.x() + mon.width() - nw);
-        ny = std::clamp(ny, mon.y(), mon.y() + mon.height() - nh);
+        nx = std::clamp(nx, mon.pos().x(), mon.pos().x() + mon.size().x() - nw);
+        ny = std::clamp(ny, mon.pos().y(), mon.pos().y() + mon.size().y() - nh);
     }
 
-    bool crosses = (gx < mon.x()) || (gy < mon.y()) ||
-        (gx + gw > mon.x() + mon.width()) ||
-        (gy + gh > mon.y() + mon.height());
+    bool crosses = (gx < mon.pos().x()) || (gy < mon.pos().y()) ||
+        (gx + gw > mon.pos().x() + mon.size().x()) ||
+        (gy + gh > mon.pos().y() + mon.size().y());
     bool resized = (nw != gw) || (nh != gh);
     bool moved   = (nx != gx) || (ny != gy);
     if (!crosses && !resized && !moved)
@@ -240,7 +240,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             for (const auto& mon : mons) {
                 int top = std::max(0, mon.top_inset());
                 int bot = std::max(0, mon.bottom_inset());
-                if (outer_w >= mon.width() && outer_h >= mon.height() - top - bot) {
+                if (outer_w >= mon.size().x() && outer_h >= mon.size().y() - top - bot) {
                     meta.covers_monitor = true;
                     break;
                 }
@@ -515,8 +515,8 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
         return;
     }
 
-    bool ws_hidden_unmap = core.is_window_hidden_by_workspace(ev->window);
     auto win_state       = core.window_state_any(ev->window);
+    bool ws_hidden_unmap = win_state && win_state->hidden_by_workspace;
     bool was_borderless  = win_state && win_state->borderless;
     bool was_fullscreen  = win_state && win_state->fullscreen;
     (void)core.dispatch(command::atom::SetWindowMapped{ ev->window, false });
@@ -760,7 +760,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     // Floating and borderless clients honour their own ConfigureRequest geometry.
     // StaticGravity clients self-position (inner-origin coords, border_width pre-subtracted).
     // Tiled clients receive a synthetic ConfigureNotify with current WM-assigned geometry.
-    bool floating       = core.is_window_floating(ev->window);
+    bool floating       = window->floating;
     bool borderless     = window->borderless;
     bool static_gravity = window->preserve_position;
 
@@ -794,21 +794,20 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
             const auto& mon = mons[(size_t)mon_idx];
             // SDL2 subtracts bar insets from its requested size; compare against usable area.
-            int         usable_h = mon.height()
+            int         usable_h = mon.size().y()
                 - std::max(0, mon.top_inset())
                 - std::max(0, mon.bottom_inset());
-            if ((int)ev->width >= mon.width() && (int)ev->height >= usable_h) {
+            if ((int)ev->width >= mon.size().x() && (int)ev->height >= usable_h) {
                 LOG_INFO(
                     "ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
-                    ev->window, ev->width, ev->height, mon.width(), usable_h);
+                    ev->window, ev->width, ev->height, mon.size().x(), usable_h);
                 (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
                 borderless    = true;
                 borderless_fs = true;
-                // Override to full monitor area (client requested reduced size due to _NET_WM_STRUT).
-                ev->x      = static_cast<int16_t>(std::clamp(mon.x(), -32768, 32767));
-                ev->y      = static_cast<int16_t>(std::clamp(mon.y(), -32768, 32767));
-                ev->width  = static_cast<uint16_t>(std::min(mon.width(), 65535));
-                ev->height = static_cast<uint16_t>(std::min(mon.height(), 65535));
+                ev->x      = static_cast<int16_t>(std::clamp(mon.pos().x(), -32768, 32767));
+                ev->y      = static_cast<int16_t>(std::clamp(mon.pos().y(), -32768, 32767));
+                ev->width  = static_cast<uint16_t>(std::min(mon.size().x(), 65535));
+                ev->height = static_cast<uint16_t>(std::min(mon.size().y(), 65535));
                 m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
                     | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
                 runtime.post_event(event::RaiseDocks{});
@@ -822,15 +821,15 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
             (window->borderless && !borderless_fs && !window->self_managed);
         if (pinned) {
             if (auto* xw = x11_window(ev->window))
-                xw->send_configure_notify(window->x(), window->y(),
-                    window->width(), window->height(), window->border_width);
+                xw->send_configure_notify(window->pos().x(), window->pos().y(),
+                    window->size().x(), window->size().y(), window->border_width);
             return;
         }
 
-        int nx = window->x();
-        int ny = window->y();
-        int nw = window->width();
-        int nh = window->height();
+        int nx = window->pos().x();
+        int ny = window->pos().y();
+        int nw = window->size().x();
+        int nh = window->size().y();
 
         if (m & XCB_CONFIG_WINDOW_X)      nx = ev->x;
         if (m & XCB_CONFIG_WINDOW_Y)      ny = ev->y;
@@ -854,10 +853,10 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
             const auto& mons    = core.monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
                 const auto& mon   = mons[(size_t)mon_idx];
-                int         max_x = mon.x() + mon.width()  - nw;
-                int         max_y = mon.y() + mon.height() - nh;
-                nx = std::clamp(nx, mon.x(), std::max(mon.x(), max_x));
-                ny = std::clamp(ny, mon.y(), std::max(mon.y(), max_y));
+                int         max_x = mon.pos().x() + mon.size().x() - nw;
+                int         max_y = mon.pos().y() + mon.size().y() - nh;
+                nx = std::clamp(nx, mon.pos().x(), std::max(mon.pos().x(), max_x));
+                ny = std::clamp(ny, mon.pos().y(), std::max(mon.pos().y(), max_y));
             }
         }
 
@@ -878,8 +877,8 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         }
     } else {
         if (auto* xw = x11_window(ev->window))
-            xw->send_configure_notify(window->x(), window->y(),
-                window->width(), window->height(), window->border_width);
+            xw->send_configure_notify(window->pos().x(), window->pos().y(),
+                window->size().x(), window->size().y(), window->border_width);
     }
 
     LOG_DEBUG("ConfigureRequest(%d): x:%d y:%d w:%d h:%d bw:%d",

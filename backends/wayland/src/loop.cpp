@@ -38,7 +38,7 @@ void WaylandBackend::render_frame() {
             if (!ws) continue;
             auto  state = core_.window_state_any(win);
             if (state)
-                ws->set_geometry(state->x(), state->y(), state->width(), state->height());
+                ws->set_geometry(state->pos().x(), state->pos().y(), state->size().x(), state->size().y());
         }
     }
 }

@@ -32,16 +32,6 @@ struct Monitor {
     Monitor(int id, std::string name, int x, int y, int w, int h)
         : id(id), name(std::move(name)), pos_(x, y), size_(w, h) {}
 
-    // Scalar accessors (backward compat)
-    int&       x()             { return pos_.x(); }
-    int        x()       const { return pos_.x(); }
-    int&       y()             { return pos_.y(); }
-    int        y()       const { return pos_.y(); }
-    int&       width()         { return size_.x(); }
-    int        width()   const { return size_.x(); }
-    int&       height()        { return size_.y(); }
-    int        height()  const { return size_.y(); }
-
     // Vec2 accessors
     Vec2i&       pos()        { return pos_; }
     const Vec2i& pos()  const { return pos_; }

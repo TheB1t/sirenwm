@@ -714,7 +714,7 @@ void BarModule::on_start() {
         } else {
             int rd = pipe_fds[0];
             wakeup_pipe_wr_ = pipe_fds[1];
-            wakeup_pipe_rd_ = Runtime::WatchedFdHandle(runtime(), rd, [this, rd]() {
+            wakeup_pipe_rd_ = EventLoop::FdHandle(runtime().event_loop(), rd, [this, rd]() {
                     // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
                     char buf[64];
                     ssize_t n;
@@ -748,7 +748,7 @@ void BarModule::on_start() {
             ts.it_value.tv_sec    = 1;
             ts.it_interval.tv_sec = 1;
             timerfd_settime(tfd, 0, &ts, nullptr);
-            widget_timer_ = Runtime::WatchedFdHandle(runtime(), tfd, [this, tfd]() {
+            widget_timer_ = EventLoop::FdHandle(runtime().event_loop(), tfd, [this, tfd]() {
                     uint64_t expirations;
                     if (read(tfd, &expirations, sizeof(expirations)) > 0) {
                         refresh_widgets();

@@ -582,7 +582,7 @@ void WaylandBackend::apply_core_backend_effects() {
                 if (auto flush = core_.take_window_flush(e.window)) {
                     auto state = core_.window_state_any(e.window);
                     if (state)
-                        ws->set_geometry(state->x(), state->y(), state->width(), state->height());
+                        ws->set_geometry(state->pos().x(), state->pos().y(), state->size().x(), state->size().y());
                 }
                 break;
             }
