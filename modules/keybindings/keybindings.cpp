@@ -567,10 +567,10 @@ static void call_mouse_ref(LuaHost& host, const LuaRegistryRef& callback, const 
 void KeybindingsModule::on(event::ButtonEv ev) {
     uint16_t mods = ev.state & ~backend::MOD_STRIP_MASK;
 
-    // GrabModeSync freezes the pointer until AllowEvents is called. Replay
-    // the event unconditionally so the target window receives the click
-    // regardless of WM outcome.
-    if (!ev.release && ev.window != focused_window_ && input_)
+    // Click-to-focus grabs (grab_button_any, GrabModeSync) freeze the pointer
+    // until AllowEvents fires; replay so the client still receives the click.
+    // Modifier-bound WM actions come through async grabs — no replay needed.
+    if (!ev.release && mods == 0 && ev.window != focused_window_ && input_)
         input_->allow_events(true);
 
     for (auto& mb : mouse_bindings_.get()) {
