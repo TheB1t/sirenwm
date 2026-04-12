@@ -506,9 +506,7 @@ void Runtime::add_receiver(IEventReceiver* receiver) {
 }
 
 void Runtime::remove_receiver(IEventReceiver* receiver) {
-    extra_receivers_.erase(
-        std::remove(extra_receivers_.begin(), extra_receivers_.end(), receiver),
-        extra_receivers_.end());
+    std::erase(extra_receivers_, receiver);
 }
 
 void Runtime::drain_events() {
@@ -614,12 +612,7 @@ void Runtime::watch_fd(int fd, std::function<void()> cb) {
 void Runtime::unwatch_fd(int fd) {
     if (epoll_fd_ >= 0)
         epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr);
-    watched_fds.erase(
-        std::remove_if(watched_fds.begin(), watched_fds.end(),
-        [fd](const WatchedFd& w) {
-            return w.fd == fd;
-        }),
-        watched_fds.end());
+    std::erase_if(watched_fds, [fd](const WatchedFd& w) { return w.fd == fd; });
 }
 
 void Runtime::dispatch_ready_fds(struct epoll_event* events, int count) {

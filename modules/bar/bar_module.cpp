@@ -307,14 +307,10 @@ void BarModule::on_stop(bool) {
 }
 
 void BarModule::stop_runtime() {
-    if (wakeup_pipe[0] >= 0) {
-        close(wakeup_pipe[0]); wakeup_pipe[0] = -1;
-    }
-    if (wakeup_pipe[1] >= 0) {
-        close(wakeup_pipe[1]); wakeup_pipe[1] = -1;
-    }
-    if (timer_fd >= 0) {
-        close(timer_fd);        timer_fd = -1;
+    wakeup_pipe_rd_.reset();
+    widget_timer_.reset();
+    if (wakeup_pipe_wr_ >= 0) {
+        close(wakeup_pipe_wr_); wakeup_pipe_wr_ = -1;
     }
     tag_hits.clear();
     all_bars_.clear();

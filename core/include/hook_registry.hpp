@@ -35,9 +35,7 @@ class HookRegistry {
         }
 
         void remove(IHookReceiver* r) {
-            for (auto it = receivers_.begin(); it != receivers_.end(); ++it) {
-                if (*it == r) { receivers_.erase(it); return; }
-            }
+            std::erase(receivers_, r);
         }
 
         template<typename H>
