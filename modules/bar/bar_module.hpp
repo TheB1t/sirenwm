@@ -40,7 +40,8 @@ class BarModule : public Module {
         void on(event::WorkspaceSwitched) override { redraw(); }
         void on(event::RaiseDocks) override { raise_all(); redraw(); }
         void on(event::DisplayTopologyChanged) override;
-        void on(event::ExposeWindow ev) override;
+        void on(event::ExposeSurface ev) override;
+        void on(event::SurfaceButton ev) override;
         void on(event::ButtonEv ev) override;
         bool on(event::ClientMessageEv ev) override;
         void on(event::DestroyNotify ev) override;
@@ -69,7 +70,7 @@ class BarModule : public Module {
         std::vector<Surface*> top_bar_surfaces() const;
         std::vector<Surface*> bottom_bar_surfaces() const;
 
-        std::unordered_map<WindowId, std::vector<bar::widgets::TagHit>> tag_hits;
+        std::unordered_map<Surface*, std::vector<bar::widgets::TagHit>> tag_hits;
         bar::widgets::TagsWidget  tags_widget;
         bar::widgets::TitleWidget title_widget;
         bar::widgets::TrayWidget  tray_widget;
@@ -97,7 +98,7 @@ class BarModule : public Module {
         std::string monitor_alias(int mon_idx) const;
         // Create a single bar window and push into all_bars_.
         void        create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top);
-        int         tag_at(WindowId bar_window, int click_x) const;
+        int         tag_at(const Surface* surface, int click_x) const;
         void        rebuild_bars();
         void        refresh_widgets();
         void        redraw();

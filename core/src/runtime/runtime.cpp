@@ -671,6 +671,7 @@ std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) 
 
     std::unique_ptr<Surface> s(new Surface(*this, std::move(window)));
     surface_registry_.insert(s.get());
+    surface_by_id_[s->id()] = s.get();
     return s;
 }
 
@@ -693,6 +694,43 @@ Runtime::create_tray(Surface& owner, bool own_selection) {
 
 void Runtime::unregister_surface(Surface* s) {
     surface_registry_.erase(s);
+    if (s)
+        surface_by_id_.erase(s->id());
+}
+
+void Runtime::emit(event::ExposeWindow ev) {
+    auto it = surface_by_id_.find(ev.window);
+    if (it != surface_by_id_.end()) {
+        event::ExposeSurface surface_ev{ it->second };
+        for (auto& m : modules)
+            m->on(surface_ev);
+        lua_host_.on(surface_ev);
+        return;
+    }
+    for (auto& m : modules)
+        m->on(ev);
+    lua_host_.on(ev);
+}
+
+void Runtime::emit(event::ButtonEv ev) {
+    auto it = surface_by_id_.find(ev.window);
+    if (it != surface_by_id_.end()) {
+        event::SurfaceButton surface_ev{
+            .surface   = it->second,
+            .event_pos = ev.event_pos,
+            .time      = ev.time,
+            .button    = ev.button,
+            .state     = ev.state,
+            .release   = ev.release,
+        };
+        for (auto& m : modules)
+            m->on(surface_ev);
+        lua_host_.on(surface_ev);
+        return;
+    }
+    for (auto& m : modules)
+        m->on(ev);
+    lua_host_.on(ev);
 }
 
 void Runtime::tick() {

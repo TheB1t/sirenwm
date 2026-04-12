@@ -129,8 +129,8 @@ void BarModule::rebalance_tray_icons() {
         route_icon_to_monitor(icon_win, target);
 }
 
-int BarModule::tag_at(WindowId bar_window, int click_x) const {
-    auto it = tag_hits.find(bar_window);
+int BarModule::tag_at(const Surface* surface, int click_x) const {
+    auto it = tag_hits.find(const_cast<Surface*>(surface));
     if (it == tag_hits.end()) return -1;
     for (const auto& h : it->second)
         if (click_x >= h.x0 && click_x < h.x1)
@@ -275,7 +275,7 @@ void BarModule::redraw() {
 
         paint.present();
         if (!hits.empty())
-            tag_hits.emplace(b.surface->id(), std::move(hits));
+            tag_hits.emplace(b.surface.get(), std::move(hits));
         if (bar_tray)
             tray_widget.reposition(bar_tray, *b.surface);
     }
