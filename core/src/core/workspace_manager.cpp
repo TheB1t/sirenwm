@@ -164,6 +164,7 @@ void Workspace::focus_next() {
 void Workspace::focus_prev() {
     int  n = (int)windows.size();
     if (n == 0) return;
+    int  base = (current >= 0 && current < n) ? current : 0;
     bool any_visible = false;
     for (auto& w : windows)
         if (w && w->is_visible()) {
@@ -171,7 +172,7 @@ void Workspace::focus_prev() {
             break;
         }
     for (int i = 1; i <= n; i++) {
-        int idx = (current - i + n) % n;
+        int idx = (base - i + n) % n;
         if (!windows[idx])
             continue;
         if (any_visible && !windows[idx]->is_visible())
@@ -181,7 +182,7 @@ void Workspace::focus_prev() {
         }
     }
     for (int i = 1; i <= n; i++) {
-        int idx = (current - i + n) % n;
+        int idx = (base - i + n) % n;
         if (!windows[idx])
             continue;
         if (any_visible && !windows[idx]->is_visible())
