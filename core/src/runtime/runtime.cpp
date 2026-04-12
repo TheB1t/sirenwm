@@ -2,7 +2,11 @@
 
 #include <backend/backend.hpp>
 #include <backend/commands.hpp>
+#include <backend/render_port.hpp>
+#include <backend/tray_host.hpp>
+#include <backend/tray_host_port.hpp>
 #include <config_loader.hpp>
+#include <surface.hpp>
 #include <core.hpp>
 #include <module_registry.hpp>
 #include <monitor_layout.hpp>
@@ -473,6 +477,9 @@ void Runtime::stop(bool is_exec_restart) {
         backend_->shutdown();
     for (auto it = modules.rbegin(); it != modules.rend(); ++it)
         (*it)->on_stop(is_exec_restart);
+    if (!surface_registry_.empty())
+        LOG_WARN("Runtime::stop: %zu Surface(s) still alive at shutdown",
+            surface_registry_.size());
     teardown_sigchld_pipe();
     core_.mark_runtime_started(false);
 }
@@ -634,6 +641,58 @@ void Runtime::prepare_exec_restart() {
         std::abort();
     }
     backend_->prepare_exec_restart();
+}
+
+// ---------------------------------------------------------------------------
+// Surface & tray factories
+// ---------------------------------------------------------------------------
+
+std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) {
+    if (!backend_) {
+        LOG_ERR("Runtime::create_surface() called before backend is bound");
+        return nullptr;
+    }
+
+    backend::RenderWindowCreateInfo rw{};
+    rw.monitor_index           = info.monitor_index;
+    rw.pos                     = info.pos;
+    rw.size                    = info.size;
+    rw.background_pixel        = ports().render.black_pixel();
+    rw.want_expose             = info.want_expose;
+    rw.want_button_press       = info.want_button_press;
+    rw.want_button_release     = info.want_button_release;
+    rw.hints.override_redirect = true;
+    rw.hints.dock              = info.dock;
+    rw.hints.keep_above        = info.keep_above;
+
+    auto window = ports().render.create_window(rw);
+    if (!window)
+        return nullptr;
+
+    std::unique_ptr<Surface> s(new Surface(*this, std::move(window)));
+    surface_registry_.insert(s.get());
+    return s;
+}
+
+std::unique_ptr<backend::TrayHost>
+Runtime::create_tray(Surface& owner, bool own_selection) {
+    if (!backend_) {
+        LOG_ERR("Runtime::create_tray() called before backend is bound");
+        return nullptr;
+    }
+    auto* port = ports().tray_host;
+    if (!port)
+        return nullptr;
+
+    auto* bw = owner.backend_window();
+    if (!bw)
+        return nullptr;
+
+    return port->create(bw->id(), bw->x(), bw->y(), bw->height(), own_selection);
+}
+
+void Runtime::unregister_surface(Surface* s) {
+    surface_registry_.erase(s);
 }
 
 void Runtime::tick() {

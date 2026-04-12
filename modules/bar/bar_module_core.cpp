@@ -3,12 +3,12 @@
 #include <bar/bar_state.hpp>
 #include <backend/backend.hpp>
 #include <backend/events.hpp>
-#include <backend/tray_host_port.hpp>
 #include <core.hpp>
 #include <log.hpp>
 #include <protocol/keyboard.hpp>
 #include <protocol/system_tray.hpp>
 #include <runtime.hpp>
+#include <surface.hpp>
 #include <algorithm>
 #include <unordered_set>
 #include <cstdlib>
@@ -359,41 +359,38 @@ std::string BarModule::monitor_alias(int mon_idx) const {
     return mon_name; // fallback: use output name directly
 }
 
-std::vector<backend::RenderWindow*> BarModule::top_bar_windows() const {
-    std::vector<backend::RenderWindow*> out;
+std::vector<Surface*> BarModule::top_bar_surfaces() const {
+    std::vector<Surface*> out;
     for (const auto& b : all_bars_)
-        if (b.is_top) out.push_back(b.window.get());
+        if (b.is_top) out.push_back(b.surface.get());
     return out;
 }
 
-std::vector<backend::RenderWindow*> BarModule::bottom_bar_windows() const {
-    std::vector<backend::RenderWindow*> out;
+std::vector<Surface*> BarModule::bottom_bar_surfaces() const {
+    std::vector<Surface*> out;
     for (const auto& b : all_bars_)
-        if (!b.is_top) out.push_back(b.window.get());
+        if (!b.is_top) out.push_back(b.surface.get());
     return out;
 }
 
 void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top) {
-    auto&                           rp = *render_port_;
-    backend::RenderWindowCreateInfo info;
-    info.monitor_index           = m.idx;
-    info.pos                     = m.pos;
-    info.size                    = { m.size.x(), cfg.height };
-    info.background_pixel        = rp.black_pixel();
-    info.want_expose             = true;
-    info.want_button_press       = true;
-    info.want_button_release     = true;
-    info.hints.override_redirect = true;
-    info.hints.dock              = true;
-    info.hints.keep_above        = true;
+    SurfaceCreateInfo info;
+    info.monitor_index       = m.idx;
+    info.pos                 = m.pos;
+    info.size                = { m.size.x(), cfg.height };
+    info.want_expose         = true;
+    info.want_button_press   = true;
+    info.want_button_release = true;
+    info.dock                = true;
+    info.keep_above          = true;
 
-    auto win = rp.create_window(info);
-    if (!win) return;
+    auto s = runtime().create_surface(info);
+    if (!s) return;
 
     BarWindow bw;
-    bw.cfg    = cfg;
-    bw.is_top = is_top;
-    bw.window = std::move(win);
+    bw.cfg     = cfg;
+    bw.is_top  = is_top;
+    bw.surface = std::move(s);
     all_bars_.push_back(std::move(bw));
 }
 
@@ -534,15 +531,15 @@ static void apply_theme_to_monitor_cfg(MonitorBarConfig& mcfg, const ThemeConfig
 
 void BarModule::on(event::ExposeWindow ev) {
     for (auto& b : all_bars_)
-        if (b.window && b.window->id() == ev.window) {
+        if (b.surface && b.surface->id() == ev.window) {
             redraw();
             return;
         }
 }
 
 void BarModule::on(event::WindowUnmapped ev) {
-    for (auto& slot : trays)
-        if (slot.tray && slot.tray->handle_unmap_notify(ev.window))
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->handle_unmap_notify(ev.window))
             break;
     redraw();
 }
@@ -554,8 +551,8 @@ bool BarModule::on(event::ClientMessageEv ev) {
 
     if (ev.data[1] == 0) {
         WindowId icon_win = ev.data[2];
-        for (const auto& slot : trays)
-            if (slot.tray && slot.tray->contains_icon(icon_win))
+        for (const auto& b : all_bars_)
+            if (b.tray && b.tray->contains_icon(icon_win))
                 return true;
     }
 
@@ -567,44 +564,44 @@ bool BarModule::on(event::ClientMessageEv ev) {
 }
 
 void BarModule::on(event::DestroyNotify ev) {
-    for (auto& slot : trays)
-        if (slot.tray && slot.tray->handle_destroy_notify(ev.window))
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->handle_destroy_notify(ev.window))
             break;
     redraw();
 }
 
 void BarModule::on(event::ConfigureNotify ev) {
-    for (auto& slot : trays)
-        if (slot.tray && slot.tray->handle_configure_notify(ev.window))
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->handle_configure_notify(ev.window))
             break;
     redraw();
 }
 
 void BarModule::on(event::PropertyNotify ev) {
-    for (auto& slot : trays)
-        if (slot.tray && slot.tray->handle_property_notify(ev.window, ev.atom))
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->handle_property_notify(ev.window, ev.atom))
             break;
     redraw();
 }
 
 void BarModule::on(event::ButtonEv ev) {
     if (ev.release) {
-        for (auto& slot : trays)
-            if (slot.tray && slot.tray->handle_button_event(ev))
+        for (auto& b : all_bars_)
+            if (b.tray && b.tray->handle_button_event(ev))
                 return;
         return;
     }
 
-    for (auto& slot : trays)
-        if (slot.tray && slot.tray->handle_button_event(ev))
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->handle_button_event(ev))
             return;
 
     for (auto& b : all_bars_) {
-        if (!b.is_top || !b.window || b.window->id() != ev.window)
+        if (!b.is_top || !b.surface || b.surface->id() != ev.window)
             continue;
         int ws = tag_at(ev.window, ev.event_pos.x());
         if (ws >= 0) {
-            (void)core().dispatch(command::atom::SwitchWorkspace{ ws, b.window->monitor_index() });
+            (void)core().dispatch(command::atom::SwitchWorkspace{ ws, b.surface->monitor_index() });
             redraw();
         }
         return;
@@ -628,77 +625,44 @@ void BarModule::on_reload() {
 }
 
 void BarModule::rebuild_trays() {
-    auto top_wins = top_bar_windows();
-    if (top_wins.empty())
-        return;
-
-    int owner_mon = -1;
-    for (auto& slot : trays) {
-        if (slot.tray && slot.tray->owns_selection()) {
-            owner_mon = slot.mon_idx;
+    // Tray ownership is rebuilt fresh — rebuild_bars() destroyed all previous
+    // surfaces (and therefore all previous trays attached to them). Choose one
+    // top bar to own the _NET_SYSTEM_TRAY_S selection: prefer focused monitor,
+    // fall back to the first top bar.
+    int focused_mon = core().focused_monitor_index();
+    int owner_mon   = -1;
+    for (auto& b : all_bars_) {
+        if (!b.is_top || !b.surface) continue;
+        if (b.surface->monitor_index() == focused_mon) {
+            owner_mon = focused_mon;
             break;
         }
     }
     if (owner_mon < 0) {
-        int focused_mon = core().focused_monitor_index();
-        for (auto* w : top_wins) {
-            if (w && w->monitor_index() == focused_mon) {
-                owner_mon = focused_mon;
+        for (auto& b : all_bars_)
+            if (b.is_top && b.surface) {
+                owner_mon = b.surface->monitor_index();
                 break;
             }
-        }
-        if (owner_mon < 0 && !top_wins.empty())
-            owner_mon = top_wins.front()->monitor_index();
     }
 
-    std::unordered_set<int> bar_mons;
-    for (auto* w : top_wins)
-        if (w) bar_mons.insert(w->monitor_index());
+    int created = 0;
+    for (auto& b : all_bars_) {
+        if (!b.is_top || !b.surface) continue;
+        int  mon_idx       = b.surface->monitor_index();
+        bool own_selection = (mon_idx == owner_mon);
 
-    trays.erase(std::remove_if(trays.begin(), trays.end(),
-        [&](const TraySlot& s) {
-            return bar_mons.find(s.mon_idx) == bar_mons.end();
-        }),
-        trays.end());
-
-    for (auto* w : top_wins) {
-        if (!w) continue;
-        int                mon_idx = w->monitor_index();
-
-        backend::TrayHost* existing = tray_for_monitor(mon_idx);
-        if (existing) {
-            existing->attach_to_bar(w->id(), w->x(), w->y(), w->width());
-            continue;
-        }
-
-        // Find height for this monitor's top bar.
-        int bar_h = 18;
-        for (const auto& b : all_bars_)
-            if (b.is_top && b.window && b.window->monitor_index() == mon_idx) {
-                bar_h = b.cfg.height;
-                break;
-            }
-
-        bool own_selection = (mon_idx == owner_mon) && !owner_tray();
-        auto* tray_port    = runtime().ports().tray_host;
-        if (!tray_port) {
-            LOG_WARN("Bar: backend has no TrayHostPort, skipping tray for monitor %d", mon_idx);
-            continue;
-        }
-        auto tray = tray_port->create(
-            w->id(), w->x(), w->y(), bar_h, own_selection);
+        auto tray = runtime().create_tray(*b.surface, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
             LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx);
             continue;
         }
         LOG_INFO("Bar: tray 0x%x created for monitor %d (owner=%d)",
             tray->window(), mon_idx, own_selection ? 1 : 0);
-        TraySlot slot;
-        slot.mon_idx = mon_idx;
-        slot.tray    = std::move(tray);
-        trays.push_back(std::move(slot));
+        b.tray = std::move(tray);
+        created++;
     }
-    LOG_INFO("Bar: rebuild_trays done, %d tray(s), owner_mon=%d", (int)trays.size(), owner_mon);
+    LOG_INFO("Bar: rebuild_trays done, %d tray(s), owner_mon=%d", created, owner_mon);
 }
 
 void BarModule::on(const event::CustomEvent& ev) {
@@ -727,8 +691,6 @@ void BarModule::on(event::DisplayTopologyChanged) {
 }
 
 void BarModule::on_start() {
-    render_port_ = &runtime().ports().render;
-
     bar_set_cfg_ = bar_set_setting_.get();
 
     const ThemeConfig& th = core().current_settings().theme;

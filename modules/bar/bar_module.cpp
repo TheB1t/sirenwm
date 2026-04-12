@@ -13,39 +13,39 @@
 #include <unistd.h>
 
 backend::TrayHost* BarModule::tray_for_monitor(int mon_idx) {
-    for (auto& slot : trays)
-        if (slot.mon_idx == mon_idx)
-            return slot.tray.get();
+    for (auto& b : all_bars_)
+        if (b.is_top && b.tray && b.surface && b.surface->monitor_index() == mon_idx)
+            return b.tray.get();
     return nullptr;
 }
 
 const backend::TrayHost* BarModule::tray_for_monitor(int mon_idx) const {
-    for (const auto& slot : trays)
-        if (slot.mon_idx == mon_idx)
-            return slot.tray.get();
+    for (const auto& b : all_bars_)
+        if (b.is_top && b.tray && b.surface && b.surface->monitor_index() == mon_idx)
+            return b.tray.get();
     return nullptr;
 }
 
 backend::TrayHost* BarModule::owner_tray() {
-    for (auto& slot : trays)
-        if (slot.tray && slot.tray->owns_selection())
-            return slot.tray.get();
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->owns_selection())
+            return b.tray.get();
     return nullptr;
 }
 
 int BarModule::monitor_for_icon(WindowId icon_win) const {
     int         fallback = -1;
     std::string icon_class;
-    for (const auto& slot : trays) {
-        if (slot.tray && slot.tray->contains_icon(icon_win)) {
-            icon_class = slot.tray->icon_wm_class(icon_win);
-            fallback   = slot.mon_idx;
+    for (const auto& b : all_bars_) {
+        if (b.tray && b.surface && b.tray->contains_icon(icon_win)) {
+            icon_class = b.tray->icon_wm_class(icon_win);
+            fallback   = b.surface->monitor_index();
             break;
         }
     }
-    auto top_wins = top_bar_windows();
+    auto top_surfaces = top_bar_surfaces();
     if (fallback < 0)
-        fallback = top_wins.empty() ? 0 : top_wins.front()->monitor_index();
+        fallback = top_surfaces.empty() ? 0 : top_surfaces.front()->monitor_index();
 
     if (icon_class.empty())
         return fallback;
@@ -96,9 +96,9 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
 
 void BarModule::route_icon_to_monitor(WindowId icon_win, int target_mon) {
     backend::TrayHost* src = nullptr;
-    for (auto& slot : trays) {
-        if (slot.tray && slot.tray->contains_icon(icon_win)) {
-            src = slot.tray.get();
+    for (auto& b : all_bars_) {
+        if (b.tray && b.tray->contains_icon(icon_win)) {
+            src = b.tray.get();
             break;
         }
     }
@@ -112,13 +112,16 @@ void BarModule::route_icon_to_monitor(WindowId icon_win, int target_mon) {
 }
 
 void BarModule::rebalance_tray_icons() {
-    if (trays.empty()) return;
+    bool any_tray = false;
+    for (const auto& b : all_bars_) if (b.tray) { any_tray = true; break; }
+    if (!any_tray) return;
     std::vector<std::pair<WindowId, int>> to_route;
-    for (auto& slot : trays) {
-        if (!slot.tray) continue;
-        for (auto icon_win : slot.tray->icon_windows()) {
+    for (auto& b : all_bars_) {
+        if (!b.tray || !b.surface) continue;
+        int mon_idx = b.surface->monitor_index();
+        for (auto icon_win : b.tray->icon_windows()) {
             int target = monitor_for_icon(icon_win);
-            if (target != slot.mon_idx)
+            if (target != mon_idx)
                 to_route.emplace_back(icon_win, target);
         }
     }
@@ -246,14 +249,14 @@ void BarModule::redraw() {
 
     tag_hits.clear();
     for (auto& b : all_bars_) {
-        if (!b.window) continue;
+        if (!b.surface) continue;
         const BarConfig&   cfg      = b.cfg;
         bool               tray_in  = has_tray_slot(cfg);
         backend::TrayHost* bar_tray = tray_in
-            ? tray_for_monitor(b.window->monitor_index()) : nullptr;
+            ? tray_for_monitor(b.surface->monitor_index()) : nullptr;
 
-        BarState                   state = state_provider(b.window->monitor_index());
-        bar::widgets::PaintContext paint(*b.window, cfg.font);
+        BarState                   state = state_provider(b.surface->monitor_index());
+        bar::widgets::PaintContext paint(*b.surface, cfg.font);
         paint.clear(cfg.colors.bar_bg);
 
         int                               left_cursor = 0;
@@ -272,26 +275,26 @@ void BarModule::redraw() {
 
         paint.present();
         if (!hits.empty())
-            tag_hits.emplace(b.window->id(), std::move(hits));
+            tag_hits.emplace(b.surface->id(), std::move(hits));
         if (bar_tray)
-            tray_widget.reposition(bar_tray, *b.window);
+            tray_widget.reposition(bar_tray, *b.surface);
     }
 }
 
 void BarModule::raise_all() {
     for (auto& b : all_bars_) {
-        if (!b.window) continue;
-        int                mon_idx = b.window->monitor_index();
+        if (!b.surface) continue;
+        int                mon_idx = b.surface->monitor_index();
         backend::TrayHost* t       = b.is_top ? tray_for_monitor(mon_idx) : nullptr;
 
         if (core().monitor_has_visible_fullscreen(mon_idx) ||
             core().monitor_has_visible_borderless(mon_idx)) {
-            b.window->lower();
-            if (t) t->raise(b.window->id());
+            b.surface->lower();
+            if (t) t->raise();
             continue;
         }
-        b.window->raise();
-        if (t) t->raise(b.window->id());
+        b.surface->raise();
+        if (t) t->raise();
     }
 }
 
@@ -313,10 +316,8 @@ void BarModule::stop_runtime() {
     if (timer_fd >= 0) {
         close(timer_fd);        timer_fd = -1;
     }
-    trays.clear();
     tag_hits.clear();
     all_bars_.clear();
-    render_port_ = nullptr;
 }
 
 SIRENWM_REGISTER_MODULE("bar", BarModule)

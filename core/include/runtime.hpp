@@ -17,8 +17,15 @@
 #include <lua_host.hpp>
 #include <module.hpp>
 #include <runtime_store.hpp>
+#include <surface.hpp>
 
 #include <runtime_state.hpp>
+
+#include <unordered_set>
+
+namespace backend {
+class TrayHost;
+} // namespace backend
 
 class Backend;
 class ModuleRegistry;
@@ -183,7 +190,20 @@ class Runtime : public IEventEmitter {
         // Bind a concrete backend. Called by RuntimeOf<B> constructor and test harnesses.
         void bind_backend(Backend& b) { backend_ = &b; }
 
+        // Module-facing UI resource factories.
+        // Surface owns its backend window; destroying the Surface unregisters
+        // and releases the window. create_tray wires an X11 TrayHost against
+        // a previously-created Surface — returns nullptr on backends without
+        // TrayHostPort (e.g. Wayland).
+        std::unique_ptr<Surface>           create_surface(const SurfaceCreateInfo& info);
+        std::unique_ptr<backend::TrayHost> create_tray(Surface& owner, bool own_selection);
+
     private:
+        friend class Surface;
+        void unregister_surface(Surface* s);
+
+        std::unordered_set<Surface*> surface_registry_;
+
         Backend&       backend();
         const Backend& backend() const;
 
