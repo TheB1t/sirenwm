@@ -54,16 +54,6 @@ struct WindowState {
     Vec2i    size_;
     uint32_t border_width = 0;
 
-    // Scalar accessors (backward compat)
-    int&       x()             { return pos_.x(); }
-    int        x()       const { return pos_.x(); }
-    int&       y()             { return pos_.y(); }
-    int        y()       const { return pos_.y(); }
-    int&       width()         { return size_.x(); }
-    int        width()   const { return size_.x(); }
-    int&       height()        { return size_.y(); }
-    int        height()  const { return size_.y(); }
-
     // Vec2 accessors
     Vec2i&       pos()        { return pos_; }
     const Vec2i& pos()  const { return pos_; }

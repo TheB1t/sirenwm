@@ -28,10 +28,10 @@ inline void tile(const std::vector<WindowId>& windows, const Monitor& mon, const
 
     int b  = cfg.border;
     int g  = cfg.gap;
-    int mx = mon.x() + g;
-    int my = mon.y() + g;
-    int mw = mon.width()  - g * 2;
-    int mh = mon.height() - g * 2;
+    int mx = mon.pos().x() + g;
+    int my = mon.pos().y() + g;
+    int mw = mon.size().x() - g * 2;
+    int mh = mon.size().y() - g * 2;
 
     int nm = std::min(cfg.nmaster, n);      // actual master count
 
@@ -81,8 +81,8 @@ inline void monocle(const std::vector<WindowId>& windows, const Monitor& mon, co
     int b = cfg.border;
     for (auto w : windows)
         place(w,
-            { mon.x() + b, mon.y() + b },
-            { std::max(1, mon.width() - b * 2), std::max(1, mon.height() - b * 2) },
+            { mon.pos().x() + b, mon.pos().y() + b },
+            { std::max(1, mon.size().x() - b * 2), std::max(1, mon.size().y() - b * 2) },
             (uint32_t)std::max(0, b));
 }
 

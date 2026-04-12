@@ -127,16 +127,16 @@ void X11Backend::on(event::WindowAssignedToWorkspace ev) {
             const auto& mon = mons[(size_t)mon_idx];
             // Skip centering if the window already sits within the target monitor
             // (e.g. exec-restart: geometry was seeded from X at startup).
-            bool already_on_mon = w->width() > 0 && w->height() > 0 &&
+            bool already_on_mon = w->size().x() > 0 && w->size().y() > 0 &&
                 mon.contains(w->pos());
             if (!already_on_mon) {
                 int nx, ny;
-                if (w->width() >= mon.width() || w->height() >= mon.height()) {
-                    nx = mon.x();
-                    ny = mon.y();
+                if (w->size().x() >= mon.size().x() || w->size().y() >= mon.size().y()) {
+                    nx = mon.pos().x();
+                    ny = mon.pos().y();
                 } else {
-                    nx = mon.x() + (mon.width()  - w->width())  / 2;
-                    ny = mon.y() + (mon.height() - w->height()) / 2;
+                    nx = mon.pos().x() + (mon.size().x() - w->size().x()) / 2;
+                    ny = mon.pos().y() + (mon.size().y() - w->size().y()) / 2;
                 }
                 (void)core.dispatch(command::atom::SetWindowGeometry{
                     ev.window, { nx, ny }, w->size() });

@@ -328,8 +328,11 @@ void X11Backend::ewmh_on_window_mapped(event::WindowMapped ev) {
 
     // ICCCM §4.1.3: set WM_STATE to NormalState when managing a visible window.
     // Windows mapped onto an invisible workspace stay in IconicState.
-    if (!core.is_window_hidden_by_workspace(ev.window))
-        xw->set_wm_state_normal();
+    {
+        auto ws = core.window_state_any(ev.window);
+        if (ws && !ws->hidden_by_workspace)
+            xw->set_wm_state_normal();
+    }
     // _NET_WM_DESKTOP: expose workspace index to panels and pagers.
     {
         int ws = core.workspace_of_window(ev.window);
@@ -427,10 +430,10 @@ void X11Backend::ewmh_on_workspace_switched(event::WorkspaceSwitched ev) {
     for (const auto& w : ws->windows) {
         if (!w) continue;
         auto win = w->id;
-        if (core.is_window_hidden_by_workspace(win)) continue;
+        if (w->hidden_by_workspace) continue;
         if (w->is_self_managed()) continue;                   // client owns geometry: skip fullscreen pin
         if (w->borderless && !w->self_managed) continue;     // WM-pinned borderless: fullscreen would lower bars/tray
-        if (!core.is_window_fullscreen(win) && ewmh_has_fullscreen_state(win))
+        if (!w->fullscreen && ewmh_has_fullscreen_state(win))
             ewmh_apply_fullscreen(win, true);
     }
 }
@@ -457,7 +460,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         uint32_t action = ev.data[0];  // 0=remove, 1=add, 2=toggle
         if (action == 0) enable = false;
         else if (action == 1) enable = true;
-        else if (action == 2) enable = !core.is_window_fullscreen(ev.window);
+        else if (action == 2) enable = !window->fullscreen;
         else return true;
 
         LOG_DEBUG("ClientMessage(%d): _NET_WM_STATE fullscreen action=%u enable=%d",

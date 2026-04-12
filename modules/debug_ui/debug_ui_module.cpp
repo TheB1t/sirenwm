@@ -104,7 +104,7 @@ class DebugUIModule : public Module {
         std::unique_ptr<backend::GLWindow> gl_window_;
         bool                               imgui_initialized_ = false;
         bool                               pending_close_     = false;
-        Runtime::WatchedFdHandle           timer_;
+        EventLoop::FdHandle                timer_;
         Clock::time_point start_time_;
         float last_frame_time_ = 0.0f;
 
@@ -362,7 +362,7 @@ void DebugUIModule::start_timer() {
     ts.it_interval = { 0, 50'000'000 };  // 50ms
     ts.it_value    = { 0, 50'000'000 };
     timerfd_settime(tfd, 0, &ts, nullptr);
-    timer_ = Runtime::WatchedFdHandle(runtime(), tfd, [this, tfd]() {
+    timer_ = EventLoop::FdHandle(runtime().event_loop(), tfd, [this, tfd]() {
             uint64_t expirations = 0;
             (void)read(tfd, &expirations, sizeof(expirations));
             tick();
@@ -399,7 +399,7 @@ void DebugUIModule::panel_monitors() {
             ImGui::TableNextRow();
             ImGui::TableNextColumn(); ImGui::Text("%d", m.id);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(m.name.c_str());
-            ImGui::TableNextColumn(); ImGui::Text("%d,%d %dx%d", m.x(), m.y(), m.width(), m.height());
+            ImGui::TableNextColumn(); ImGui::Text("%d,%d %dx%d", m.pos().x(), m.pos().y(), m.size().x(), m.size().y());
             ImGui::TableNextColumn(); ImGui::Text("%d", m.active_ws);
             ImGui::TableNextColumn();
             if (i == focused_mon)
@@ -482,7 +482,7 @@ void DebugUIModule::panel_windows() {
             ImGui::TableNextColumn(); ImGui::Text("0x%x", wid);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(ws->wm_class.c_str());
             ImGui::TableNextColumn(); ImGui::Text("%d", core().workspace_of_window(wid));
-            ImGui::TableNextColumn(); ImGui::Text("%d,%d %ux%u", ws->x(), ws->y(), ws->width(), ws->height());
+            ImGui::TableNextColumn(); ImGui::Text("%d,%d %dx%d", ws->pos().x(), ws->pos().y(), ws->size().x(), ws->size().y());
             ImGui::TableNextColumn();
             if (ws->is_visible())
                 ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "yes");
@@ -524,8 +524,8 @@ void DebugUIModule::panel_focus() {
     if (fw) {
         ImGui::Text("Class:      %s", fw->wm_class.c_str());
         ImGui::Text("Instance:   %s", fw->wm_instance.c_str());
-        ImGui::Text("Geometry:   %d,%d %ux%u  border=%u",
-            fw->x(), fw->y(), fw->width(), fw->height(), fw->border_width);
+        ImGui::Text("Geometry:   %d,%d %dx%d  border=%u",
+            fw->pos().x(), fw->pos().y(), fw->size().x(), fw->size().y(), fw->border_width);
         ImGui::Text("Floating:   %s", fw->floating ? "yes" : "no");
         ImGui::Text("Fullscreen: %s", fw->fullscreen ? "yes" : "no");
         ImGui::Text("Borderless: %s", fw->borderless ? "yes" : "no");

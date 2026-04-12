@@ -352,7 +352,7 @@ class Core {
             return false;
         }
 
-        bool monitor_has_visible_fullscreen(int mon_idx) const {
+        bool monitor_has_visible_covering_window(int mon_idx) const {
             auto mon = monitor_state(mon_idx);
             if (!mon)
                 return false;
@@ -362,54 +362,14 @@ class Core {
                 return false;
 
             for (auto& w : ws->windows) {
-                if (!w)
+                if (!w || !w->is_visible())
                     continue;
-                if (w->fullscreen && w->is_visible())
-                    return true;
-                // Self-managed fullscreen: client owns geometry, fullscreen flag stays false.
-                if (w->self_managed && w->borderless && w->is_visible())
+                if (w->fullscreen || w->borderless)
                     return true;
             }
             return false;
         }
 
-        bool monitor_has_visible_borderless(int mon_idx) const {
-            auto mon = monitor_state(mon_idx);
-            if (!mon)
-                return false;
-
-            auto ws = workspace_state(mon->active_ws);
-            if (!ws)
-                return false;
-
-            for (auto& w : ws->windows) {
-                if (!w)
-                    continue;
-                if (w->borderless && w->is_visible())
-                    return true;
-            }
-            return false;
-        }
-
-        bool is_window_fullscreen(WindowId win) const {
-            auto w = wsman.find_window_in_all(win);
-            return w && w->fullscreen;
-        }
-
-        bool is_window_visible(WindowId win) const {
-            auto w = wsman.find_window_in_all(win);
-            return w && w->is_visible();
-        }
-
-        bool is_window_hidden_by_workspace(WindowId win) const {
-            auto w = wsman.find_window_in_all(win);
-            return w && w->hidden_by_workspace;
-        }
-
-        bool is_window_floating(WindowId win) const {
-            auto w = wsman.find_window_in_all(win);
-            return w && w->floating;
-        }
 
         bool consume_window_suppress_focus_once(WindowId win);
 

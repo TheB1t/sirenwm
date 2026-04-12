@@ -638,7 +638,7 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     drag.start_win_size = window->size();
     drag.op             = (builtin == MouseAction::Move) ? DragOp::Move : DragOp::Resize;
 
-    if (!core().is_window_floating(ev.window)) {
+    if (!window->floating) {
         (void)core().dispatch(command::atom::SetWindowFloating{ ev.window, true });
         (void)core().dispatch(command::atom::ReconcileNow{});
     }
@@ -685,8 +685,8 @@ void KeybindingsModule::on(event::MotionEv ev) {
     if (!window)
         return;
     static constexpr int MIN_WIN_SIZE = 32;
-    int                  nw           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.x() - window->x());
-    int                  nh           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.y() - window->y());
+    int                  nw           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.x() - window->pos().x());
+    int                  nh           = std::max(MIN_WIN_SIZE, (int)ev.root_pos.y() - window->pos().y());
     (void)core().dispatch(command::atom::SetWindowSize{ drag.window, { nw, nh } });
 }
 

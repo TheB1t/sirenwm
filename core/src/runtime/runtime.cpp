@@ -531,7 +531,7 @@ void Runtime::apply_and_refresh_monitors() {
     auto monitors = mp.get_monitors();
     LOG_INFO("monitors: found %d monitor(s):", (int)monitors.size());
     for (auto& m : monitors)
-        LOG_INFO("  %s: %dx%d+%d+%d", m.name.c_str(), m.width(), m.height(), m.x(), m.y());
+        LOG_INFO("  %s: %dx%d+%d+%d", m.name.c_str(), m.size().x(), m.size().y(), m.pos().x(), m.pos().y());
 
     (void)core_.dispatch(command::atom::ApplyMonitorTopology{ std::move(monitors) });
 }
@@ -565,7 +565,7 @@ void Runtime::setup_sigchld_pipe() {
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     sigaction(SIGCHLD, &sa, nullptr);
 
-    watch_fd(sigchld_pipe_rd_, [this]() {
+    event_loop_.watch(sigchld_pipe_rd_, [this]() {
             reap_children();
         });
 }
@@ -598,31 +598,6 @@ void Runtime::reap_children() {
     }
 }
 
-void Runtime::watch_fd(int fd, std::function<void()> cb) {
-    watched_fds.push_back({ fd, std::move(cb) });
-    if (epoll_fd_ >= 0) {
-        struct epoll_event ev = {};
-        ev.events  = EPOLLIN;
-        ev.data.fd = fd;
-        epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev);
-    }
-}
-
-void Runtime::unwatch_fd(int fd) {
-    if (epoll_fd_ >= 0)
-        epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr);
-    std::erase_if(watched_fds, [fd](const WatchedFd& w) { return w.fd == fd; });
-}
-
-void Runtime::dispatch_ready_fds(struct epoll_event* events, int count) {
-    for (int i = 0; i < count; ++i) {
-        int fd = events[i].data.fd;
-        for (auto& w : watched_fds)
-            if (w.fd == fd) {
-                w.cb(); break;
-            }
-    }
-}
 
 Backend& Runtime::backend() {
     if (!backend_) {
@@ -710,12 +685,8 @@ void Runtime::unregister_surface(Surface* s) {
 
 void Runtime::tick() {
     constexpr std::size_t kMaxBackendEventsPerTick = 2048;
-    constexpr int         kMaxEpollEvents          = 16;
 
-    struct epoll_event    ready[kMaxEpollEvents];
-    int                   n = epoll_wait(epoll_fd_, ready, kMaxEpollEvents, 100);
-
-    dispatch_ready_fds(ready, n);
+    event_loop_.poll(100);
     backend_->pump_events(kMaxBackendEventsPerTick);
 
     bool reloaded = process_pending_reload();
@@ -730,32 +701,14 @@ void Runtime::tick() {
 }
 
 void Runtime::run_loop() {
-    epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
-    if (epoll_fd_ < 0) {
-        LOG_ERR("epoll_create1 failed"); std::abort();
-    }
-
-    // Register backend fd.
-    {
-        struct epoll_event ev = {};
-        ev.events  = EPOLLIN;
-        ev.data.fd = backend_->event_fd();
-        epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, backend_->event_fd(), &ev);
-    }
-
-    // Register already-watched fds (sigchld pipe, module timers, etc.).
-    for (auto& w : watched_fds) {
-        struct epoll_event ev = {};
-        ev.events  = EPOLLIN;
-        ev.data.fd = w.fd;
-        epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, w.fd, &ev);
-    }
+    event_loop_.watch(backend_->event_fd(), []() {});
+    event_loop_.start();
 
     while (!stop_requested)
         tick();
 
-    close(epoll_fd_);
-    epoll_fd_ = -1;
+    event_loop_.stop();
+    event_loop_.unwatch(backend_->event_fd());
 
     LOG_INFO("Runtime: event loop stopped");
 }
@@ -846,11 +799,11 @@ void Runtime::save_restart_state() {
         // Skip self-managed borderless (Proton/Wine service windows) — recreated by the app.
         if (ws && ws->borderless && ws->self_managed)
             continue;
-        int fs = core_.is_window_fullscreen(id) ? 1 : 0;
+        int fs = (ws && ws->fullscreen) ? 1 : 0;
         int he = (ws && ws->hidden_explicitly) ? 1 : 0;
         int bl = (ws && ws->borderless) ? 1 : 0;
         out << "WINDOW " << id << " " << ws_id
-            << " " << (core_.is_window_floating(id) ? 1 : 0)
+            << " " << ((ws && ws->floating) ? 1 : 0)
             << " " << fs
             << " " << he
             << " " << bl

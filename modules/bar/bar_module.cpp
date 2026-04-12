@@ -287,8 +287,7 @@ void BarModule::raise_all() {
         int                mon_idx = b.surface->monitor_index();
         backend::TrayHost* t       = b.is_top ? tray_for_monitor(mon_idx) : nullptr;
 
-        if (core().monitor_has_visible_fullscreen(mon_idx) ||
-            core().monitor_has_visible_borderless(mon_idx)) {
+        if (core().monitor_has_visible_covering_window(mon_idx)) {
             b.surface->lower();
             if (t) t->raise();
             continue;

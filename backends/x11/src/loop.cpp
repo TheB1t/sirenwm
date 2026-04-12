@@ -27,19 +27,19 @@ void apply_window_flush(const WindowFlush& flush, X11Window& xw) {
 
     if (flush.dirty & WindowFlush::X) {
         mask       |= XCB_CONFIG_WINDOW_X;
-        values[n++] = static_cast<uint32_t>(xw.x());
+        values[n++] = static_cast<uint32_t>(xw.pos().x());
     }
     if (flush.dirty & WindowFlush::Y) {
         mask       |= XCB_CONFIG_WINDOW_Y;
-        values[n++] = static_cast<uint32_t>(xw.y());
+        values[n++] = static_cast<uint32_t>(xw.pos().y());
     }
     if (flush.dirty & WindowFlush::Width) {
         mask       |= XCB_CONFIG_WINDOW_WIDTH;
-        values[n++] = xw.width();
+        values[n++] = xw.size().x();
     }
     if (flush.dirty & WindowFlush::Height) {
         mask       |= XCB_CONFIG_WINDOW_HEIGHT;
-        values[n++] = xw.height();
+        values[n++] = xw.size().y();
     }
     if (flush.dirty & WindowFlush::BorderWidth) {
         mask       |= XCB_CONFIG_WINDOW_BORDER_WIDTH;

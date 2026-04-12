@@ -266,8 +266,8 @@ TEST(WindowLifecycle, SetWindowPositionUpdatesCoords) {
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
-    EXPECT_EQ(ws->x(), 42);
-    EXPECT_EQ(ws->y(), 100);
+    EXPECT_EQ(ws->pos().x(), 42);
+    EXPECT_EQ(ws->pos().y(), 100);
 }
 
 TEST(WindowLifecycle, SetWindowSizeUpdatesDimensions) {
@@ -279,8 +279,8 @@ TEST(WindowLifecycle, SetWindowSizeUpdatesDimensions) {
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
-    EXPECT_EQ(ws->width(),  800);
-    EXPECT_EQ(ws->height(), 600);
+    EXPECT_EQ(ws->size().x(),  800);
+    EXPECT_EQ(ws->size().y(), 600);
 }
 
 TEST(WindowLifecycle, SetWindowGeometrySetsAll) {
@@ -292,10 +292,10 @@ TEST(WindowLifecycle, SetWindowGeometrySetsAll) {
 
     auto ws = h.core.window_state_any(win);
     ASSERT_NE(ws, nullptr);
-    EXPECT_EQ(ws->x(),      10);
-    EXPECT_EQ(ws->y(),      20);
-    EXPECT_EQ(ws->width(),  320);
-    EXPECT_EQ(ws->height(), 240);
+    EXPECT_EQ(ws->pos().x(),      10);
+    EXPECT_EQ(ws->pos().y(),      20);
+    EXPECT_EQ(ws->size().x(),  320);
+    EXPECT_EQ(ws->size().y(), 240);
 }
 
 // ---------------------------------------------------------------------------
@@ -334,7 +334,7 @@ TEST(WindowLifecycle, FullscreenSetsFlag) {
     WindowId win = h.map_window(0xF000, 0);
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
 
-    EXPECT_TRUE(h.core.is_window_fullscreen(win));
+    EXPECT_TRUE(h.core.window_state_any(win)->fullscreen);
 }
 
 TEST(WindowLifecycle, FullscreenClearsFlagOnDisable) {
@@ -345,5 +345,5 @@ TEST(WindowLifecycle, FullscreenClearsFlagOnDisable) {
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, false });
 
-    EXPECT_FALSE(h.core.is_window_fullscreen(win));
+    EXPECT_FALSE(h.core.window_state_any(win)->fullscreen);
 }

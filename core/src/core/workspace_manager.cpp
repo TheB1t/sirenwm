@@ -688,21 +688,21 @@ void WorkspaceManager::adjust_monitor_inset(int mon_idx, MonitorEdge edge, int d
     auto& mon = monitors[mon_idx];
     switch (edge) {
         case MonitorEdge::Top:
-            mon.y()        += delta;
-            mon.height()    = std::max(0, mon.height() - delta);
+            mon.pos().y()  += delta;
+            mon.size().y()  = std::max(0, mon.size().y() - delta);
             mon.top_inset_ += delta;
             break;
         case MonitorEdge::Bottom:
-            mon.height()       = std::max(0, mon.height() - delta);
+            mon.size().y()     = std::max(0, mon.size().y() - delta);
             mon.bottom_inset_ += delta;
             break;
         case MonitorEdge::Left:
-            mon.x()         += delta;
-            mon.width()      = std::max(0, mon.width() - delta);
+            mon.pos().x()   += delta;
+            mon.size().x()   = std::max(0, mon.size().x() - delta);
             mon.left_inset_ += delta;
             break;
         case MonitorEdge::Right:
-            mon.width()       = std::max(0, mon.width() - delta);
+            mon.size().x()    = std::max(0, mon.size().x() - delta);
             mon.right_inset_ += delta;
             break;
     }
