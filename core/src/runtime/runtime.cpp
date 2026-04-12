@@ -678,9 +678,10 @@ Runtime::create_tray(Surface& owner, bool own_selection) {
 }
 
 void Runtime::unregister_surface(Surface* s) {
+    if (!s)
+        return;
     surface_registry_.erase(s);
-    if (s)
-        surface_by_id_.erase(s->id());
+    surface_by_id_.erase(s->id());
 }
 
 void Runtime::tick() {
