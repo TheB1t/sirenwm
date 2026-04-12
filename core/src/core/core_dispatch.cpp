@@ -115,7 +115,7 @@ void Core::sync_current_focus() {
 }
 
 void Core::emit_focus_changed(WindowId window) {
-    pending_core_events.push_back(event::FocusChanged{ window });
+    event_sink_->post_event(event::FocusChanged{ window });
     if (window != NO_WINDOW) {
         int ws_id = wsman.workspace_of_window(window);
         if (ws_id >= 0)
@@ -200,19 +200,19 @@ bool Core::focus_monitor_at_point(int x, int y) {
 }
 
 void Core::emit_workspace_switched(int workspace_id) {
-    pending_core_events.push_back(event::WorkspaceSwitched{ workspace_id });
+    event_sink_->post_event(event::WorkspaceSwitched{ workspace_id });
 }
 
 void Core::emit_raise_docks() {
-    pending_core_events.push_back(event::RaiseDocks{});
+    event_sink_->post_event(event::RaiseDocks{});
 }
 
 void Core::emit_display_topology_changed() {
-    pending_core_events.push_back(event::DisplayTopologyChanged{});
+    event_sink_->post_event(event::DisplayTopologyChanged{});
 }
 
 void Core::emit_window_assigned_to_workspace(WindowId window, int workspace_id) {
-    pending_core_events.push_back(event::WindowAssignedToWorkspace{ window, workspace_id });
+    event_sink_->post_event(event::WindowAssignedToWorkspace{ window, workspace_id });
 }
 
 void Core::init(std::vector<Monitor> initial_monitors) {

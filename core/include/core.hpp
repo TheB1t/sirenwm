@@ -13,6 +13,7 @@
 #include <backend/events.hpp>
 #include <backend/commands.hpp>
 #include <config_types.hpp>
+#include <event_queue.hpp>
 #include <log.hpp>
 #include <monitor.hpp>
 #include <layout.hpp>
@@ -46,13 +47,6 @@ struct CoreReloadState {
 using WindowRef         = std::shared_ptr<const swm::Window>;
 using WorkspaceStateRef = const WorkspaceState*;
 using MonitorStateRef   = const MonitorState*;
-using CoreDomainEvent   = std::variant<
-    event::FocusChanged,
-    event::WorkspaceSwitched,
-    event::RaiseDocks,
-    event::DisplayTopologyChanged,
-    event::WindowAssignedToWorkspace
->;
 
 enum class BackendEffectKind {
     MapWindow,
@@ -118,7 +112,7 @@ class Core {
         WorkspaceManager wsman;
         std::vector<BackendEffect> pending_backend_effects;
         std::unordered_map<WindowId, WindowFlush> pending_window_flushes;
-        std::vector<CoreDomainEvent> pending_core_events;
+        IEventSink* event_sink_ = &null_event_sink();
         CoreSettings settings;
 
         std::string config_path;
@@ -142,9 +136,9 @@ class Core {
     public:
         Core() = default;
 
-        // Schedule a FocusChanged event for delivery via drain_core_events.
-        // Use instead of a direct backend notify so the event is ordered after
-        // any older queued events — prevents stale focus from overwriting state.
+        // Post a FocusChanged event through the unified event queue. Use this
+        // instead of a direct backend call so the event is ordered after any
+        // older queued events — prevents stale focus from overwriting state.
         void emit_focus_changed(WindowId window);
 
         void register_layout(const std::string& name, LayoutFn fn) {
@@ -333,10 +327,13 @@ class Core {
             return out;
         }
 
-        std::vector<CoreDomainEvent> take_core_events() {
-            auto out = std::move(pending_core_events);
-            pending_core_events.clear();
-            return out;
+        // Install the sink Core pushes domain events to. Runtime wires this
+        // at start() and restores the null sink at stop(). Pre-init calls
+        // emit into the null sink and are silently dropped — this is
+        // intentional for the tiny window between construction and
+        // Runtime::start().
+        void set_event_sink(IEventSink* sink) {
+            event_sink_ = sink ? sink : &null_event_sink();
         }
 
         int workspace_of_window(WindowId win) const {

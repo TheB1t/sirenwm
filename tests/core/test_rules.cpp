@@ -2,6 +2,7 @@
 
 #include <backend/commands.hpp>
 #include <backend/events.hpp>
+#include <backend/hooks.hpp>
 #include <core.hpp>
 
 #include "test_harness.hpp"
@@ -25,28 +26,25 @@ static WindowId make_classified_window(TestHarness& h, WindowId id,
 }
 
 // ---------------------------------------------------------------------------
-// Tests — ApplyWindowRules event reaches Lua handlers
+// Tests — hook::WindowRules reaches Lua handlers
 // ---------------------------------------------------------------------------
 
-// Verify that emitting ApplyWindowRules fires sys.on("window_rules") handlers.
-TEST(Rules, WindowRulesEventFiredOnApply) {
+// Verify that invoking hook::WindowRules fires sys.on("window_rules") handlers.
+TEST(Rules, WindowRulesHookFiredOnApply) {
     TestHarness h;
     h.start();
 
-    int call_count = 0;
-    h.runtime.emit(event::ApplyWindowRules{ 0x1000, false });
-    // No crash = event routing works (handlers registered via Lua are tested in integration).
-    (void)call_count;
+    h.runtime.invoke_hook(hook::WindowRules{ 0x1000, false });
+    // No crash = hook routing works (handlers registered via Lua are tested in integration).
 }
 
-// ApplyWindowRules with from_restart=true must still fire the event —
+// hook::WindowRules with from_restart=true must still fire —
 // the Lua handler is responsible for checking win.from_restart.
-TEST(Rules, WindowRulesEventFiredOnRestart) {
+TEST(Rules, WindowRulesHookFiredOnRestart) {
     TestHarness h;
     h.start();
 
-    // Just verify no crash and event propagates without a C++ handler consuming it.
-    h.runtime.emit(event::ApplyWindowRules{ 0x1000, true });
+    h.runtime.invoke_hook(hook::WindowRules{ 0x1000, true });
 }
 
 // Verify that dispatch(SetWindowFloating) correctly sets floating state —

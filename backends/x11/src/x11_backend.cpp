@@ -106,7 +106,7 @@ void X11Backend::on(event::WorkspaceSwitched ev) {
     // events stop routing to the hidden workspace after switching.
     xconn.ungrab_pointer();
     xconn.flush();
-    notify(ev);
+    ewmh_on_workspace_switched(ev);
 }
 
 void X11Backend::on(event::WindowAssignedToWorkspace ev) {
@@ -144,13 +144,13 @@ void X11Backend::on(event::WindowAssignedToWorkspace ev) {
         }
     }
 
-    notify(ev);
+    ewmh_on_window_assigned_to_workspace(ev);
 }
 
 void X11Backend::on(event::WindowAdopted ev) {
-    notify(event::WindowMapped{ ev.window });
+    ewmh_on_window_mapped(event::WindowMapped{ ev.window });
     if (!ev.currently_visible)
-        notify(event::WindowUnmapped{ ev.window, false });
+        ewmh_on_window_unmapped(event::WindowUnmapped{ ev.window, false });
 }
 
 X11Window* X11Backend::x11_window(WindowId win) {

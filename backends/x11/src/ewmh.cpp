@@ -266,8 +266,8 @@ void X11Backend::ewmh_init() {
     LOG_INFO("EWMH: initialized, wm_window=%d", ewmh_wm_window);
 }
 
-void X11Backend::handle(event::ManageWindowQuery& ev) {
-    WindowId win = ev.window;
+void X11Backend::on_hook(hook::ShouldManageWindow& h) {
+    WindowId win = h.window;
     if (NET_WM_WINDOW_TYPE == XCB_ATOM_NONE)
         return;
 
@@ -283,42 +283,42 @@ void X11Backend::handle(event::ManageWindowQuery& ev) {
         has_atom(types, NET_WM_WINDOW_TYPE_MENU);
     if (skip_type) {
         LOG_DEBUG("EWMH: skipping utility window %d by _NET_WM_WINDOW_TYPE", win);
-        ev.manage = false;
+        h.manage = false;
         return;
     }
 
     if (has_xembed_info_property(xconn, win, XEMBED_INFO)) {
         auto [instance, cls] = xconn.get_wm_class(win);
         auto title = xconn.get_text_property(win, NET_WM_NAME, UTF8_STRING_ATOM);
-        auto [w, h] = window_size(xconn, win);
+        auto [w, hh] = window_size(xconn, win);
 
         bool identifiable   = !instance.empty() || !cls.empty() || !title.empty();
-        bool tray_like_size = (w > 0 && h > 0 && w <= 128 && h <= 128);
+        bool tray_like_size = (w > 0 && hh > 0 && w <= 128 && hh <= 128);
 
         if (!identifiable || tray_like_size) {
             LOG_DEBUG("EWMH: skipping XEMBED tray-like window %d (class='%s' instance='%s' size=%dx%d)",
-                win, cls.c_str(), instance.c_str(), w, h);
-            ev.manage = false;
+                win, cls.c_str(), instance.c_str(), w, hh);
+            h.manage = false;
             return;
         }
 
         LOG_DEBUG("EWMH: allowing XEMBED toplevel window %d (class='%s' instance='%s' size=%dx%d)",
-            win, cls.c_str(), instance.c_str(), w, h);
+            win, cls.c_str(), instance.c_str(), w, hh);
     }
 }
 
-bool X11Backend::handle(event::CloseWindowRequest ev) {
-    if (auto* xw = x11_window(ev.window)) {
+void X11Backend::on_hook(hook::CloseWindow& h) {
+    if (auto* xw = x11_window(h.window)) {
         if (xw->supports_delete())
             xw->send_delete_message();
         else
             xw->kill();
     }
     xconn.flush();
-    return true;
+    h.handled = true;
 }
 
-void X11Backend::notify(event::WindowMapped ev) {
+void X11Backend::ewmh_on_window_mapped(event::WindowMapped ev) {
     auto* xw = x11_window(ev.window);
     if (!xw) return;
 
@@ -369,7 +369,7 @@ void X11Backend::notify(event::WindowMapped ev) {
     // stay above the bar, so do NOT raise docks over them.
 }
 
-void X11Backend::notify(event::WindowUnmapped ev) {
+void X11Backend::ewmh_on_window_unmapped(event::WindowUnmapped ev) {
     if (auto* xw = x11_window(ev.window)) {
         // ICCCM §4.1.4: WithdrawnState when unmanaged; IconicState when hidden.
         uint32_t state = ev.withdrawn ? 0u /* WithdrawnState */ : 3u /* IconicState */;
@@ -410,7 +410,7 @@ void X11Backend::update_focus(event::FocusChanged ev) {
     }
 }
 
-void X11Backend::notify(event::WorkspaceSwitched ev) {
+void X11Backend::ewmh_on_workspace_switched(event::WorkspaceSwitched ev) {
     ewmh_update_desktop_props();
     xconn.set_property(root_window, NET_CURRENT_DESKTOP,
         XCB_ATOM_CARDINAL, (uint32_t)ev.workspace_id);
@@ -432,7 +432,7 @@ void X11Backend::notify(event::WorkspaceSwitched ev) {
     }
 }
 
-void X11Backend::notify(event::WindowAssignedToWorkspace ev) {
+void X11Backend::ewmh_on_window_assigned_to_workspace(event::WindowAssignedToWorkspace ev) {
     if (auto* xw = x11_window(ev.window))
         xw->set_desktop((uint32_t)ev.workspace_id);
 }
@@ -516,7 +516,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
     }
 
     if (ev.type == NET_CLOSE_WINDOW) {
-        (void)handle(event::CloseWindowRequest{ ev.window });
+        runtime.invoke_hook(hook::CloseWindow{ ev.window });
         return true;
     }
 

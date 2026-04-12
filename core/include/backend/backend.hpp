@@ -10,6 +10,8 @@
 #include <backend/commands.hpp>
 #include <backend/events.hpp>
 #include <backend/render_port.hpp>
+#include <event_receiver.hpp>
+#include <hook_registry.hpp>
 #include <window.hpp>
 
 class Core;
@@ -58,9 +60,9 @@ struct ExistingWindowSnapshot {
     command::WindowHints hints;
 };
 
-class Backend {
+class Backend : public IEventReceiver, public IHookReceiver {
     public:
-        virtual ~Backend() = default;
+        ~Backend() override = default;
 
         // Backend as adapter:
         // - expose native event fd
@@ -79,13 +81,7 @@ class Backend {
         // Called by Runtime once, after core.init() and before module on_start callbacks.
         virtual void on_start(Core&) {}
 
-        // Called by Runtime for each core-emitted domain event, after module dispatch.
-        virtual void on(event::WorkspaceSwitched) {}
-        virtual void on(event::WindowAssignedToWorkspace) {}
-        virtual void on(event::FocusChanged) {}
-        virtual void on(event::RaiseDocks) {}
-        virtual void on(event::DisplayTopologyChanged) {}
-        virtual void on(event::WindowAdopted) {}
+        // Domain-event reactions come from IEventReceiver — override what you need.
 
         // Capability ports exposed to Core and modules.
         virtual backend::BackendPorts ports() = 0;

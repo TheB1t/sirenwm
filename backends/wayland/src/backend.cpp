@@ -166,9 +166,9 @@ void WaylandBackend::prepare_exec_restart() {
 
 void WaylandBackend::on_reload_applied() {
     // Re-raise bars and re-focus the active window.
-    runtime_.emit(event::RaiseDocks{});
+    runtime_.post_event(event::RaiseDocks{});
     if (auto focused = core_.focused_window_state(); focused && focused->is_visible()) {
-        runtime_.emit(event::FocusChanged{ focused->id });
+        runtime_.post_event(event::FocusChanged{ focused->id });
     }
 }
 
@@ -369,7 +369,7 @@ void WaylandBackend::handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event*
     kev.keycode = (uint8_t)(ev->keycode & 0xFF);
     kev.keysym  = (uint32_t)keysym;
 
-    runtime_.emit(kev);
+    runtime_.post_event(kev);
 
     // Pass through to focused client
     wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
@@ -408,7 +408,7 @@ void WaylandBackend::handle_cursor_button(wlr_pointer_button_event* ev) {
     bev.state    = (uint16_t)mod_state_;
     bev.release  = (ev->state == WLR_BUTTON_RELEASED);
     bev.root_pos = { (int16_t)seat_obj_.cursor()->x, (int16_t)seat_obj_.cursor()->y };
-    runtime_.emit(bev);
+    runtime_.post_event(bev);
 
     wlr_seat_pointer_notify_button(seat_obj_.seat(), ev->time_msec, ev->button, ev->state);
 }
@@ -475,8 +475,8 @@ void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
 // ---------------------------------------------------------------------------
 // Domain event handlers
 // ---------------------------------------------------------------------------
-void WaylandBackend::on(event::WorkspaceSwitched ev) {
-    runtime_.emit(ev);
+void WaylandBackend::on(event::WorkspaceSwitched /*ev*/) {
+    // TODO(wayland): surface visibility sync on workspace switch.
 }
 
 void WaylandBackend::on(event::FocusChanged ev) {
@@ -520,9 +520,9 @@ void WaylandBackend::on(event::WindowAssignedToWorkspace ev) {
 }
 
 void WaylandBackend::on(event::WindowAdopted ev) {
-    runtime_.emit(event::WindowMapped{ ev.window });
+    runtime_.post_event(event::WindowMapped{ ev.window });
     if (!ev.currently_visible)
-        runtime_.emit(event::WindowUnmapped{ ev.window, false });
+        runtime_.post_event(event::WindowUnmapped{ ev.window, false });
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +553,7 @@ void WaylandBackend::apply_core_backend_effects() {
                     it->second->mapped = true;
                     if (it->second->scene_node())
                         wlr_scene_node_set_enabled(&it->second->scene_node()->node, true);
-                    runtime_.emit(event::WindowMapped{ e.window });
+                    runtime_.post_event(event::WindowMapped{ e.window });
                 }
                 break;
             }
@@ -563,12 +563,12 @@ void WaylandBackend::apply_core_backend_effects() {
                     it->second->mapped = false;
                     if (it->second->scene_node())
                         wlr_scene_node_set_enabled(&it->second->scene_node()->node, false);
-                    runtime_.emit(event::WindowUnmapped{ e.window, false });
+                    runtime_.post_event(event::WindowUnmapped{ e.window, false });
                 }
                 break;
             }
             case BackendEffectKind::FocusWindow:
-                runtime_.emit(event::FocusChanged{ e.window });
+                runtime_.post_event(event::FocusChanged{ e.window });
                 break;
             case BackendEffectKind::FocusRoot:
                 wlr_seat_keyboard_notify_clear_focus(seat_obj_.seat());

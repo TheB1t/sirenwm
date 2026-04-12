@@ -11,9 +11,12 @@
 
 #include <backend/backend_ports.hpp>
 #include <backend/events.hpp>
+#include <backend/hooks.hpp>
 #include <core.hpp>
 #include <core_config.hpp>
 #include <event_emitter.hpp>
+#include <event_queue.hpp>
+#include <hook_registry.hpp>
 #include <lua_host.hpp>
 #include <module.hpp>
 #include <runtime_store.hpp>
@@ -30,9 +33,14 @@ class TrayHost;
 
 class Backend;
 class ModuleRegistry;
+struct TestHarness;
 
-class Runtime : public IEventEmitter {
+class Runtime : public IEventEmitter, public IEventSink {
     private:
+        // Test harness needs direct drain_events() access to assert synchronous
+        // module reactions. Production code must never drain outside tick().
+        friend struct ::TestHarness;
+
         enum class ReloadRequest {
             None,
             ReloadConfig,
@@ -138,6 +146,29 @@ class Runtime : public IEventEmitter {
         void add_receiver(IEventReceiver* receiver) override;
         void remove_receiver(IEventReceiver* receiver) override;
 
+        // Hook registry — synchronous filter dispatch.
+        void add_hook_receiver(IHookReceiver* receiver) { hook_registry_.add(receiver); }
+        void remove_hook_receiver(IHookReceiver* receiver) { hook_registry_.remove(receiver); }
+
+        // Synchronous hook dispatch. Two overloads:
+        //  - lvalue: caller owns the hook struct and reads out-fields in place.
+        //    Use when the same hook is invoked multiple times or inspected
+        //    after the call via the original variable.
+        //  - rvalue: fire-and-forget shorthand. Returns the mutated hook by
+        //    value so out-fields can be read inline:
+        //      if (!runtime.invoke_hook(hook::ShouldManageWindow{win}).manage)
+        //          return;
+        template<typename H>
+        void invoke_hook(H& h) {
+            hook_registry_.invoke(h);
+        }
+
+        template<typename H>
+        H invoke_hook(H&& h) {
+            hook_registry_.invoke(h);
+            return std::move(h);
+        }
+
         LuaHost& lua() { return lua_host_; }
         const LuaHost& lua() const { return lua_host_; }
 
@@ -150,40 +181,27 @@ class Runtime : public IEventEmitter {
         CoreSettings             build_core_settings() const;
         std::vector<std::string> validate_settings() const;
 
-        template<typename Ev>
-        void emit(Ev ev) {
-            for (auto& m : modules)
-                m->on(ev);
-            lua_host_.on(ev);
-        }
+        // Fire-and-forget event: push onto the queue, delivered on next
+        // drain_events() pass. Inherited post_event<Ev>() from IEventSink
+        // wraps the event in TypedEvent<Ev> and calls post_queued().
+        using IEventSink::post_event;
 
-        // Intercepting overloads: if the event targets a window owned by a
-        // Surface of ours, re-emit as the surface-scoped variant instead.
-        // Declared non-template so they win overload resolution over emit<Ev>.
-        void emit(event::ExposeWindow ev);
-        void emit(event::ButtonEv ev);
+        // Resolve a backend WindowId to a Surface registered with this
+        // Runtime. Used by backends to decide whether an Expose/Button event
+        // should be posted as the window-scoped variant or the surface-scoped
+        // variant. Returns nullptr if the window is not a surface.
+        Surface* resolve_surface(WindowId win);
 
+        // Stoppable query: synchronous, returns as soon as any module reports
+        // it handled the event. Used only for event::ClientMessageEv where
+        // the X11 EWMH handler needs a consumed/ignored signal back. Other
+        // synchronous filter cases should use invoke_hook() instead.
         template<typename Ev>
         bool emit_until_handled(Ev ev) {
             for (auto& m : modules)
                 if (m->on(ev))
                     return true;
             return false;
-        }
-
-        template<typename Ev>
-        void query(Ev& ev) {
-            for (auto& m : modules)
-                m->on(ev);
-        }
-
-        template<typename Ev, typename StopPred>
-        void query(Ev& ev, StopPred stop_pred) {
-            for (auto& m : modules) {
-                m->on(ev);
-                if (stop_pred(ev))
-                    return;
-            }
         }
 
         void set_backend_extension_event_base(int base) { backend_extension_event_base = base; }
@@ -205,6 +223,14 @@ class Runtime : public IEventEmitter {
         std::unique_ptr<Surface>           create_surface(const SurfaceCreateInfo& info);
         std::unique_ptr<backend::TrayHost> create_tray(Surface& owner, bool own_selection);
 
+    protected:
+        // IEventSink: used by Core, backend, and modules to push events
+        // onto the unified queue. Runtime is the sole owner of the queue
+        // and the sole drain chokepoint.
+        void post_queued(std::unique_ptr<QueuedEvent> ev) override {
+            event_queue_.push(std::move(ev));
+        }
+
     private:
         friend class Surface;
         void unregister_surface(Surface* s);
@@ -212,8 +238,19 @@ class Runtime : public IEventEmitter {
         std::unordered_set<Surface*>           surface_registry_;
         std::unordered_map<WindowId, Surface*> surface_by_id_;
 
+        EventQueue                             event_queue_;
+        std::vector<IEventReceiver*>           extra_receivers_;
+        HookRegistry                           hook_registry_;
+
         Backend&       backend();
         const Backend& backend() const;
+
+        // Single drain chokepoint. Called once per tick between epoll wait
+        // and render_frame, and synchronously after one-shot state transitions
+        // that must flush events (start, stop, reload). Private: production
+        // code outside Runtime must not drain directly — post events and let
+        // the tick drain them. TestHarness is the only exception.
+        void          drain_events();
 
         void          reload();
         void          tick();                    // one event-loop iteration (Running state)
@@ -226,7 +263,6 @@ class Runtime : public IEventEmitter {
         void          reap_children();
         void          save_restart_state();
         ReloadRequest consume_reload_request();
-        void          drain_core_events();
         bool          reload_runtime_config();
 };
 

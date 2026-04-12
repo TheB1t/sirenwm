@@ -120,10 +120,10 @@ TEST(CrossMonitor, FullscreenMoveEmitsAssignedEvent) {
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::atom::SetWindowFullscreen{ win, true });
-    h->core.take_core_events(); // drain
+    h->take_core_events(); // drain
 
     h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
-    auto events = h->core.take_core_events();
+    auto events = h->take_core_events();
 
     bool found = false;
     for (const auto& e : events) {
@@ -190,10 +190,10 @@ TEST(CrossMonitor, MoveBorderlessAcrossMonitorsEmitsFocusChanged) {
 
     WindowId win = h->map_window(0x1000, 0);
     h->core.dispatch(command::atom::SetWindowBorderless{ win, true });
-    h->core.take_core_events(); // drain
+    h->take_core_events(); // drain
 
     h->core.dispatch(command::atom::MoveWindowToWorkspace{ win, 1 });
-    auto events = h->core.take_core_events();
+    auto events = h->take_core_events();
 
     EXPECT_TRUE(has_domain_event<event::FocusChanged>(events));
 }

@@ -63,12 +63,12 @@ TEST(EdgeCases, AssignWindowWorkspaceBasic) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.take_core_events(); // drain
+    h.take_core_events(); // drain
 
     bool ok = h.core.dispatch(command::atom::AssignWindowWorkspace{ win, 2 });
     EXPECT_TRUE(ok);
 
-    auto events = h.core.take_core_events();
+    auto events = h.take_core_events();
     bool found  = false;
     for (const auto& e : events) {
         if (auto* ev = std::get_if<event::WindowAssignedToWorkspace>(&e)) {
@@ -383,7 +383,7 @@ TEST(EdgeCases, SwitchToSameWorkspaceDoesNotCrash) {
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
-    h.core.take_core_events(); // drain
+    h.take_core_events(); // drain
 
     // Switching to same workspace should not crash; event may or may not fire
     h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });

@@ -32,9 +32,6 @@ struct ExposeWindow { WindowId window; };
 // Surface it owns. Modules receive this instead of ExposeWindow for their own
 // surfaces, keeping backend identity (WindowId) out of the module API.
 struct ExposeSurface { ::Surface* surface; };
-struct ManageWindowQuery { WindowId window; bool manage = true; };
-struct ApplyWindowRules { WindowId window; bool from_restart = false; };
-struct CloseWindowRequest { WindowId window; };
 struct RaiseDocks {};
 struct DisplayTopologyChanged {};
 struct RuntimeStarted {};   // fired once after start() completes: monitors and windows are ready

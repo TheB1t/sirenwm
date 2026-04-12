@@ -89,7 +89,7 @@ void X11Backend::apply_core_backend_effects() {
                     xw->set_wm_state_normal();
                     xw->map();
                     xw->send_expose();
-                    notify(event::WindowMapped{ e.window });
+                    ewmh_on_window_mapped(event::WindowMapped{ e.window });
                 }
                 break;
             }
@@ -100,7 +100,7 @@ void X11Backend::apply_core_backend_effects() {
                         xconn.ungrab_pointer();
                         clear_pointer_barriers();
                     }
-                    notify(event::WindowUnmapped{ e.window, /*withdrawn=*/ false });
+                    ewmh_on_window_unmapped(event::WindowUnmapped{ e.window, /*withdrawn=*/ false });
                     xw->note_wm_unmap();
                     xw->unmap();
                 }
@@ -210,18 +210,6 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
     }
     pending_exposes.clear();
 
-    apply_core_backend_effects();
-
-    // Apply the highest-priority focus request accumulated this tick.
-    // Runs after all X events and backend effects so pointer always wins over
-    // stale workspace-switch FocusWindow effects from the same tick.
-    if (pending_focus_win_ != NO_WINDOW) {
-        focus_window(pending_focus_win_);
-        core.emit_focus_changed(pending_focus_win_);
-        pending_focus_win_      = NO_WINDOW;
-        pending_focus_priority_ = kFocusNone;
-    }
-
     if (randr_dirty)
         runtime.dispatch_display_change();
 
@@ -231,6 +219,17 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
 
 void X11Backend::render_frame() {
     apply_core_backend_effects();
+
+    // Apply the highest-priority focus request accumulated this tick.
+    // Runs after drain_events + apply_core_backend_effects so pointer focus
+    // always wins over stale workspace-switch FocusWindow effects from the
+    // same tick.
+    if (pending_focus_win_ != NO_WINDOW) {
+        focus_window(pending_focus_win_);
+        core.emit_focus_changed(pending_focus_win_);
+        pending_focus_win_      = NO_WINDOW;
+        pending_focus_priority_ = kFocusNone;
+    }
 
     auto visible_windows = core.visible_window_ids();
     for (auto win : visible_windows) {
@@ -248,9 +247,9 @@ void X11Backend::on_reload_applied() {
     reload_border_colors();
     // Re-raise bars: borderless/fullscreen windows don't go through MapNotify on reload,
     // so RaiseDocks would never fire without this explicit call.
-    runtime.emit(event::RaiseDocks{});
+    runtime.post_event(event::RaiseDocks{});
     // Apply focus immediately (not via arbiter) — reload happens between pump_events
-    // and drain_core_events, so the arbiter won't fire until the next tick.
+    // and drain_events, so the arbiter won't fire until the next tick.
     if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
         focus_window(focused->id);
         core.emit_focus_changed(focused->id);

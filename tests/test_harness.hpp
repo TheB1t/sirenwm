@@ -10,15 +10,45 @@
 //   h.core.dispatch(command::atom::MapWindow{…}); // drive the state machine
 
 #include <core.hpp>
+#include <event_receiver.hpp>
 #include <module_registry.hpp>
 #include <runtime.hpp>
 
+#include <variant>
+#include <vector>
+
 #include "fake_backend.hpp"
 
+// Test-only shim: old tests inspected a list of core-emitted domain events via
+// `core.take_core_events()`. The unified event queue replaced that pipeline, so
+// we now record the same events through an IEventReceiver that TestHarness
+// subscribes to. The variant type stays so existing test assertions keep
+// compiling — just move them from `core.take_core_events()` to
+// `h.take_core_events()`.
+using CoreDomainEvent = std::variant<
+    event::FocusChanged,
+    event::WorkspaceSwitched,
+    event::RaiseDocks,
+    event::DisplayTopologyChanged,
+    event::WindowAssignedToWorkspace
+>;
+
+class CoreDomainEventRecorder : public IEventReceiver {
+    public:
+        std::vector<CoreDomainEvent> events;
+
+        void on(event::FocusChanged ev)              override { events.emplace_back(ev); }
+        void on(event::WorkspaceSwitched ev)         override { events.emplace_back(ev); }
+        void on(event::RaiseDocks ev)                override { events.emplace_back(ev); }
+        void on(event::DisplayTopologyChanged ev)    override { events.emplace_back(ev); }
+        void on(event::WindowAssignedToWorkspace ev) override { events.emplace_back(ev); }
+};
+
 struct TestHarness {
-    ModuleRegistry module_registry;
-    Runtime        runtime;
-    FakeBackend    backend;
+    ModuleRegistry          module_registry;
+    Runtime                 runtime;
+    FakeBackend             backend;
+    CoreDomainEventRecorder recorder;
 
     // Shorthand so test code can say h.core.dispatch(...).
     Core& core;
@@ -32,6 +62,7 @@ struct TestHarness {
     {
         runtime.lua().init();
         runtime.bind_backend(backend);
+        runtime.add_receiver(&recorder);
         // Init core with fake monitors so tests can dispatch commands
         // before calling start().
         auto mons = backend.fake_monitors().get_monitors();
@@ -62,11 +93,32 @@ struct TestHarness {
         return id;
     }
 
-    // Emit an event through all modules (same as runtime.emit()).
+    // Emit an event through the unified queue (same as runtime.post_event()).
+    // drain_events() runs immediately so synchronous test assertions see the
+    // module reactions on the next line.
     template<typename Ev>
-    void emit(Ev ev) { runtime.emit(ev); }
+    void emit(Ev ev) {
+        runtime.post_event(std::move(ev));
+        runtime.drain_events();
+    }
+
+    // Invoke a synchronous hook — same as runtime.invoke_hook, exposed here
+    // for symmetry with emit().
+    template<typename H>
+    void invoke_hook(H& h) { runtime.invoke_hook(h); }
+
+    // Drain and return all core domain events recorded since the last call.
+    // Replaces the old core.take_core_events(): tests that were inspecting the
+    // sync vector now inspect this receiver-backed list.
+    std::vector<CoreDomainEvent> take_core_events() {
+        runtime.drain_events();
+        auto out = std::move(recorder.events);
+        recorder.events.clear();
+        return out;
+    }
 
     ~TestHarness() {
+        runtime.remove_receiver(&recorder);
         runtime.stop();
     }
 };
