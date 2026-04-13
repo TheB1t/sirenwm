@@ -6,13 +6,16 @@ SirenWM is a tiling window manager with selectable X11 and Wayland backends.
 
 ## About
 
-SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles layout, window management, and rendering. Everything else — keybindings, rules, autostart, wallpaper, widgets — is Lua, hot-reloaded without restarting. Failed reloads roll back automatically.
+SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles
+layout, window management, and runtime lifecycle. Keybindings, rules, bars,
+autostart, wallpaper, and widgets are Lua-driven and hot-reloaded without full
+process restart. Failed reloads roll back automatically.
 
 ## Requirements
 
 | Requirement | Minimum |
 | ----------- | ------- |
-| Display server | X11 (XCB, RandR) **or** Wayland (wlroots 0.17+) |
+| Display stack | X11 build: X11 server. Wayland build: SirenWM Wayland display-server mode (`--display-server`) |
 | C++ compiler | GCC 12 / Clang 16 (C++20) |
 | CMake | 3.14 |
 | Lua | 5.4 |
@@ -62,66 +65,50 @@ SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles lay
 
 ### Wayland backend
 
-- xdg-shell toplevels with map/unmap/fullscreen/maximize lifecycle
-- wlr-layer-shell for bars and overlays (when available at build time)
-- wlroots 0.17/0.18 support via compile-time API compatibility layer
-- Runs nested under X11 or another Wayland compositor (useful for development)
-- Direct KMS/DRM launch from TTY via libseat
+- Wayland client backend driven by generated admin protocol wrappers (`libwlproto`)
+- Embedded display-server mode in the same binary (`--display-server`)
+- xdg-shell toplevel lifecycle on server side with configure/map/commit/destroy flow
+- XWayland integration in display-server mode for X11 app interoperability
+- Nested X11 presentation path for development/integration testing (Xephyr/Xvfb)
 
 ## Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                        User config                              │
-│                  ~/.config/sirenwm/init.lua                     │
-│        (loads modules, sets options, defines keybindings)       │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │  require() / siren.load()
-          ┌─────────────────┼──────────────────────┐
-          │                 │                      │
-          ▼                 ▼                      ▼
-   ┌─────────────┐  ┌──────────────┐      ┌───────────────┐
-   │ Lua modules │  │ C++ modules  │      │  Lua widgets  │
-   │  rules      │  │  keybindings │      │  tags, title  │
-   │  wallpaper  │  │  bar         │      │  clock, …     │
-   │  autostart  │  │  keyboard    │      └───────┬───────┘
-   └──────┬──────┘  │  sysinfo     │              │
-          │         │  audio       │              │
-          │         │  debug_ui    │              │
-          │         └──────┬───────┘              │
-          │                │                      │
-          └────────────────▼──────────────────────┘
-                           │  dispatch() / emit()
-                           ▼
-          ┌────────────────────────────────────────┐
-          │                Runtime                 │
-          │  lifecycle FSM · Lua host · hot-reload │
-          │  setting registry · event bus          │
-          └───────────────────┬────────────────────┘
-                              │
-                              ▼
-          ┌────────────────────────────────────────┐
-          │                 Core                   │
-          │  window manager · layout engine        │
-          │  workspace/monitor topology            │
-          │  command dispatcher · event emitter    │
-          └───────────────────┬────────────────────┘
-                              │  port interfaces
-                              ▼
-          ┌────────────────────────────────────────┐
-          │  MonitorPort · InputPort               │
-          │  RenderPort  · KeyboardPort            │
-          └───────────────────┬────────────────────┘
-                              │  (selected at build time)
-                    ┌─────────┴─────────┐
-                    │                   │
-                    ▼                   ▼
-     ┌──────────────────────┐  ┌──────────────────────┐
-     │     X11 backend      │  │   Wayland backend    │
-     │  XCB · RandR · XKB   │  │  wlroots · xdg-shell │
-     │  ICCCM · EWMH        │  │  layer-shell · DRM   │
-     │  XEmbed tray         │  │  KMS via libseat     │
-     └──────────────────────┘  └──────────────────────┘
+              +---------------------+
+              | src/main.cpp        |
+              | mode/bootstrap       |
+              +----------+----------+
+                         |
+                         v
+              +---------------------+
+              | Runtime             |
+              | FSM/event loop      |
+              | module orchestration|
+              +----------+----------+
+                         |
+                         v
+              +---------------------+
+              | Core                |
+              | authoritative state |
+              | command reducers    |
+              +----------+----------+
+                         |
+                   BackendEffects/
+                    DomainEvents
+                         |
+            +------------+------------+
+            |                         |
+            v                         v
+   +-------------------+     +-------------------+
+   | X11Backend        |     | WlBackend         |
+   | + libxcb wrappers |     | + libwl/libwlproto|
+   +---------+---------+     +---------+---------+
+             |                         |
+             v                         v
+      +-------------+         +---------------------+
+      | X11 server  |         | libwlserver         |
+      |             |         | (--display-server)  |
+      +-------------+         +---------------------+
 ```
 
 The core never reads `init.lua` directly — it exposes a command/event API and the Lua layer drives it. C++ modules bridge the two: they register with the Lua host and translate Lua calls into core commands.
@@ -131,6 +118,8 @@ The core never reads `init.lua` directly — it exposes a command/event API and 
 - **Port interfaces** (`MonitorPort`, `InputPort`, `RenderPort`, `KeyboardPort`) decouple the core from any display protocol. Swapping backends requires no core changes.
 - **No global config object** — each module owns its settings via a typed registry. Hot-reload is transactional: snapshot → clear → re-execute `init.lua` → commit or rollback automatically.
 - **Lua boundary is strict** — the core has no Lua dependency. Modules expose an API table; the user config is pure Lua on top.
+
+For full architecture details, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Getting Started
 
@@ -175,11 +164,10 @@ sudo pacman -S \
 ```bash
 sudo apt install \
   cmake pkg-config gcc g++ \
-  libwlroots-dev libwayland-dev libwayland-bin wayland-protocols \
-  libxkbcommon-dev libpixman-1-dev libdrm-dev libgbm-dev libegl-dev \
-  libinput-dev libudev-dev libseat-dev \
-  libxcb1-dev libxcb-composite0-dev libxcb-xfixes0-dev libxcb-randr0-dev \
-  libx11-dev libxfixes-dev \
+  libwayland-dev libwayland-bin wayland-protocols \
+  libxkbcommon-dev \
+  libx11-dev libx11-xcb-dev libxfixes-dev \
+  libxcb1-dev libxcb-randr0-dev libxcb-composite0-dev libxcb-keysyms1-dev \
   liblua5.4-dev libspdlog-dev \
   libcairo2-dev libpango1.0-dev libfontconfig1-dev libfreetype-dev libpng-dev
 ```
@@ -189,9 +177,9 @@ sudo apt install \
 ```bash
 sudo pacman -S \
   cmake make pkgconf gcc \
-  wlroots0.18 wayland wayland-protocols \
-  libxkbcommon pixman libdrm mesa libinput seatd \
-  libxcb xcb-util-keysyms xcb-util-wm libx11 libxfixes \
+  wayland wayland-protocols \
+  libxkbcommon \
+  libx11 libxcb xcb-util-keysyms libxfixes \
   lua spdlog cairo pango fontconfig freetype2 libpng
 ```
 
@@ -235,7 +223,9 @@ mkdir -p ~/.config/sirenwm
 cp init.lua.example ~/.config/sirenwm/init.lua
 ```
 
-Edit `output = "HDMI-1"` to match your monitor name. On X11 use `xrandr`, on Wayland use `wlr-randr` to list outputs.
+Edit `output = "HDMI-1"` to match your monitor name. On X11 use `xrandr` to
+list outputs. In Wayland display-server mode, use the names exposed by the
+server (for example `X11-1` / `default`) as shown in runtime logs.
 
 Minimal working config:
 
@@ -274,11 +264,28 @@ end
 exec /path/to/output/sirenwm-x11
 ```
 
-**Wayland** — run directly from a TTY (wlroots opens DRM/KMS via libseat):
+**Wayland (single command, recommended):**
 
 ```bash
 /path/to/output/sirenwm-wayland
 ```
+
+This mode auto-spawns an embedded display-server when `WAYLAND_DISPLAY` is not
+set.
+
+**Wayland (explicit split mode):**
+
+```bash
+# terminal 1: start display-server only
+/path/to/output/sirenwm-wayland --display-server --size 1920x1080
+
+# terminal 2: start WM client against emitted WAYLAND_DISPLAY
+WAYLAND_DISPLAY=wayland-0 /path/to/output/sirenwm-wayland
+```
+
+Note: `WlBackend` requires `sirenwm_admin_v1` protocol support. Running
+`sirenwm-wayland` against a generic external compositor without this protocol
+is not supported.
 
 **System install** (installs backend-specific binary and registers session entry):
 
@@ -287,6 +294,16 @@ sudo cmake --install build
 ```
 
 Then select "SirenWM" from your display manager's session list.
+
+### 5. Tests
+
+```bash
+# X11 integration
+bash tests/integration/run_tests.sh
+
+# Wayland integration (wayland build required)
+bash tests/integration/run_tests_wayland.sh
+```
 
 ## Default Keybindings
 
@@ -316,6 +333,7 @@ Then select "SirenWM" from your display manager's session list.
 ## Documentation
 
 - [`CONFIG.md`](CONFIG.md) — full Lua configuration reference
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — detailed architecture and boundary map
 - [`init.lua.example`](init.lua.example) — annotated multi-monitor config
 
 ## License
