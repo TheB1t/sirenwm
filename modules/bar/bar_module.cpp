@@ -14,14 +14,14 @@
 
 backend::TrayHost* BarModule::tray_for_monitor(int mon_idx) {
     for (auto& b : all_bars_)
-        if (b.is_top && b.tray && b.surface && b.surface->monitor_index() == mon_idx)
+        if (b.is_top && b.tray && b.window && b.window->monitor_index() == mon_idx)
             return b.tray.get();
     return nullptr;
 }
 
 const backend::TrayHost* BarModule::tray_for_monitor(int mon_idx) const {
     for (const auto& b : all_bars_)
-        if (b.is_top && b.tray && b.surface && b.surface->monitor_index() == mon_idx)
+        if (b.is_top && b.tray && b.window && b.window->monitor_index() == mon_idx)
             return b.tray.get();
     return nullptr;
 }
@@ -37,15 +37,22 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
     int         fallback = -1;
     std::string icon_class;
     for (const auto& b : all_bars_) {
-        if (b.tray && b.surface && b.tray->contains_icon(icon_win)) {
+        if (b.tray && b.window && b.tray->contains_icon(icon_win)) {
             icon_class = b.tray->icon_wm_class(icon_win);
-            fallback   = b.surface->monitor_index();
+            fallback   = b.window->monitor_index();
             break;
         }
     }
-    auto top_surfaces = top_bar_surfaces();
-    if (fallback < 0)
-        fallback = top_surfaces.empty() ? 0 : top_surfaces.front()->monitor_index();
+    if (fallback < 0) {
+        for (const auto& b : all_bars_) {
+            if (b.is_top && b.window) {
+                fallback = b.window->monitor_index();
+                break;
+            }
+        }
+        if (fallback < 0)
+            fallback = 0;
+    }
 
     if (icon_class.empty())
         return fallback;
@@ -117,8 +124,8 @@ void BarModule::rebalance_tray_icons() {
     if (!any_tray) return;
     std::vector<std::pair<WindowId, int>> to_route;
     for (auto& b : all_bars_) {
-        if (!b.tray || !b.surface) continue;
-        int mon_idx = b.surface->monitor_index();
+        if (!b.tray || !b.window) continue;
+        int mon_idx = b.window->monitor_index();
         for (auto icon_win : b.tray->icon_windows()) {
             int target = monitor_for_icon(icon_win);
             if (target != mon_idx)
@@ -129,8 +136,8 @@ void BarModule::rebalance_tray_icons() {
         route_icon_to_monitor(icon_win, target);
 }
 
-int BarModule::tag_at(const Surface* surface, int click_x) const {
-    auto it = tag_hits.find(const_cast<Surface*>(surface));
+int BarModule::tag_at(WindowId window, int click_x) const {
+    auto it = tag_hits.find(window);
     if (it == tag_hits.end()) return -1;
     for (const auto& h : it->second)
         if (click_x >= h.x0 && click_x < h.x1)
@@ -249,14 +256,14 @@ void BarModule::redraw() {
 
     tag_hits.clear();
     for (auto& b : all_bars_) {
-        if (!b.surface) continue;
+        if (!b.window) continue;
         const BarConfig&   cfg      = b.cfg;
         bool               tray_in  = has_tray_slot(cfg);
         backend::TrayHost* bar_tray = tray_in
-            ? tray_for_monitor(b.surface->monitor_index()) : nullptr;
+            ? tray_for_monitor(b.window->monitor_index()) : nullptr;
 
-        BarState                   state = state_provider(b.surface->monitor_index());
-        bar::widgets::PaintContext paint(*b.surface, cfg.font);
+        BarState                   state = state_provider(b.window->monitor_index());
+        bar::widgets::PaintContext paint(*b.window, cfg.font);
         paint.clear(cfg.colors.bar_bg);
 
         int                               left_cursor = 0;
@@ -275,24 +282,24 @@ void BarModule::redraw() {
 
         paint.present();
         if (!hits.empty())
-            tag_hits.emplace(b.surface.get(), std::move(hits));
+            tag_hits.emplace(b.window->id(), std::move(hits));
         if (bar_tray)
-            tray_widget.reposition(bar_tray, *b.surface);
+            tray_widget.reposition(bar_tray, *b.window);
     }
 }
 
 void BarModule::raise_all() {
     for (auto& b : all_bars_) {
-        if (!b.surface) continue;
-        int                mon_idx = b.surface->monitor_index();
+        if (!b.window) continue;
+        int                mon_idx = b.window->monitor_index();
         backend::TrayHost* t       = b.is_top ? tray_for_monitor(mon_idx) : nullptr;
 
         if (core.monitor_has_visible_covering_window(mon_idx)) {
-            b.surface->lower();
+            b.window->lower();
             if (t) t->raise();
             continue;
         }
-        b.surface->raise();
+        b.window->raise();
         if (t) t->raise();
     }
 }

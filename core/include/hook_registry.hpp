@@ -31,6 +31,7 @@ class HookRegistry {
     public:
         void add(IHookReceiver* r)    { receivers_.add(r); }
         void remove(IHookReceiver* r) { receivers_.remove(r); }
+        void clear()                  { receivers_.clear(); }
 
         template<typename H>
         void invoke(H& h) {

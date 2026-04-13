@@ -6,7 +6,6 @@
 #include <backend/tray_host.hpp>
 #include <backend/tray_host_port.hpp>
 #include <config_loader.hpp>
-#include <surface.hpp>
 #include <core.hpp>
 #include <module_registry.hpp>
 #include <monitor_layout.hpp>
@@ -19,6 +18,7 @@
 #include <exception>
 #include <fcntl.h>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -84,7 +84,18 @@ Runtime::Runtime(BackendFactory backend_factory)
     }
 }
 
-Runtime::~Runtime() = default;
+Runtime::~Runtime() {
+    modules.clear();
+    module_windows_by_id_.clear();
+}
+
+void Runtime::RenderWindowDeleter::operator()(backend::RenderWindow* window) const {
+    if (!window)
+        return;
+    if (runtime)
+        runtime->unregister_module_window(*window);
+    delete window;
+}
 
 // ---------------------------------------------------------------------------
 // SIGCHLD self-pipe — global write-end for the async-signal-safe handler
@@ -505,14 +516,32 @@ void Runtime::stop(bool is_exec_restart) {
     auto& be = backend();
     post_event(event::RuntimeStopping{ is_exec_restart });
     drain_events();
+
+    // Stop routing runtime events to backend/core before module teardown.
     remove_receiver(&be);
     core_.set_event_sink(nullptr);
+
+    // Give modules a chance to release runtime resources explicitly.
     for (auto it = modules.rbegin(); it != modules.rend(); ++it)
         (*it)->on_stop(is_exec_restart);
+
+    // Drop events queued during on_stop() to avoid carrying stale pointers
+    // into a future start() in test harnesses.
+    event_queue_.clear();
+
+    // Deterministic lifetime boundary: module-owned resources (including
+    // module windows) must be destroyed before backend shutdown.
+    modules.clear();
+
+    verify_module_window_registry_consistency("Runtime::stop(modules.clear)");
+    report_live_module_windows("stop");
+    module_windows_by_id_.clear();
+
+    // Stop hook/event fanout after module teardown.
+    hook_registry_.clear();
+    extra_receivers_.clear();
+
     be.shutdown();
-    if (!surface_registry_.empty())
-        LOG_WARN("Runtime::stop: %zu Surface(s) still alive at shutdown",
-            surface_registry_.size());
     teardown_sigchld_pipe();
     core_.mark_runtime_started(false);
 }
@@ -540,9 +569,47 @@ void Runtime::drain_events() {
         });
 }
 
-Surface* Runtime::resolve_surface(WindowId win) {
-    auto it = surface_by_id_.find(win);
-    return it != surface_by_id_.end() ? it->second : nullptr;
+void Runtime::verify_module_window_registry_consistency(const char* where) const {
+#ifdef NDEBUG
+    (void)where;
+#else
+    for (const auto& [id, window] : module_windows_by_id_) {
+        if (!window) {
+            LOG_ERR("%s: null RenderWindow* for id=%d in module window map", where, id);
+            std::abort();
+        }
+        if (window->id() != id) {
+            LOG_ERR("%s: module window id mismatch: map key=%d actual=%d",
+                where, id, window->id());
+            std::abort();
+        }
+    }
+#endif
+}
+
+void Runtime::report_live_module_windows(const char* phase) const {
+    if (module_windows_by_id_.empty())
+        return;
+
+    std::ostringstream ids;
+    bool first = true;
+    int  count = 0;
+    for (const auto& [id, _] : module_windows_by_id_) {
+        if (count++ >= 16) {
+            ids << ", ...";
+            break;
+        }
+        if (!first) ids << ", ";
+        first = false;
+        ids << id;
+    }
+
+    LOG_ERR("Runtime::%s: %zu module render window(s) still alive ids=[%s]",
+        phase, module_windows_by_id_.size(), ids.str().c_str());
+
+#ifndef NDEBUG
+    std::abort();
+#endif
 }
 
 void Runtime::apply_and_refresh_monitors() {
@@ -628,10 +695,10 @@ const Backend& Runtime::backend() const {
 }
 
 // ---------------------------------------------------------------------------
-// Surface & tray factories
+// Module render window & tray factories
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) {
+Runtime::RenderWindowHandle Runtime::create_render_window(const ModuleWindowCreateInfo& info) {
     backend::RenderWindowCreateInfo rw{};
     rw.monitor_index           = info.monitor_index;
     rw.pos                     = info.pos;
@@ -648,27 +715,40 @@ std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) 
     if (!window)
         return nullptr;
 
-    std::unique_ptr<Surface> s(new Surface(*this, std::move(window)));
-    surface_registry_.insert(s.get());
-    surface_by_id_[s->id()] = s.get();
-    return s;
+    WindowId id = window->id();
+    if (module_windows_by_id_.contains(id)) {
+        LOG_ERR("Runtime::create_render_window: duplicate module window id=%d", id);
+        return nullptr;
+    }
+
+    auto* raw = window.release();
+    module_windows_by_id_[id] = raw;
+    verify_module_window_registry_consistency("Runtime::create_render_window");
+    return RenderWindowHandle(raw, RenderWindowDeleter{ this });
 }
 
 std::unique_ptr<backend::TrayHost>
-Runtime::create_tray(Surface& owner, bool own_selection) {
+Runtime::create_tray(backend::RenderWindow& owner, bool own_selection) {
     auto* port = backend().ports().tray_host;
     if (!port)
         return nullptr;
 
-    auto& bw = owner.backend_window();
-    return port->create(bw.id(), bw.x(), bw.y(), bw.height(), own_selection);
+    return port->create(owner.id(), owner.x(), owner.y(), owner.height(), own_selection);
 }
 
-void Runtime::unregister_surface(Surface* s) {
-    if (!s)
+void Runtime::unregister_module_window(backend::RenderWindow& window) {
+    const WindowId id = window.id();
+    auto it = module_windows_by_id_.find(id);
+    if (it == module_windows_by_id_.end()) {
+        LOG_WARN("Runtime::unregister_module_window: id=%d not found in map", id);
         return;
-    surface_registry_.erase(s);
-    surface_by_id_.erase(s->id());
+    }
+    if (it->second != &window) {
+        LOG_WARN("Runtime::unregister_module_window: id=%d points to a different window ptr", id);
+        return;
+    }
+    module_windows_by_id_.erase(it);
+    verify_module_window_registry_consistency("Runtime::unregister_module_window");
 }
 
 void Runtime::tick() {

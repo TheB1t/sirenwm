@@ -85,6 +85,12 @@ class EventQueue {
             q_.push(std::move(ev));
         }
 
+        void clear() {
+            assert(!draining_ && "EventQueue::clear while draining");
+            while (!q_.empty())
+                q_.pop();
+        }
+
         // Drain with a receiver callback: caller decides how to broadcast each
         // dequeued event (usually: iterate a list of IEventReceiver pointers).
         template<typename Broadcast>

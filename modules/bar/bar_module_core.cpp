@@ -8,7 +8,6 @@
 #include <protocol/keyboard.hpp>
 #include <protocol/system_tray.hpp>
 #include <runtime.hpp>
-#include <surface.hpp>
 #include <algorithm>
 #include <unordered_set>
 #include <cstdlib>
@@ -359,22 +358,8 @@ std::string BarModule::monitor_alias(int mon_idx) const {
     return mon_name; // fallback: use output name directly
 }
 
-std::vector<Surface*> BarModule::top_bar_surfaces() const {
-    std::vector<Surface*> out;
-    for (const auto& b : all_bars_)
-        if (b.is_top) out.push_back(b.surface.get());
-    return out;
-}
-
-std::vector<Surface*> BarModule::bottom_bar_surfaces() const {
-    std::vector<Surface*> out;
-    for (const auto& b : all_bars_)
-        if (!b.is_top) out.push_back(b.surface.get());
-    return out;
-}
-
 void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top) {
-    SurfaceCreateInfo info;
+    ModuleWindowCreateInfo info;
     info.monitor_index       = m.idx;
     info.pos                 = m.pos;
     info.size                = { m.size.x(), cfg.height };
@@ -384,13 +369,13 @@ void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool i
     info.dock                = true;
     info.keep_above          = true;
 
-    auto s = runtime.create_surface(info);
-    if (!s) return;
+    auto w = runtime.create_render_window(info);
+    if (!w) return;
 
     BarWindow bw;
-    bw.cfg     = cfg;
-    bw.is_top  = is_top;
-    bw.surface = std::move(s);
+    bw.cfg    = cfg;
+    bw.is_top = is_top;
+    bw.window = std::move(w);
     all_bars_.push_back(std::move(bw));
 }
 
@@ -529,9 +514,9 @@ static void apply_theme_to_monitor_cfg(MonitorBarConfig& mcfg, const ThemeConfig
     if (mcfg.bottom.state == BarSideState::Custom) apply_theme_to_cfg(mcfg.bottom.cfg, th);
 }
 
-void BarModule::on(event::ExposeSurface ev) {
+void BarModule::on(event::ExposeWindow ev) {
     for (auto& b : all_bars_)
-        if (b.surface.get() == ev.surface) {
+        if (b.window && b.window->id() == ev.window) {
             redraw();
             return;
         }
@@ -585,27 +570,23 @@ void BarModule::on(event::PropertyNotify ev) {
 }
 
 void BarModule::on(event::ButtonEv ev) {
-    // Surface button events are re-emitted by Runtime as SurfaceButton — this
-    // handler only sees events targeting tray icon windows (or other unrelated
-    // windows, which we ignore).
-    for (auto& b : all_bars_)
-        if (b.tray && b.tray->handle_button_event(ev))
-            return;
-}
-
-void BarModule::on(event::SurfaceButton ev) {
     for (auto& b : all_bars_) {
-        if (!b.is_top || b.surface.get() != ev.surface)
+        if (!b.is_top || !b.window || b.window->id() != ev.window)
             continue;
         if (ev.release)
             return;
-        int ws = tag_at(b.surface.get(), ev.event_pos.x());
+        int ws = tag_at(ev.window, ev.event_pos.x());
         if (ws >= 0) {
-            (void)core.dispatch(command::atom::SwitchWorkspace{ ws, b.surface->monitor_index() });
+            (void)core.dispatch(command::atom::SwitchWorkspace{ ws, b.window->monitor_index() });
             redraw();
         }
         return;
     }
+
+    // Non-bar clicks (e.g. tray icons).
+    for (auto& b : all_bars_)
+        if (b.tray && b.tray->handle_button_event(ev))
+            return;
 }
 
 void BarModule::on_reload() {
@@ -626,33 +607,33 @@ void BarModule::on_reload() {
 
 void BarModule::rebuild_trays() {
     // Tray ownership is rebuilt fresh — rebuild_bars() destroyed all previous
-    // surfaces (and therefore all previous trays attached to them). Choose one
+    // bar windows (and therefore all previous trays attached to them). Choose one
     // top bar to own the _NET_SYSTEM_TRAY_S selection: prefer focused monitor,
     // fall back to the first top bar.
     int focused_mon = core.focused_monitor_index();
     int owner_mon   = -1;
     for (auto& b : all_bars_) {
-        if (!b.is_top || !b.surface) continue;
-        if (b.surface->monitor_index() == focused_mon) {
+        if (!b.is_top || !b.window) continue;
+        if (b.window->monitor_index() == focused_mon) {
             owner_mon = focused_mon;
             break;
         }
     }
     if (owner_mon < 0) {
         for (auto& b : all_bars_)
-            if (b.is_top && b.surface) {
-                owner_mon = b.surface->monitor_index();
+            if (b.is_top && b.window) {
+                owner_mon = b.window->monitor_index();
                 break;
             }
     }
 
     int created = 0;
     for (auto& b : all_bars_) {
-        if (!b.is_top || !b.surface) continue;
-        int  mon_idx       = b.surface->monitor_index();
+        if (!b.is_top || !b.window) continue;
+        int  mon_idx       = b.window->monitor_index();
         bool own_selection = (mon_idx == owner_mon);
 
-        auto tray = runtime.create_tray(*b.surface, own_selection);
+        auto tray = runtime.create_tray(*b.window, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
             LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx);
             continue;

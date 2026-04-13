@@ -29,6 +29,7 @@ public:
     static int version() { return 1; }
 
     void bind(wl_client* client, uint32_t version, uint32_t id);
+    BufferView buffer_view(wl_resource* buffer_resource) const;
 
 private:
     struct ShmPool;

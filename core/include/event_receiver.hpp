@@ -18,7 +18,6 @@ class IEventReceiver {
         virtual void on(event::FocusChanged)              {}
         virtual void on(event::WorkspaceSwitched)         {}
         virtual void on(event::ExposeWindow)              {}
-        virtual void on(event::ExposeSurface)             {}
         virtual void on(event::RaiseDocks)                {}
         virtual void on(event::DisplayTopologyChanged)    {}
         virtual void on(event::RuntimeStarted)            {}
@@ -26,7 +25,6 @@ class IEventReceiver {
         virtual void on(event::ConfigReloaded)            {}
         virtual void on(event::ChildExited)               {}
         virtual void on(event::ButtonEv)                  {}
-        virtual void on(event::SurfaceButton)             {}
         virtual void on(event::MotionEv)                  {}
         virtual void on(event::KeyPressEv)                {}
         virtual void on(event::DestroyNotify)             {}

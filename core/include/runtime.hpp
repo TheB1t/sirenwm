@@ -11,6 +11,7 @@
 #include <backend/backend_ports.hpp>
 #include <backend/events.hpp>
 #include <backend/hooks.hpp>
+#include <backend/render_port.hpp>
 #include <core.hpp>
 #include <core_config.hpp>
 #include <event_emitter.hpp>
@@ -22,12 +23,10 @@
 #include <module.hpp>
 #include <module_registry.hpp>
 #include <runtime_store.hpp>
-#include <surface.hpp>
 
 #include <runtime_state.hpp>
 
 #include <unordered_map>
-#include <unordered_set>
 
 namespace backend {
 class TrayHost;
@@ -35,6 +34,17 @@ class TrayHost;
 
 class Backend;
 struct TestHarness;
+
+struct ModuleWindowCreateInfo {
+    int   monitor_index = -1;     // advisory; backend places by pos
+    Vec2i pos;                    // root-space coordinates
+    Vec2i size                = { 1, 1 };
+    bool  want_expose         = false;
+    bool  want_button_press   = false;
+    bool  want_button_release = false;
+    bool  dock                = false;  // semantic: dock/bar window
+    bool  keep_above          = false;  // semantic: keep above other windows
+};
 
 class Runtime : public IEventEmitter, public IEventSink {
     private:
@@ -54,8 +64,6 @@ class Runtime : public IEventEmitter, public IEventSink {
         RuntimeStore store_;
         CoreConfig   core_config_;
         std::unique_ptr<Backend> backend_;
-
-        std::vector<std::unique_ptr<Module>> modules;
 
         int backend_extension_event_base = -1;
 
@@ -85,6 +93,13 @@ class Runtime : public IEventEmitter, public IEventSink {
         std::atomic_bool stop_requested { false };
 
     public:
+        struct RenderWindowDeleter {
+            Runtime* runtime = nullptr;
+            void operator()(backend::RenderWindow* window) const;
+        };
+
+        using RenderWindowHandle = std::unique_ptr<backend::RenderWindow, RenderWindowDeleter>;
+
         using BackendFactory = std::function<std::unique_ptr<Backend>(Core&, Runtime&)>;
         explicit Runtime(BackendFactory backend_factory);
 
@@ -180,12 +195,6 @@ class Runtime : public IEventEmitter, public IEventSink {
         // wraps the event in TypedEvent<Ev> and calls post_queued().
         using IEventSink::post_event;
 
-        // Resolve a backend WindowId to a Surface registered with this
-        // Runtime. Used by backends to decide whether an Expose/Button event
-        // should be posted as the window-scoped variant or the surface-scoped
-        // variant. Returns nullptr if the window is not a surface.
-        Surface* resolve_surface(WindowId win);
-
         // Stoppable query: synchronous, returns as soon as any module reports
         // it handled the event. Used only for event::ClientMessageEv where
         // the X11 EWMH handler needs a consumed/ignored signal back. Other
@@ -202,13 +211,11 @@ class Runtime : public IEventEmitter, public IEventSink {
         int get_backend_extension_event_base() const { return backend_extension_event_base; }
         void dispatch_display_change();
 
-        // Module-facing UI resource factories.
-        // Surface owns its backend window; destroying the Surface unregisters
-        // and releases the window. create_tray wires an X11 TrayHost against
-        // a previously-created Surface — returns nullptr on backends without
-        // TrayHostPort (e.g. Wayland).
-        std::unique_ptr<Surface>           create_surface(const SurfaceCreateInfo& info);
-        std::unique_ptr<backend::TrayHost> create_tray(Surface& owner, bool own_selection);
+        // Module-facing UI window factories.
+        // Runtime wraps backend::RenderWindow with a custom deleter so window
+        // ids are unregistered deterministically on destruction.
+        RenderWindowHandle                 create_render_window(const ModuleWindowCreateInfo& info);
+        std::unique_ptr<backend::TrayHost> create_tray(backend::RenderWindow& owner, bool own_selection);
 
     protected:
         // IEventSink: used by Core, backend, and modules to push events
@@ -219,11 +226,12 @@ class Runtime : public IEventEmitter, public IEventSink {
         }
 
     private:
-        friend class Surface;
-        void unregister_surface(Surface* s);
+        std::vector<std::unique_ptr<Module>> modules;
+        std::unordered_map<WindowId, backend::RenderWindow*> module_windows_by_id_;
 
-        std::unordered_set<Surface*>           surface_registry_;
-        std::unordered_map<WindowId, Surface*> surface_by_id_;
+        void unregister_module_window(backend::RenderWindow& window);
+        void verify_module_window_registry_consistency(const char* where) const;
+        void report_live_module_windows(const char* phase) const;
 
         EventQueue                             event_queue_;
         PointerRegistry<IEventReceiver>        extra_receivers_;

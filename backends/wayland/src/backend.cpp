@@ -341,22 +341,19 @@ void WlBackend::on_output_removed(uint32_t id) {
 }
 
 void WlBackend::on_overlay_expose(uint32_t overlay_id) {
-    auto* surface = runtime_.resolve_surface(static_cast<WindowId>(overlay_id));
-    if (surface)
-        runtime_.post_event(event::ExposeSurface{ surface });
+    runtime_.post_event(event::ExposeWindow{ static_cast<WindowId>(overlay_id) });
 }
 
 void WlBackend::on_overlay_button(uint32_t overlay_id, int32_t x, int32_t y,
                                    uint32_t button, uint32_t released) {
-    auto* surface = runtime_.resolve_surface(static_cast<WindowId>(overlay_id));
-    if (surface) {
-        runtime_.post_event(event::SurfaceButton{
-            .surface   = surface,
-            .event_pos = { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-            .time      = 0,
-            .button    = static_cast<uint8_t>(button - 0x110 + 1),
-            .state     = 0,
-            .release   = released != 0,
-        });
-    }
+    runtime_.post_event(event::ButtonEv{
+        .window    = static_cast<WindowId>(overlay_id),
+        .root      = static_cast<WindowId>(overlay_id),
+        .root_pos  = { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+        .event_pos = { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+        .time      = 0,
+        .button    = static_cast<uint8_t>(button - 0x110 + 1),
+        .state     = 0,
+        .release   = released != 0,
+    });
 }
