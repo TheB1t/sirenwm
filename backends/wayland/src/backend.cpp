@@ -1,704 +1,362 @@
 #include <wl_backend.hpp>
-#include <wl_compat.hpp>
 #include <wl_ports.hpp>
-#include <wl_surface.hpp>
 
+#include <backend/commands.hpp>
+#include <backend/events.hpp>
+#include <backend/hooks.hpp>
 #include <core.hpp>
 #include <log.hpp>
 #include <runtime.hpp>
 
-#include <cassert>
+#include <config_types.hpp>
+
+#include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 
-extern "C" {
-#include <wlr/util/log.h>
-#ifndef SIRENWM_NO_LAYER_SHELL
-#  include <wlr/types/wlr_scene.h>  // wlr_scene_layer_surface_v1_create
-#endif
-}
-
-#include <fcntl.h>
-#include <unistd.h>
-#include <cerrno>
-#include <cstring>
-#include <string>
-
-// ---------------------------------------------------------------------------
-// wlroots log bridge
-// ---------------------------------------------------------------------------
-static void wlr_log_handler(wlr_log_importance importance, const char* fmt, va_list args) {
-    char buf[1024];
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    switch (importance) {
-        case WLR_ERROR: LOG_ERR("[wlr] %s", buf);   break;
-        case WLR_INFO:  LOG_INFO("[wlr] %s", buf);  break;
-        default:        LOG_DEBUG("[wlr] %s", buf);  break;
+static uint32_t parse_hex_color(const std::string& s) {
+    if (s.size() == 7 && s[0] == '#') {
+        char* end = nullptr;
+        uint32_t rgb = (uint32_t)strtoul(s.c_str() + 1, &end, 16);
+        if (end == s.c_str() + 7)
+            return 0xFF000000 | rgb;
     }
+    return 0xFF888888;
 }
 
-// ---------------------------------------------------------------------------
-// Constructor / Destructor
-// ---------------------------------------------------------------------------
-WaylandBackend::WaylandBackend(Core& core, Runtime& runtime)
-    : core_(core)
-      , runtime_(runtime)
-      , backend_obj_(display_.ev_loop())
-      , renderer_(backend_obj_.get(), display_.get())
-      , scene_(display_.get())
-      , seat_obj_(display_.get(), scene_.output_layout(), renderer_.is_software())
-      , xdg_shell_(display_.get(), 3,
-          [this](wlr_xdg_surface* s) {
-              handle_new_xdg_surface(s);
-          })
-#ifndef SIRENWM_NO_LAYER_SHELL
-      , layer_shell_(display_.get(), 4,
-          [this](wlr_layer_surface_v1* s) {
-              handle_new_layer_surface(s);
-          })
-#endif
+// ── Registry ──
+
+void WlBackend::WlRegistry::on_global(uint32_t name, const char* iface, uint32_t version) {
+    backend.try_bind(*this, name, iface, version);
+}
+
+// ── Backend lifecycle ──
+
+WlBackend::WlBackend(Core&, Runtime& runtime)
+    : display_(nullptr)
+    , input_(*this)
+    , monitor_(*this)
+    , render_(*this)
+    , keyboard_()
+    , runtime_(runtime)
 {
-    wlr_log_init(WLR_DEBUG, wlr_log_handler);
-
-    // All sub-objects initialised by member ctors above.
-#ifdef SIRENWM_NO_LAYER_SHELL
-    LOG_INFO("WaylandBackend: layer-shell disabled (xml not found at build time)");
-#else
-    LOG_INFO("WaylandBackend: layer-shell enabled");
-#endif
-    data_dev_mgr_ = wlr_data_device_manager_create(display_.get());
-
-    // Wire top-level backend signals
-    on_new_output_.connect(&backend_obj_.new_output_signal(),
-        [this](wlr_output* o) {
-            handle_new_output(o);
-        });
-    on_new_input_.connect(&backend_obj_.new_input_signal(),
-        [this](wlr_input_device* d) {
-            handle_new_input(d);
-        });
-
-    // Cursor signals
-    on_cursor_motion_.connect(&seat_obj_.cursor()->events.motion,
-        [this](wlr_pointer_motion_event* ev) {
-            handle_cursor_motion(ev);
-        });
-    on_cursor_motion_abs_.connect(&seat_obj_.cursor()->events.motion_absolute,
-        [this](wlr_pointer_motion_absolute_event* ev) {
-            handle_cursor_motion_abs(ev);
-        });
-    on_cursor_button_.connect(&seat_obj_.cursor()->events.button,
-        [this](wlr_pointer_button_event* ev) {
-            handle_cursor_button(ev);
-        });
-    on_cursor_axis_.connect(&seat_obj_.cursor()->events.axis,
-        [this](wlr_pointer_axis_event* ev) {
-            handle_cursor_axis(ev);
-        });
-    on_cursor_frame_.connect(&seat_obj_.cursor()->events.frame,
-        [this](void*) {
-            handle_cursor_frame();
-        });
-
-    // Seat signals
-    on_request_cursor_.connect(&seat_obj_.seat()->events.request_set_cursor,
-        [this](wlr_seat_pointer_request_set_cursor_event* ev) {
-            handle_request_cursor(ev);
-        });
-    on_request_set_selection_.connect(&seat_obj_.seat()->events.request_set_selection,
-        [this](wlr_seat_request_set_selection_event* ev) {
-            handle_request_set_selection(ev);
-        });
-
-    // Create port implementations
-    monitor_port_impl_  = backend::wl::create_monitor_port(scene_.output_layout(), runtime_);
-    render_port_impl_   = backend::wl::create_render_port(scene_.root(), renderer_.renderer(), renderer_.allocator());
-    input_port_impl_    = backend::wl::create_input_port(seat_obj_.seat(), seat_obj_.cursor(), pointer_grabbed_);
-    keyboard_port_impl_ = backend::wl::create_keyboard_port(seat_obj_.seat());
-
-    // Start the backend (opens DRM device, creates initial outputs)
-    backend_obj_.start();
-
-    // Socket is already initialised by WlDisplay constructor.
-    LOG_INFO("WaylandBackend: initialised on %s", display_.socket_name().c_str());
-}
-
-WaylandBackend::~WaylandBackend() {
-    // Disconnect all listeners before destroying objects.
-    on_new_output_.disconnect();
-    on_new_input_.disconnect();
-    // xdg_shell_ and layer_shell_ dtors disconnect their own listeners
-    on_cursor_motion_.disconnect();
-    on_cursor_motion_abs_.disconnect();
-    on_cursor_button_.disconnect();
-    on_cursor_axis_.disconnect();
-    on_cursor_frame_.disconnect();
-    on_request_cursor_.disconnect();
-    on_request_set_selection_.disconnect();
-
-    outputs_.clear();
-    keyboards_.clear();
-    pending_.clear();
-    surfaces_.clear();
-
-    // seat_obj_ dtor destroys xcursor_mgr + cursor; seat via wl_display_destroy
-    // scene_, renderer_, backend_obj_, display_ dtors run after this in reverse declaration order
-}
-
-// ---------------------------------------------------------------------------
-// on_start
-// ---------------------------------------------------------------------------
-void WaylandBackend::on_start(Core& core) {
-    set_cursor("left_ptr");
-
-    // Notify monitors discovered during wlr_backend_start
-    runtime_.dispatch_display_change();
-    LOG_INFO("WaylandBackend: on_start done, %zu outputs", outputs_.size());
-}
-
-void WaylandBackend::shutdown() {
-    // Nothing to do — cleanup happens in the destructor.
-    // Backends that override this (e.g. DRM) may need to stop the frame loop here.
-}
-
-void WaylandBackend::prepare_exec_restart() {
-    display_.prepare_exec_restart();
-}
-
-void WaylandBackend::on_reload_applied() {
-    // Re-raise bars and re-focus the active window.
-    runtime_.post_event(event::RaiseDocks{});
-    if (auto focused = core_.focused_window_state(); focused && focused->is_visible()) {
-        runtime_.post_event(event::FocusChanged{ focused->id });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// WindowId allocation + surface lookup
-// ---------------------------------------------------------------------------
-WindowId WaylandBackend::alloc_window_id() {
-    return next_id_.fetch_add(1, std::memory_order_relaxed);
-}
-
-WlSurface* WaylandBackend::wl_surface(WindowId id) {
-    auto it = surfaces_.find(id);
-    return it != surfaces_.end() ? it->second : nullptr;
-}
-
-// ---------------------------------------------------------------------------
-// Port accessors
-// ---------------------------------------------------------------------------
-backend::BackendPorts WaylandBackend::ports() {
-    return backend::BackendPorts{
-        .input    = *input_port_impl_,
-        .monitor  = *monitor_port_impl_,
-        .render   = *render_port_impl_,
-        .keyboard = *keyboard_port_impl_,
-        .gl       = nullptr,
-    };
-}
-
-// ---------------------------------------------------------------------------
-// create_window — Core factory callback: called from EnsureWindow dispatch.
-// Transfers the pre-created WlSurface from pending_ into surfaces_.
-// ---------------------------------------------------------------------------
-std::shared_ptr<swm::Window> WaylandBackend::create_window(WindowId id) {
-    auto pit = pending_.find(id);
-    if (pit != pending_.end()) {
-        // Move the staged surface into the active map.
-        auto surf_ptr = std::move(pit->second);
-        pending_.erase(pit);
-        surfaces_[id] = surf_ptr.get();
-        return surf_ptr;   // Core takes ownership via shared_ptr
+    if (!display_) {
+        throw std::runtime_error("wl_backend: failed to connect to display server");
     }
 
-    // Fallback: plain Window for non-Wayland-native windows (e.g. XWayland).
-    auto w = std::make_shared<swm::Window>();
-    w->id = id;
-    return w;
-}
+    registry_ = std::make_unique<WlRegistry>(display_, *this);
+    display_.roundtrip();
 
-// ---------------------------------------------------------------------------
-// Window title / PID
-// ---------------------------------------------------------------------------
-std::string WaylandBackend::window_title(WindowId id) const {
-    auto it = surfaces_.find(id);
-    if (it == surfaces_.end())
-        return {};
-    const auto* surf = it->second;
-    if (!surf || !surf->toplevel() || !surf->toplevel()->title)
-        return {};
-    return surf->toplevel()->title;
-}
-
-uint32_t WaylandBackend::window_pid(WindowId id) const {
-    auto it = surfaces_.find(id);
-    if (it == surfaces_.end())
-        return 0;
-    const auto* surf = it->second;
-    if (!surf || !surf->xdg_surface() || !surf->xdg_surface()->surface)
-        return 0;
-    wl_client* client = wl_resource_get_client(surf->xdg_surface()->resource);
-    if (!client)
-        return 0;
-    pid_t pid = 0;
-    wl_client_get_credentials(client, &pid, nullptr, nullptr);
-    return (uint32_t)pid;
-}
-
-bool WaylandBackend::close_window(WindowId id) {
-    auto it = surfaces_.find(id);
-    if (it == surfaces_.end())
-        return false;
-    auto* surf = it->second;
-    if (!surf || !surf->toplevel())
-        return false;
-    wlr_xdg_toplevel_send_close(surf->toplevel());
-    return true;
-}
-
-// ---------------------------------------------------------------------------
-// handle_new_output
-// ---------------------------------------------------------------------------
-void WaylandBackend::handle_new_output(wlr_output* output) {
-    LOG_INFO("WaylandBackend: new output '%s'", output->name);
-
-    // Bind the renderer and allocator to this output before first commit.
-    renderer_.init_output(output);
-
-    // Configure the output with its preferred mode (wlroots 0.18 API).
-    wlr_output_state state;
-    wlr_output_state_init(&state);
-    wlr_output_state_set_enabled(&state, true);
-    if (!wl_list_empty(&output->modes)) {
-        wlr_output_mode* mode = wlr_output_preferred_mode(output);
-        wlr_output_state_set_mode(&state, mode);
-    }
-    if (!wlr_output_commit_state(output, &state)) {
-        LOG_ERR("WaylandBackend: failed to commit initial mode for '%s'", output->name);
-        wlr_output_state_finish(&state);
-        return;
-    }
-    wlr_output_state_finish(&state);
-
-    // Add to output_layout (auto-placed to the right of existing outputs)
-    wlr_output_layout_add_auto(scene_.output_layout(), output);
-
-    // Create scene output
-    wlr_scene_output* scene_out = wlr_scene_get_scene_output(scene_.scene(), output);
-    if (!scene_out)
-        scene_out = wlr_scene_output_create(scene_.scene(), output);
-
-    outputs_.push_back(std::make_unique<WlOutput>(output, scene_out,
-        [this](WlOutput* o) {
-            handle_output_frame(o);
-        },
-        [this](WlOutput* o) {
-            handle_output_destroy(o);
-        }
-    ));
-
-    // Notify runtime that display topology changed.
-    runtime_.dispatch_display_change();
-}
-
-// ---------------------------------------------------------------------------
-// handle_output_destroy
-// ---------------------------------------------------------------------------
-void WaylandBackend::handle_output_destroy(WlOutput* out) {
-    LOG_INFO("WaylandBackend: output destroyed '%s'",
-        out->output() ? out->output()->name : "?");
-    out->disconnect();
-    outputs_.erase(std::remove_if(outputs_.begin(), outputs_.end(),
-        [out](const auto& p) {
-            return p.get() == out;
-        }), outputs_.end());
-    runtime_.dispatch_display_change();
-}
-
-// ---------------------------------------------------------------------------
-// handle_new_input
-// ---------------------------------------------------------------------------
-void WaylandBackend::handle_new_input(wlr_input_device* device) {
-    switch (device->type) {
-        case WLR_INPUT_DEVICE_KEYBOARD: handle_new_keyboard(device); break;
-        case WLR_INPUT_DEVICE_POINTER:  handle_new_pointer(device);  break;
-        default: break;
+    if (!*static_cast<Admin*>(this)) {
+        throw std::runtime_error("wl_backend: sirenwm_admin_v1 not available");
     }
 
-    // Update seat capabilities
-    uint32_t caps = 0;
-    for (const auto& kb : keyboards_) (void)kb, caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-    for (const auto& out : outputs_)  (void)out, caps |= WL_SEAT_CAPABILITY_POINTER;
-    if (!keyboards_.empty()) caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-    wlr_seat_set_capabilities(seat_obj_.seat(), caps);
+    get_surface_list();
+    display_.roundtrip();
+
 }
 
-void WaylandBackend::handle_new_keyboard(wlr_input_device* device) {
-    keyboards_.push_back(std::make_unique<WlKeyboard>(device,
-        [this](WlKeyboard* kb, wlr_keyboard_key_event* ev) {
-            handle_keyboard_key(kb, ev);
-        },
-        [this](WlKeyboard* kb) {
-            handle_keyboard_modifiers(kb);
-        },
-        [this](WlKeyboard* kb) {
-            handle_keyboard_destroy(kb);
-        }
-    ));
-    WlKeyboard* kb = keyboards_.back().get();
-    wlr_seat_set_keyboard(seat_obj_.seat(), kb->keyboard());
-    LOG_INFO("WaylandBackend: keyboard '%s' added", device->name);
+WlBackend::~WlBackend() {
+    shutdown();
 }
 
-void WaylandBackend::handle_new_pointer(wlr_input_device* device) {
-    wlr_cursor_attach_input_device(seat_obj_.cursor(), device);
-    LOG_INFO("WaylandBackend: pointer '%s' added", device->name);
+void WlBackend::shutdown() {
+    Admin::reset();
+    registry_.reset();
+    display_ = {};
 }
 
-void WaylandBackend::handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event* ev) {
-    wlr_keyboard* keyboard = kb->keyboard();
-    xkb_keycode_t keycode  = ev->keycode + 8;
-    xkb_keysym_t  keysym   = xkb_state_key_get_one_sym(keyboard->xkb_state, keycode);
-
-    bool          pressed = (ev->state == WL_KEYBOARD_KEY_STATE_PRESSED);
-    if (!pressed)
-        return;
-
-    event::KeyPressEv kev;
-    kev.mods    = (uint16_t)(keyboard->modifiers.depressed | keyboard->modifiers.locked);
-    kev.keycode = (uint8_t)(ev->keycode & 0xFF);
-    kev.keysym  = (uint32_t)keysym;
-
-    runtime_.post_event(kev);
-
-    // Pass through to focused client
-    wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
-    wlr_seat_keyboard_notify_key(seat_obj_.seat(), ev->time_msec, ev->keycode, ev->state);
+int WlBackend::event_fd() const {
+    return display_ ? display_.fd() : -1;
 }
 
-void WaylandBackend::handle_keyboard_modifiers(WlKeyboard* kb) {
-    wlr_keyboard* keyboard = kb->keyboard();
-    wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
-    wlr_seat_keyboard_notify_modifiers(seat_obj_.seat(), &keyboard->modifiers);
+void WlBackend::pump_events(std::size_t) {
+    if (!display_) return;
+    while (display_.prepare_read() != 0)
+        display_.dispatch_pending();
+    display_.read_events();
+    display_.dispatch_pending();
+    display_.flush();
 }
 
-void WaylandBackend::handle_keyboard_destroy(WlKeyboard* kb) {
-    keyboards_.erase(std::remove_if(keyboards_.begin(), keyboards_.end(),
-        [kb](const auto& p) {
-            return p.get() == kb;
-        }), keyboards_.end());
-}
+void WlBackend::render_frame() {
+    if (!display_) return;
 
-// ---------------------------------------------------------------------------
-// Cursor handlers
-// ---------------------------------------------------------------------------
-void WaylandBackend::handle_cursor_motion(wlr_pointer_motion_event* ev) {
-    wlr_cursor_move(seat_obj_.cursor(), &ev->pointer->base, ev->delta_x, ev->delta_y);
-    process_cursor_motion(ev->time_msec);
-}
+    auto& core = runtime_.core;
+    auto effects = core.take_backend_effects();
 
-void WaylandBackend::handle_cursor_motion_abs(wlr_pointer_motion_absolute_event* ev) {
-    wlr_cursor_warp_absolute(seat_obj_.cursor(), &ev->pointer->base, ev->x, ev->y);
-    process_cursor_motion(ev->time_msec);
-}
-
-void WaylandBackend::handle_cursor_button(wlr_pointer_button_event* ev) {
-    event::ButtonEv bev;
-    bev.button   = (uint8_t)(ev->button & 0xFF);
-    bev.state    = (uint16_t)mod_state_;
-    bev.release  = (ev->state == WLR_BUTTON_RELEASED);
-    bev.root_pos = { (int16_t)seat_obj_.cursor()->x, (int16_t)seat_obj_.cursor()->y };
-    runtime_.post_event(bev);
-
-    wlr_seat_pointer_notify_button(seat_obj_.seat(), ev->time_msec, ev->button, ev->state);
-}
-
-void WaylandBackend::handle_cursor_axis(wlr_pointer_axis_event* ev) {
-    wlr_seat_pointer_notify_axis(seat_obj_.seat(), ev->time_msec, ev->orientation,
-        ev->delta, ev->delta_discrete, ev->source, ev->relative_direction);
-}
-
-void WaylandBackend::handle_cursor_frame() {
-    wlr_seat_pointer_notify_frame(seat_obj_.seat());
-}
-
-void WaylandBackend::handle_request_cursor(
-    wlr_seat_pointer_request_set_cursor_event* ev) {
-    wlr_cursor_set_surface(seat_obj_.cursor(), ev->surface, ev->hotspot_x, ev->hotspot_y);
-}
-
-void WaylandBackend::handle_request_set_selection(
-    wlr_seat_request_set_selection_event* ev) {
-    wlr_seat_set_selection(seat_obj_.seat(), ev->source, ev->serial);
-}
-
-void WaylandBackend::process_cursor_motion(uint32_t time_ms) {
-    // Find surface under cursor; notify seat
-    double             sx = 0, sy = 0;
-    wlr_scene_node*    node    = wlr_scene_node_at(&scene_.root()->node, seat_obj_.cursor()->x, seat_obj_.cursor()->y, &sx, &sy);
-    wlr_scene_surface* ss      = nullptr;
-    wlr_surface*       surface = nullptr;
-
-    if (node && node->type == WLR_SCENE_NODE_BUFFER) {
-        ss = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
-        if (ss)
-            surface = ss->surface;
-    }
-
-    if (pointer_grabbed_) {
-        // Pointer is grabbed (drag/resize): keep cursor shape but don't
-        // forward focus or motion to clients.
-        return;
-    }
-
-    if (!surface) {
-        set_cursor("left_ptr");
-        wlr_seat_pointer_clear_focus(seat_obj_.seat());
-    } else {
-        wlr_seat_pointer_notify_enter(seat_obj_.seat(), surface, sx, sy);
-        wlr_seat_pointer_notify_motion(seat_obj_.seat(), time_ms, sx, sy);
-
-        // Focus-follows-mouse: find the managed window under the cursor and
-        // dispatch a FocusWindow command to Core (mirrors X11 EnterNotify).
-        // wlr_xdg_surface_try_from_wlr_surface returns nullptr for non-xdg surfaces.
-        if (wlr_xdg_surface* xdg = wlr_xdg_surface_try_from_wlr_surface(surface)) {
-            for (auto& [id, wls] : surfaces_) {
-                if (wls && wls->xdg_surface() == xdg) {
-                    core_.dispatch(command::atom::FocusWindow{ id });
-                    break;
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Domain event handlers
-// ---------------------------------------------------------------------------
-void WaylandBackend::on(event::WorkspaceSwitched /*ev*/) {
-    // TODO(wayland): surface visibility sync on workspace switch.
-}
-
-void WaylandBackend::on(event::FocusChanged ev) {
-    // Deactivate previously focused window.
-    if (focused_window_ != NO_WINDOW && focused_window_ != ev.window) {
-        auto prev = surfaces_.find(focused_window_);
-        if (prev != surfaces_.end() && prev->second && prev->second->xdg_surface())
-            wlr_xdg_toplevel_set_activated(prev->second->xdg_surface()->toplevel, false);
-    }
-
-    if (ev.window == NO_WINDOW) {
-        wlr_seat_keyboard_notify_clear_focus(seat_obj_.seat());
-        focused_window_ = NO_WINDOW;
-        return;
-    }
-
-    auto it = surfaces_.find(ev.window);
-    if (it == surfaces_.end())
-        return;
-    WlSurface* surf = it->second;
-    if (!surf || !surf->xdg_surface())
-        return;
-
-    wlr_xdg_toplevel_set_activated(surf->xdg_surface()->toplevel, true);
-    focused_window_ = ev.window;
-
-    // Notify seat that keyboard focus goes to this surface.
-    if (!keyboards_.empty()) {
-        wlr_keyboard* keyboard = keyboards_[0]->keyboard();
-        wlr_seat_set_keyboard(seat_obj_.seat(), keyboard);
-        wlr_seat_keyboard_notify_enter(seat_obj_.seat(),
-            surf->xdg_surface()->surface,
-            keyboard->keycodes,
-            keyboard->num_keycodes,
-            &keyboard->modifiers);
-    }
-}
-
-void WaylandBackend::on(event::WindowAssignedToWorkspace ev) {
-    (void)ev;
-}
-
-void WaylandBackend::on(event::WindowAdopted ev) {
-    runtime_.post_event(event::WindowMapped{ ev.window });
-    if (!ev.currently_visible)
-        runtime_.post_event(event::WindowUnmapped{ ev.window, false });
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-void WaylandBackend::set_cursor(const char* name) {
-    seat_obj_.set_cursor(name);
-}
-
-WlOutput* WaylandBackend::output_at(double x, double y) {
-    wlr_output* o = wlr_output_layout_output_at(scene_.output_layout(), x, y);
-    if (!o) return nullptr;
-    for (auto& out : outputs_)
-        if (out->output() == o) return out.get();
-    return nullptr;
-}
-
-// ---------------------------------------------------------------------------
-// apply_core_backend_effects — mirrors X11Backend pattern
-// ---------------------------------------------------------------------------
-void WaylandBackend::apply_core_backend_effects() {
-    auto effects = core_.take_backend_effects();
     for (const auto& e : effects) {
         switch (e.kind) {
-            case BackendEffectKind::MapWindow: {
-                auto it = surfaces_.find(e.window);
-                if (it != surfaces_.end()) {
-                    it->second->mapped = true;
-                    if (it->second->scene_node())
-                        wlr_scene_node_set_enabled(&it->second->scene_node()->node, true);
-                    runtime_.post_event(event::WindowMapped{ e.window });
-                }
-                break;
-            }
-            case BackendEffectKind::UnmapWindow: {
-                auto it = surfaces_.find(e.window);
-                if (it != surfaces_.end()) {
-                    it->second->mapped = false;
-                    if (it->second->scene_node())
-                        wlr_scene_node_set_enabled(&it->second->scene_node()->node, false);
-                    runtime_.post_event(event::WindowUnmapped{ e.window, false });
-                }
-                break;
-            }
-            case BackendEffectKind::FocusWindow:
-                runtime_.post_event(event::FocusChanged{ e.window });
-                break;
-            case BackendEffectKind::FocusRoot:
-                wlr_seat_keyboard_notify_clear_focus(seat_obj_.seat());
-                break;
-            case BackendEffectKind::UpdateWindow: {
-                if (e.window == NO_WINDOW)
-                    break;
-                auto* ws = wl_surface(e.window);
-                if (!ws)
-                    break;
-                if (auto flush = core_.take_window_flush(e.window)) {
-                    auto state = core_.window_state_any(e.window);
-                    if (state)
-                        ws->set_geometry(state->pos().x(), state->pos().y(), state->size().x(), state->size().y());
-                }
-                break;
-            }
-            case BackendEffectKind::RaiseWindow: {
-                auto* ws = wl_surface(e.window);
-                if (ws && ws->scene_node())
-                    wlr_scene_node_raise_to_top(&ws->scene_node()->node);
-                break;
-            }
-            case BackendEffectKind::LowerWindow: {
-                auto* ws = wl_surface(e.window);
-                if (ws && ws->scene_node())
-                    wlr_scene_node_lower_to_bottom(&ws->scene_node()->node);
-                break;
-            }
-            case BackendEffectKind::WarpPointer:
-                wlr_cursor_warp_absolute(seat_obj_.cursor(), nullptr,
-                    (double)e.pos.x() / 1.0, (double)e.pos.y() / 1.0);
-                break;
+        case BackendEffectKind::MapWindow: {
+            auto ws = core.window_state(e.window);
+            if (!ws) break;
+            configure_surface(e.window,
+                              ws->pos().x(), ws->pos().y(),
+                              ws->size().x(), ws->size().y());
+            set_surface_visible(e.window, 1);
+            if (ws->border_width > 0)
+                set_surface_border(e.window, ws->border_width, unfocused_border_);
+            if (auto flush = core.take_window_flush(e.window))
+                (void)flush;
+            break;
         }
-    }
-}
-
-#ifndef SIRENWM_NO_LAYER_SHELL
-// ---------------------------------------------------------------------------
-// Layer shell — external clients (waybar, swaybar, mako, etc.)
-// ---------------------------------------------------------------------------
-
-// Recalculate usable area for an output and send configure to all mapped
-// layer surfaces on that output.
-void WaylandBackend::arrange_layers(wlr_output* output) {
-    struct wlr_box usable {};
-    wlr_output_effective_resolution(output, &usable.width, &usable.height);
-
-    // Process layers from bottom to top; background/bottom/top/overlay.
-    // Only BOTTOM and TOP layers typically set exclusive zones.
-    static const zwlr_layer_shell_v1_layer layer_order[] = {
-        ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
-        ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
-        ZWLR_LAYER_SHELL_V1_LAYER_TOP,
-        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
-    };
-
-    for (auto layer : layer_order) {
-        for (auto& ls : layer_surfaces_) {
-            if (!ls->surface || !ls->surface->output || ls->surface->output != output)
-                continue;
-            if (ls->surface->current.layer != layer)
-                continue;
-            wlr_scene_layer_surface_v1_configure(ls->scene_layer, nullptr, &usable);
+        case BackendEffectKind::UnmapWindow:
+            set_surface_visible(e.window, 0);
+            break;
+        case BackendEffectKind::FocusWindow:
+            if (e.window != NO_WINDOW) {
+                set_surface_activated(e.window, 1);
+                set_surface_border(e.window, 0, 0);
+                auto ws = core.window_state(e.window);
+                if (ws && ws->border_width > 0)
+                    set_surface_border(e.window, ws->border_width, focused_border_);
+            }
+            if (prev_focused_ != NO_WINDOW && prev_focused_ != e.window) {
+                auto prev = core.window_state(prev_focused_);
+                if (prev && prev->border_width > 0)
+                    set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
+            }
+            prev_focused_ = e.window;
+            break;
+        case BackendEffectKind::FocusRoot:
+            if (prev_focused_ != NO_WINDOW) {
+                auto prev = core.window_state(prev_focused_);
+                if (prev && prev->border_width > 0)
+                    set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
+                prev_focused_ = NO_WINDOW;
+            }
+            break;
+        case BackendEffectKind::UpdateWindow: {
+            if (e.window == NO_WINDOW) break;
+            if (auto flush = core.take_window_flush(e.window)) {
+                auto ws = core.window_state(e.window);
+                if (ws) {
+                    configure_surface(e.window,
+                                      ws->pos().x(), ws->pos().y(),
+                                      ws->size().x(), ws->size().y());
+                    uint32_t color = (e.window == prev_focused_) ? focused_border_ : unfocused_border_;
+                    set_surface_border(e.window, ws->border_width, color);
+                }
+            }
+            break;
         }
-    }
-}
-
-void WaylandBackend::handle_new_layer_surface(wlr_layer_surface_v1* surface) {
-    LOG_INFO("WaylandBackend: new layer-shell surface layer=%u namespace='%s'",
-        (unsigned)surface->current.layer,
-        surface->namespace_ ? surface->namespace_ : "");
-
-    // Assign output: use the client's requested output or fall back to first.
-    if (!surface->output) {
-        if (!outputs_.empty())
-            surface->output = outputs_.front()->output();
-        else {
-            LOG_WARN("WaylandBackend: layer surface with no output available, closing");
-            wlr_layer_surface_v1_destroy(surface);
-            return;
+        case BackendEffectKind::RaiseWindow:
+            set_surface_stacking(e.window, 1);
+            break;
+        case BackendEffectKind::LowerWindow:
+            set_surface_stacking(e.window, 0);
+            break;
+        case BackendEffectKind::CloseWindow:
+            close_surface(e.window);
+            break;
+        case BackendEffectKind::WarpPointer:
+            warp_pointer(e.pos.x(), e.pos.y());
+            break;
         }
     }
 
-    auto ls = std::make_unique<WlLayerSurface>();
-    ls->surface = surface;
+    for (auto win : core.visible_window_ids()) {
+        if (auto flush = core.take_window_flush(win)) {
+            auto ws = core.window_state(win);
+            if (ws)
+                configure_surface(win,
+                                  ws->pos().x(), ws->pos().y(),
+                                  ws->size().x(), ws->size().y());
+        }
+    }
 
-    // Place in scene graph at the appropriate layer.
-    ls->scene_layer = wlr_scene_layer_surface_v1_create(scene_.root(), surface);
-
-    WlLayerSurface* raw = ls.get();
-    layer_surfaces_.push_back(std::move(ls));
-
-    raw->on_map_.connect(&surface->surface->events.map, [this, raw](void*) {
-            LOG_INFO("WaylandBackend: layer surface mapped");
-            arrange_layers(raw->surface->output);
-            wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, true);
-        });
-
-    raw->on_unmap_.connect(&surface->surface->events.unmap, [this, raw](void*) {
-            LOG_INFO("WaylandBackend: layer surface unmapped");
-            wlr_scene_node_set_enabled(&raw->scene_layer->tree->node, false);
-            arrange_layers(raw->surface->output);
-        });
-
-    raw->on_commit_.connect(&surface->surface->events.commit, [this, raw](void*) {
-            // Re-arrange if the exclusive zone or anchor changed.
-            if (raw->surface->output)
-                arrange_layers(raw->surface->output);
-        });
-
-    raw->on_destroy_.connect(&surface->events.destroy, [this, raw](void*) {
-            handle_layer_surface_destroy(raw);
-        });
-
-    // Send initial configure so the client knows its dimensions.
-    arrange_layers(surface->output);
+    display_.flush();
 }
 
-void WaylandBackend::handle_layer_surface_destroy(WlLayerSurface* ls) {
-    LOG_INFO("WaylandBackend: layer surface destroyed");
-    wlr_output* output = ls->surface ? ls->surface->output : nullptr;
-
-    layer_surfaces_.erase(
-        std::remove_if(layer_surfaces_.begin(), layer_surfaces_.end(),
-        [ls](const auto& p) {
-            return p.get() == ls;
-        }),
-        layer_surfaces_.end());
-
-    if (output) arrange_layers(output);
+void WlBackend::on_start(Core& core) {
+    reload_border_colors();
 }
-#endif
+
+void WlBackend::reload_border_colors() {
+    auto& theme = runtime_.core.current_settings().theme;
+    const auto& fc = theme.border_focused.empty()   ? theme.accent : theme.border_focused;
+    const auto& uc = theme.border_unfocused.empty()
+        ? (theme.alt_bg.empty() ? theme.bg : theme.alt_bg) : theme.border_unfocused;
+    focused_border_   = parse_hex_color(fc);
+    unfocused_border_ = parse_hex_color(uc);
+}
+
+backend::BackendPorts WlBackend::ports() {
+    return { input_, monitor_, render_, keyboard_ };
+}
+
+// ── Admin event handlers ──
+
+void WlBackend::on_surface_created(uint32_t id, const char* app_id,
+                                    const char* title, uint32_t pid) {
+    surfaces_[id] = {id, app_id ? app_id : "", title ? title : "", pid};
+}
+
+void WlBackend::on_surface_mapped(uint32_t id) {
+    auto it = surfaces_.find(id);
+    if (it == surfaces_.end()) return;
+    it->second.mapped = true;
+}
+
+void WlBackend::manage_surface(wl_surface_info& s) {
+    if (s.managed) return;
+    s.managed = true;
+    LOG_INFO("WlBackend: surface %u mapped", s.id);
+
+    auto& core = runtime_.core;
+    auto wid = static_cast<WindowId>(s.id);
+
+    core.dispatch(command::atom::EnsureWindow{ .window = wid });
+
+    core.dispatch(command::atom::SetWindowMetadata{
+        .window      = wid,
+        .wm_instance = s.app_id,
+        .wm_class    = s.app_id,
+        .title       = s.title,
+        .pid         = s.pid,
+        .type        = WindowType::Normal,
+        .hints       = {},
+    });
+
+    core.dispatch(command::atom::SetWindowGeometry{
+        .window = wid,
+        .pos    = {s.x, s.y},
+        .size   = {s.width, s.height},
+    });
+
+    runtime_.invoke_hook(hook::WindowRules{ wid });
+
+    core.dispatch(command::atom::MapWindow{ wid });
+    runtime_.post_event(event::WindowMapped{ wid });
+    core.dispatch(command::atom::ReconcileNow{});
+
+    auto mapped = core.window_state(wid);
+    if (mapped && mapped->is_visible())
+        core.dispatch(command::atom::FocusWindow{ wid });
+}
+
+void WlBackend::on_surface_unmapped(uint32_t id) {
+    auto it = surfaces_.find(id);
+    if (it != surfaces_.end())
+        it->second.mapped = false;
+}
+
+void WlBackend::on_surface_destroyed(uint32_t id) {
+    auto wid = static_cast<WindowId>(id);
+    LOG_INFO("WlBackend: surface %u destroyed", id);
+    auto& core = runtime_.core;
+    bool was_visible = false;
+    {
+        int ws_id = core.workspace_of_window(wid);
+        was_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
+    }
+
+    runtime_.post_event(event::DestroyNotify{ wid });
+    (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ wid });
+    runtime_.post_event(event::WindowUnmapped{ wid, true });
+
+    if (was_visible) {
+        (void)core.dispatch(command::atom::ReconcileNow{});
+    }
+
+    if (prev_focused_ == wid)
+        prev_focused_ = NO_WINDOW;
+
+    surfaces_.erase(id);
+}
+
+void WlBackend::on_surface_title_changed(uint32_t id, const char* title) {
+    auto it = surfaces_.find(id);
+    if (it != surfaces_.end())
+        it->second.title = title ? title : "";
+    runtime_.post_event(event::PropertyNotify{
+        static_cast<WindowId>(id), 0 });
+}
+
+void WlBackend::on_surface_app_id_changed(uint32_t id, const char* app_id) {
+    auto it = surfaces_.find(id);
+    if (it != surfaces_.end())
+        it->second.app_id = app_id ? app_id : "";
+}
+
+void WlBackend::on_surface_committed(uint32_t id, int32_t w, int32_t h) {
+    auto it = surfaces_.find(id);
+    if (it == surfaces_.end()) return;
+    it->second.width  = w;
+    it->second.height = h;
+
+    if (it->second.mapped && !it->second.managed && w > 0 && h > 0)
+        manage_surface(it->second);
+}
+
+void WlBackend::on_key_press(uint32_t keycode, uint32_t keysym, uint32_t mods) {
+    runtime_.post_event(event::KeyPressEv{
+        static_cast<uint16_t>(mods),
+        static_cast<uint8_t>(keycode),
+        keysym});
+}
+
+void WlBackend::on_button_press(uint32_t surface_id, int32_t x, int32_t y,
+                                 uint32_t button, uint32_t mods, uint32_t released) {
+    runtime_.post_event(event::ButtonEv{
+        .window    = static_cast<WindowId>(surface_id),
+        .root      = static_cast<WindowId>(surface_id),
+        .root_pos  = {static_cast<int16_t>(x), static_cast<int16_t>(y)},
+        .event_pos = {static_cast<int16_t>(x), static_cast<int16_t>(y)},
+        .time      = 0,
+        .button    = static_cast<uint8_t>(button - 0x110 + 1),
+        .state     = static_cast<uint16_t>(mods),
+        .release   = released != 0,
+    });
+}
+
+void WlBackend::on_pointer_motion(uint32_t surface_id, int32_t x, int32_t y,
+                                   uint32_t mods) {
+    runtime_.post_event(event::MotionEv{
+        static_cast<WindowId>(surface_id),
+        {static_cast<int16_t>(x), static_cast<int16_t>(y)},
+        static_cast<uint16_t>(mods)});
+}
+
+void WlBackend::on_pointer_enter(uint32_t surface_id) {
+    auto& core = runtime_.core;
+    auto wid = static_cast<WindowId>(surface_id);
+
+    auto window = core.window_state_any(wid);
+    if (!window || !window->is_visible()) return;
+
+    core.dispatch(command::atom::FocusWindow{ wid });
+}
+
+void WlBackend::on_output_added(uint32_t id, const char* name,
+                                 int32_t x, int32_t y, int32_t w, int32_t h,
+                                 int32_t refresh) {
+    outputs_[id] = {id, name ? name : "", x, y, w, h, refresh};
+    runtime_.post_event(event::DisplayTopologyChanged{});
+}
+
+void WlBackend::on_output_removed(uint32_t id) {
+    outputs_.erase(id);
+    runtime_.post_event(event::DisplayTopologyChanged{});
+}
+
+void WlBackend::on_overlay_expose(uint32_t overlay_id) {
+    auto* surface = runtime_.resolve_surface(static_cast<WindowId>(overlay_id));
+    if (surface)
+        runtime_.post_event(event::ExposeSurface{ surface });
+}
+
+void WlBackend::on_overlay_button(uint32_t overlay_id, int32_t x, int32_t y,
+                                   uint32_t button, uint32_t released) {
+    auto* surface = runtime_.resolve_surface(static_cast<WindowId>(overlay_id));
+    if (surface) {
+        runtime_.post_event(event::SurfaceButton{
+            .surface   = surface,
+            .event_pos = { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+            .time      = 0,
+            .button    = static_cast<uint8_t>(button - 0x110 + 1),
+            .state     = 0,
+            .release   = released != 0,
+        });
+    }
+}

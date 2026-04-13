@@ -1,11 +1,9 @@
 #pragma once
 
-// Aggregate of backend capability ports passed from Backend to Core.
+// Aggregate of backend capability ports exposed by Backend.
 //
-// Core holds a value copy after Runtime::start() and exposes it via
-// Core::ports(). Modules reach every backend capability through
-// core().ports().xxx — the concrete Backend class is never visible from
-// module code.
+// Runtime and modules access backend capabilities through Backend::ports()
+// without depending on concrete backend types.
 //
 // All backends are required to provide input/monitor/render/keyboard, so
 // those fields are references. gl is optional (only available in debug

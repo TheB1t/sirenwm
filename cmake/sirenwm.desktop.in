@@ -1,5 +1,5 @@
 [Desktop Entry]
 Name=SirenWM
 Comment=X11 tiling window manager
-Exec=@CMAKE_INSTALL_FULL_BINDIR@/sirenwm
+Exec=@SIRENWM_BINARY_NAME@
 Type=XSession

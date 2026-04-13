@@ -78,6 +78,20 @@ jobs:
             -DSIRENWM_BACKEND=wayland
           cmake --build build -j$(nproc)
 
+      - name: Build tests
+        run: |
+          cmake -S . -B build-test \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DSIRENWM_BACKEND=wayland \
+            -DBUILD_TESTING=ON
+          cmake --build build-test -j$(nproc)
+
+      - name: Run tests
+        run: |
+          ctest --test-dir build-test --output-on-failure
+
       - name: Integration tests (Wayland nested in Xvfb)
         run: |
           bash tests/integration/run_tests_wayland.sh

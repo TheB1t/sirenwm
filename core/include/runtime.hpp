@@ -20,6 +20,7 @@
 #include <pointer_registry.hpp>
 #include <lua_host.hpp>
 #include <module.hpp>
+#include <module_registry.hpp>
 #include <runtime_store.hpp>
 #include <surface.hpp>
 
@@ -33,7 +34,6 @@ class TrayHost;
 } // namespace backend
 
 class Backend;
-class ModuleRegistry;
 struct TestHarness;
 
 class Runtime : public IEventEmitter, public IEventSink {
@@ -48,12 +48,12 @@ class Runtime : public IEventEmitter, public IEventSink {
             SoftRestart,
         };
 
-        ModuleRegistry& module_registry_;
+        ModuleRegistry module_registry_;
         Core         core_;
         LuaHost      lua_host_{core_}; // must be declared after core_
         RuntimeStore store_;
         CoreConfig   core_config_;
-        Backend*     backend_ = nullptr; // non-null between start() and stop()
+        std::unique_ptr<Backend> backend_;
 
         std::vector<std::unique_ptr<Module>> modules;
 
@@ -66,6 +66,17 @@ class Runtime : public IEventEmitter, public IEventSink {
 
         EventLoop event_loop_;
 
+    public:
+        // Direct references to mutable runtime subsystems.
+        // Prefer field access over trivial getter wrappers.
+        ModuleRegistry& module_registry = module_registry_;
+        Core&           core            = core_;
+        LuaHost&        lua             = lua_host_;
+        RuntimeStore&   store           = store_;
+        CoreConfig&     core_config     = core_config_;
+        EventLoop&      event_loop      = event_loop_;
+
+    private:
         RuntimeState state_ = RuntimeState::Idle;
 
         std::atomic_bool reload_pending { false };
@@ -74,21 +85,19 @@ class Runtime : public IEventEmitter, public IEventSink {
         std::atomic_bool stop_requested { false };
 
     public:
-        explicit Runtime(ModuleRegistry& module_registry);
+        using BackendFactory = std::function<std::unique_ptr<Backend>(Core&, Runtime&)>;
+        explicit Runtime(BackendFactory backend_factory);
 
         // Non-copyable, non-movable (address stability for references).
         Runtime(const Runtime&)            = delete;
         Runtime& operator=(const Runtime&) = delete;
         Runtime(Runtime&&)                 = delete;
         Runtime& operator=(Runtime&&)      = delete;
-        virtual ~Runtime()                 = default;
-
-        Core&       core()       { return core_; }
-        const Core& core() const { return core_; }
+        virtual ~Runtime();
 
         template<typename T, typename... Args>
         Runtime& use(Args&&... args) {
-            auto mod = std::make_unique<T>(ModuleDeps{ *this, core_ },
+            auto mod = std::make_unique<T>(ModuleDeps{ *this, core },
                     std::forward<Args>(args)...);
             mod->on_init();
             modules.push_back(std::move(mod));
@@ -133,10 +142,8 @@ class Runtime : public IEventEmitter, public IEventSink {
         // Used by test harnesses directly; prefer run() in production.
         void           start();
         bool           load_config(const std::string& path);
-        backend::BackendPorts ports();
-        void           prepare_exec_restart();
-        ModuleRegistry& module_registry() { return module_registry_; }
-        const ModuleRegistry& module_registry() const { return module_registry_; }
+        Backend&       backend();
+        const Backend& backend() const;
 
         // IEventEmitter
         void add_receiver(IEventReceiver* receiver) override;
@@ -164,15 +171,6 @@ class Runtime : public IEventEmitter, public IEventSink {
             hook_registry_.invoke(h);
             return std::move(h);
         }
-
-        LuaHost& lua() { return lua_host_; }
-        const LuaHost& lua() const { return lua_host_; }
-
-        RuntimeStore& store() { return store_; }
-        const RuntimeStore& store() const { return store_; }
-
-        CoreConfig&       core_config()       { return core_config_; }
-        const CoreConfig& core_config() const { return core_config_; }
 
         CoreSettings             build_core_settings() const;
         std::vector<std::string> validate_settings() const;
@@ -204,11 +202,6 @@ class Runtime : public IEventEmitter, public IEventSink {
         int get_backend_extension_event_base() const { return backend_extension_event_base; }
         void dispatch_display_change();
 
-        EventLoop& event_loop() { return event_loop_; }
-
-        // Bind a concrete backend. Called by RuntimeOf<B> constructor and test harnesses.
-        void bind_backend(Backend& b) { backend_ = &b; }
-
         // Module-facing UI resource factories.
         // Surface owns its backend window; destroying the Surface unregisters
         // and releases the window. create_tray wires an X11 TrayHost against
@@ -236,9 +229,6 @@ class Runtime : public IEventEmitter, public IEventSink {
         PointerRegistry<IEventReceiver>        extra_receivers_;
         HookRegistry                           hook_registry_;
 
-        Backend&       backend();
-        const Backend& backend() const;
-
         // Single drain chokepoint. Called once per tick between epoll wait
         // and render_frame, and synchronously after one-shot state transitions
         // that must flush events (start, stop, reload). Private: production
@@ -258,21 +248,4 @@ class Runtime : public IEventEmitter, public IEventSink {
         void          save_restart_state();
         ReloadRequest consume_reload_request();
         bool          reload_runtime_config();
-};
-
-// ---------------------------------------------------------------------------
-// RuntimeOf<B> — typed wrapper that owns the concrete backend as a value.
-// All non-template code works with Runtime& and never sees B.
-// ---------------------------------------------------------------------------
-template<typename B, typename... BArgs>
-class RuntimeOf : public Runtime {
-    B backend_impl_;
-    public:
-        explicit RuntimeOf(ModuleRegistry& module_registry, BArgs&&... args)
-            : Runtime(module_registry)
-              , backend_impl_(core(), static_cast<Runtime&>(*this),
-                  std::forward<BArgs>(args)...)
-        {
-            bind_backend(backend_impl_);
-        }
 };

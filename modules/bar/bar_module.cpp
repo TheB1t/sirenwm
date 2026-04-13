@@ -50,16 +50,16 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
     if (icon_class.empty())
         return fallback;
 
-    const auto&                  mons = core().monitor_states();
+    const auto&                  mons = core.monitor_states();
     std::unordered_map<int, int> ws_owner_mon;
     for (int mon_idx = 0; mon_idx < (int)mons.size(); mon_idx++)
-        for (int ws_id : core().monitor_workspace_ids(mon_idx))
+        for (int ws_id : core.monitor_workspace_ids(mon_idx))
             ws_owner_mon[ws_id] = mon_idx;
 
     int best_mon   = -1;
     int best_score = -1;
-    for (auto win : core().all_window_ids()) {
-        auto w = core().window_state_any(win);
+    for (auto win : core.all_window_ids()) {
+        auto w = core.window_state_any(win);
         if (!w) continue;
 
         auto base_of = [](const std::string& s) {
@@ -75,16 +75,16 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
             || (base_of(wi) == icon_class) || (wi == base_of(icon_class));
         if (!match) continue;
 
-        int  ws_id     = core().workspace_of_window(win);
+        int  ws_id     = core.workspace_of_window(win);
         auto it_owner  = ws_owner_mon.find(ws_id);
         int  owner_mon = (it_owner != ws_owner_mon.end()) ? it_owner->second : -1;
 
         // Score by visibility (100), active workspace on its monitor (10), focused monitor (1).
         int score = 1;
         if (w->is_visible())  score += 100;
-        if (owner_mon >= 0 && core().active_workspace_on_monitor(owner_mon) == ws_id)
+        if (owner_mon >= 0 && core.active_workspace_on_monitor(owner_mon) == ws_id)
             score += 10;
-        if (owner_mon == core().focused_monitor_index()) score += 1;
+        if (owner_mon == core.focused_monitor_index()) score += 1;
 
         if (owner_mon >= 0 && score > best_score) {
             best_score = score;
@@ -148,7 +148,7 @@ static void refresh_slot(LuaHost& lua, const BarSlot& slot) {
 
 void BarModule::refresh_widgets() {
     if (runtime_state() != RuntimeState::Running) return;
-    auto& lua = this->lua();
+    auto& lua = this->lua;
     for (const auto& b : all_bars_) {
         for (const auto& s : b.cfg.left)   refresh_slot(lua, s);
         for (const auto& s : b.cfg.center) refresh_slot(lua, s);
@@ -165,7 +165,7 @@ void BarModule::redraw() {
     if (!state_provider) return;
 
     if (runtime_state() == RuntimeState::Running) {
-        auto& lua = this->lua();
+        auto& lua = this->lua;
         for (const auto& b : all_bars_) {
             for (const auto& s : b.cfg.left)   update_reactive_slot(lua, s);
             for (const auto& s : b.cfg.center) update_reactive_slot(lua, s);
@@ -287,7 +287,7 @@ void BarModule::raise_all() {
         int                mon_idx = b.surface->monitor_index();
         backend::TrayHost* t       = b.is_top ? tray_for_monitor(mon_idx) : nullptr;
 
-        if (core().monitor_has_visible_covering_window(mon_idx)) {
+        if (core.monitor_has_visible_covering_window(mon_idx)) {
             b.surface->lower();
             if (t) t->raise();
             continue;

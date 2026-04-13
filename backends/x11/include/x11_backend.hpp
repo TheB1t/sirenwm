@@ -149,9 +149,6 @@ class X11Backend final : public Backend {
         void handle_client_message(xcb_client_message_event_t* ev);
         void handle_property_notify(xcb_property_notify_event_t* ev);
         void handle_expose(xcb_expose_event_t* ev);
-        void handle_no_exposure(xcb_no_exposure_event_t*);
-        void handle_graphics_exposure(xcb_graphics_exposure_event_t*);
-        void handle_create_notify(xcb_create_notify_event_t*);
         void handle_ge_generic(xcb_ge_generic_event_t* ev);
         void handle_enter_notify(xcb_enter_notify_event_t* ev);
         void apply_core_backend_effects();

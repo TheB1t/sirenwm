@@ -14,7 +14,7 @@ TEST(Keyboard, RestoreCalledOnStop) {
     h.use<KeyboardModule>();
     h.start();
 
-    EXPECT_FALSE(h.backend.fake_keyboard().restore_called);
+    EXPECT_FALSE(h.backend.keyboard_port.restore_called);
 }
 
 // NOTE: KeyboardModule reads siren.keyboard from Lua assignment handler.

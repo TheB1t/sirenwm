@@ -10,6 +10,7 @@ class Core;
 class Runtime;
 class RuntimeStore;
 class LuaHost;
+class Backend;
 
 struct ModuleDeps {
     Runtime& runtime;
@@ -18,7 +19,7 @@ struct ModuleDeps {
 
 class Module : public IEventReceiver {
     public:
-        explicit Module(ModuleDeps deps) : deps_(deps) {}
+        explicit Module(ModuleDeps deps);
         virtual ~Module()                = default;
         virtual std::string name() const = 0;
 
@@ -57,12 +58,11 @@ class Module : public IEventReceiver {
         using IEventReceiver::on;
 
     protected:
-        Core&    core()    { return deps_.core; }
-        const Core& core() const { return deps_.core; }
-        Runtime& runtime() { return deps_.runtime; }
-        const Runtime& runtime() const { return deps_.runtime; }
-        RuntimeStore& store();
-        LuaHost&      lua();
+        Runtime&      runtime;
+        Core&         core;
+        Backend&      backend;
+        RuntimeStore& store;
+        LuaHost&      lua;
 
         // Returns the current FSM state of the owning Runtime.
         // Defined in module.cpp to avoid a circular include with runtime.hpp.
@@ -71,6 +71,5 @@ class Module : public IEventReceiver {
     private:
         friend class Runtime;
 
-        ModuleDeps deps_;
         bool       lua_inited_ = false;
 };

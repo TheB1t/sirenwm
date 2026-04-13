@@ -62,7 +62,7 @@ class BarModule : public Module {
             std::unique_ptr<Surface>           surface;
             BarConfig                          cfg; // resolved config for this specific monitor
             bool                               is_top;
-            std::unique_ptr<backend::TrayHost> tray; // attached via runtime().create_tray(); may be null
+            std::unique_ptr<backend::TrayHost> tray; // attached via runtime.create_tray(); may be null
         };
         std::vector<BarWindow> all_bars_;
 

@@ -1,201 +1,116 @@
 #pragma once
 
 #include <backend/backend.hpp>
-#include <backend/input_port.hpp>
-#include <backend/keyboard_port.hpp>
-#include <backend/monitor_port.hpp>
 
-#include <wl_backend_obj.hpp>
-#include <wl_display.hpp>
-#include <wl_keyboard.hpp>
-#include <wl_layer_shell.hpp>
-#include <wl_listener.hpp>
-#include <wl_output.hpp>
-#include <wl_renderer.hpp>
-#include <wl_scene_graph.hpp>
-#include <wl_seat.hpp>
-#include <wl_surface.hpp>
-#include <wl_xdg_shell.hpp>
+#include <wl/client_display.hpp>
+#include <wl/proxy.hpp>
+#include <wl/registry.hpp>
+#include <wl_ports.hpp>
+#include "sirenwm-server-v1-client-api.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
-#include <vector>
-#include <atomic>
 
-extern "C" {
-#include <wayland-server-core.h>
-#include <wlr/types/wlr_data_device.h>
-#include <wlr/types/wlr_output.h>
-#include <wlr/types/wlr_scene.h>
-#include <xkbcommon/xkbcommon.h>
+struct wl_surface_info {
+    uint32_t    id       = 0;
+    std::string app_id;
+    std::string title;
+    uint32_t    pid      = 0;
+    bool        mapped   = false;
+    bool        managed  = false;
+    int32_t     x        = 0;
+    int32_t     y        = 0;
+    int32_t     width    = 0;
+    int32_t     height   = 0;
+};
+
+struct wl_output_info {
+    uint32_t    id      = 0;
+    std::string name;
+    int32_t     x       = 0;
+    int32_t     y       = 0;
+    int32_t     w       = 0;
+    int32_t     h       = 0;
+    int32_t     refresh = 0;
+};
+
+namespace backend {
+class WlInputPort;
+class WlMonitorPort;
+class WlRenderPort;
+class WlKeyboardPort;
 }
 
-class Core;
-class Runtime;
+class WlBackend final : public Backend,
+                         public wlproto::SirenwmAdminV1ClientApi<WlBackend> {
+public:
+    using Admin = wlproto::SirenwmAdminV1ClientApi<WlBackend>;
 
-#ifndef SIRENWM_NO_LAYER_SHELL
-// ---------------------------------------------------------------------------
-// Per-layer-surface state.
-// ---------------------------------------------------------------------------
-struct WlLayerSurface {
-    wlr_layer_surface_v1*       surface     = nullptr;
-    wlr_scene_layer_surface_v1* scene_layer = nullptr;
+    WlBackend(Core& core, Runtime& runtime);
+    ~WlBackend() override;
 
-    WlVoidListener              on_map_;
-    WlVoidListener              on_unmap_;
-    WlVoidListener              on_destroy_;
-    WlVoidListener              on_commit_;
-};
-#endif
+    int  event_fd() const override;
+    void pump_events(std::size_t max_events_per_tick) override;
+    void render_frame() override;
+    void on_reload_applied() override { reload_border_colors(); }
+    void shutdown() override;
+    void on_start(Core& core) override;
 
-// ---------------------------------------------------------------------------
-// WaylandBackend — wlroots compositor backend (supports 0.17/0.18).
-// ---------------------------------------------------------------------------
-class WaylandBackend final : public Backend {
-    public:
-        WaylandBackend(Core& core, Runtime& runtime);
-        ~WaylandBackend() override;
+    backend::BackendPorts ports() override;
 
-        // Backend interface
-        int                          event_fd() const override;
-        void                         pump_events(std::size_t max_events_per_tick) override;
-        void                         render_frame() override;
-        void                         on_reload_applied() override;
-        void                         on_start(Core& core) override;
-        void                         shutdown() override;
-        void                         prepare_exec_restart() override;
+    wl::ClientDisplay&       display()       { return display_; }
+    const wl::ClientDisplay& display() const { return display_; }
 
-        StartupSnapshot              scan_existing_windows() override;
+    const std::unordered_map<uint32_t, wl_surface_info>& surfaces() const { return surfaces_; }
+    const std::unordered_map<uint32_t, wl_output_info>&  outputs()  const { return outputs_; }
 
-        bool                         close_window(WindowId win) override;
+    // AdminClient event overrides
+    void on_surface_created(uint32_t id, const char* app_id, const char* title, uint32_t pid);
+    void on_surface_mapped(uint32_t id);
+    void on_surface_unmapped(uint32_t id);
+    void on_surface_destroyed(uint32_t id);
+    void on_surface_title_changed(uint32_t id, const char* title);
+    void on_surface_app_id_changed(uint32_t id, const char* app_id);
+    void on_surface_committed(uint32_t id, int32_t w, int32_t h);
+    void on_key_press(uint32_t keycode, uint32_t keysym, uint32_t mods);
+    void on_button_press(uint32_t surface_id, int32_t x, int32_t y,
+                         uint32_t button, uint32_t mods, uint32_t released);
+    void on_pointer_motion(uint32_t surface_id, int32_t x, int32_t y, uint32_t mods);
+    void on_pointer_enter(uint32_t surface_id);
+    void on_output_added(uint32_t id, const char* name,
+                         int32_t x, int32_t y, int32_t w, int32_t h, int32_t refresh);
+    void on_output_removed(uint32_t id);
+    void on_overlay_expose(uint32_t overlay_id);
+    void on_overlay_button(uint32_t overlay_id, int32_t x, int32_t y,
+                           uint32_t button, uint32_t released);
 
-        backend::BackendPorts        ports() override;
+private:
+    struct WlRegistry final : wl::Registry<WlRegistry> {
+        WlRegistry(wl::ClientDisplay& display, WlBackend& backend_ref)
+            : wl::Registry<WlRegistry>(display), backend(backend_ref) {}
+        void on_global(uint32_t name, const char* iface, uint32_t version);
+        WlBackend& backend;
+    };
 
-        std::string                  window_title(WindowId win) const override;
-        uint32_t                     window_pid(WindowId win) const override;
+    wl::ClientDisplay display_;
+    std::unique_ptr<WlRegistry> registry_;
 
-        std::shared_ptr<swm::Window> create_window(WindowId id) override;
+    std::unordered_map<uint32_t, wl_surface_info> surfaces_;
+    std::unordered_map<uint32_t, wl_output_info>  outputs_;
 
-        // Domain event reactions
-        void on(event::WorkspaceSwitched ev) override;
-        void on(event::FocusChanged ev) override;
-        void on(event::WindowAssignedToWorkspace ev) override;
-        void on(event::WindowAdopted ev) override;
+    backend::WlInputPort    input_;
+    backend::WlMonitorPort  monitor_;
+    backend::WlRenderPort   render_;
+    backend::WlKeyboardPort keyboard_;
 
-        // Allocate a new unique WindowId for a native Wayland surface.
-        WindowId alloc_window_id();
+    Runtime& runtime_;
 
-        // Map from WindowId → WlSurface (xdg-toplevel windows).
-        WlSurface* wl_surface(WindowId id);
+    WindowId prev_focused_      = NO_WINDOW;
+    uint32_t focused_border_    = 0xFF4488CC;
+    uint32_t unfocused_border_  = 0xFF333333;
 
-        // Called from WlSurface listeners.
-        void handle_surface_map(WlSurface* surf);
-        void handle_surface_unmap(WlSurface* surf);
-        void handle_surface_destroy(WlSurface* surf);
-
-        wlr_renderer*      renderer()    const { return renderer_.renderer(); }
-        wlr_scene*         scene()       const { return scene_.scene(); }
-        wlr_output_layout* out_layout()  const { return scene_.output_layout(); }
-        wlr_seat*          seat()        const { return seat_obj_.seat(); }
-        wlr_cursor*        cursor()      const { return seat_obj_.cursor(); }
-        wlr_scene_tree*    scene_root()  const { return scene_.root(); }
-
-    private:
-        Core&    core_;
-        Runtime& runtime_;
-
-        // Wayland display (owns wl_display, socket, event loop) — destroyed last
-        WlDisplay display_;
-        // wlroots backend, renderer+allocator+compositor, scene+layout
-        WlBackendObj backend_obj_;
-        WlRenderer   renderer_;
-        WlSceneGraph scene_;
-        // seat + cursor + xcursor_manager
-        WlSeat seat_obj_;
-
-        WlXdgShell xdg_shell_;
-#ifndef SIRENWM_NO_LAYER_SHELL
-        WlLayerShell layer_shell_;
-#endif
-        wlr_data_device_manager* data_dev_mgr_ = nullptr;
-
-        // Port implementations
-        std::unique_ptr<backend::MonitorPort>  monitor_port_impl_;
-        std::unique_ptr<backend::RenderPort>   render_port_impl_;
-        std::unique_ptr<backend::InputPort>    input_port_impl_;
-        std::unique_ptr<backend::KeyboardPort> keyboard_port_impl_;
-
-        // Output tracking
-        std::vector<std::unique_ptr<WlOutput>> outputs_;
-
-        // Keyboard tracking (one per keyboard device)
-        std::vector<std::unique_ptr<WlKeyboard>> keyboards_;
-
-        // Staged surfaces awaiting EnsureWindow dispatch (shared_ptr ownership).
-        // Moved to surfaces_ (non-owning raw ptr) by create_window(id).
-        std::unordered_map<WindowId, std::shared_ptr<WlSurface>> pending_;
-
-        // Active surfaces: WindowId → WlSurface (non-owning; Core owns the Window)
-        std::unordered_map<WindowId, WlSurface*> surfaces_;
-
-        // WindowId allocator for native Wayland surfaces (starts at 1, never 0)
-        std::atomic<WindowId> next_id_{ 1 };
-
-#ifndef SIRENWM_NO_LAYER_SHELL
-        // Active layer-shell surfaces (compositor owns)
-        std::vector<std::unique_ptr<WlLayerSurface>> layer_surfaces_;
-#endif
-
-        // Current modifier state (accumulated across all keyboards)
-        uint32_t mod_state_ = 0;
-
-        // Last window that received activated=true (for deactivation on focus change).
-        WindowId focused_window_ = NO_WINDOW;
-
-        // True while a pointer grab is active (mouse drag/resize).
-        // Suppresses pointer focus forwarding to clients.
-        bool pointer_grabbed_ = false;
-
-        // Backend-level signal listeners
-        WlListener<wlr_output>       on_new_output_;
-        WlListener<wlr_input_device> on_new_input_;
-        WlListener<wlr_pointer_motion_event> on_cursor_motion_;
-        WlListener<wlr_pointer_motion_absolute_event> on_cursor_motion_abs_;
-        WlListener<wlr_pointer_button_event>          on_cursor_button_;
-        WlListener<wlr_pointer_axis_event> on_cursor_axis_;
-        WlVoidListener on_cursor_frame_;
-        WlListener<wlr_seat_pointer_request_set_cursor_event> on_request_cursor_;
-        WlListener<wlr_seat_request_set_selection_event>      on_request_set_selection_;
-
-        // Signal handlers
-        void handle_new_output(wlr_output* output);
-        void handle_new_input(wlr_input_device* device);
-        void handle_new_xdg_surface(wlr_xdg_surface* surface);
-#ifndef SIRENWM_NO_LAYER_SHELL
-        void handle_new_layer_surface(wlr_layer_surface_v1* surface);
-        void handle_layer_surface_destroy(WlLayerSurface* ls);
-        void arrange_layers(wlr_output* output);
-#endif
-        void handle_output_frame(WlOutput* out);
-        void handle_output_destroy(WlOutput* out);
-        void handle_cursor_motion(wlr_pointer_motion_event* ev);
-        void handle_cursor_motion_abs(wlr_pointer_motion_absolute_event* ev);
-        void handle_cursor_button(wlr_pointer_button_event* ev);
-        void handle_cursor_axis(wlr_pointer_axis_event* ev);
-        void handle_cursor_frame();
-        void handle_request_cursor(wlr_seat_pointer_request_set_cursor_event* ev);
-        void handle_request_set_selection(wlr_seat_request_set_selection_event* ev);
-
-        // Keyboard device handlers
-        void handle_new_keyboard(wlr_input_device* device);
-        void handle_new_pointer(wlr_input_device* device);
-        void handle_keyboard_key(WlKeyboard* kb, wlr_keyboard_key_event* ev);
-        void handle_keyboard_modifiers(WlKeyboard* kb);
-        void handle_keyboard_destroy(WlKeyboard* kb);
-
-        // Internal helpers
-        void      apply_core_backend_effects();
-        void      process_cursor_motion(uint32_t time_ms);
-        WlOutput* output_at(double x, double y);
-        void      set_cursor(const char* name);
+    void manage_surface(wl_surface_info& s);
+    void reload_border_colors();
 };

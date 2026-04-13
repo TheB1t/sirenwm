@@ -102,6 +102,8 @@ class DebugUIModule : public Module {
         void stop_timer();
 
         std::unique_ptr<backend::GLWindow> gl_window_;
+        backend::GLPort*                   gl_port_ = nullptr; // non-owning backend capability
+        bool                               gl_port_missing_warned_ = false;
         bool                               imgui_initialized_ = false;
         bool                               pending_close_     = false;
         EventLoop::FdHandle                timer_;
@@ -120,49 +122,45 @@ void DebugUIModule::on_init() {
     start_time_ = Clock::now();
 }
 
-// Static pointer for Lua callbacks (only one debug_ui module instance exists).
-static DebugUIModule* g_instance = nullptr;
-
 void DebugUIModule::on_lua_init() {
-    g_instance = this;
-
-    auto& lua = this->lua();
+    auto& lua = this->lua;
     auto  ctx = lua.context();
 
     ctx.new_table();
 
-    lua.push_callback([](LuaContext&, void*) -> int {
-            if (g_instance) g_instance->toggle();
+    lua.push_callback([](LuaContext&, void* ud) -> int {
+            auto* mod = static_cast<DebugUIModule*>(ud);
+            mod->toggle();
             return 0;
-        }, nullptr);
+        }, this);
     ctx.set_field(-2, "toggle");
 
-    lua.push_callback([](LuaContext&, void*) -> int {
-            if (g_instance) {
-                g_instance->ensure_window();
-                if (g_instance->gl_window_) {
-                    g_instance->gl_window_->show();
-                    g_instance->start_timer();
-                }
+    lua.push_callback([](LuaContext&, void* ud) -> int {
+            auto* mod = static_cast<DebugUIModule*>(ud);
+            mod->ensure_window();
+            if (mod->gl_window_) {
+                mod->gl_window_->show();
+                mod->start_timer();
             }
             return 0;
-        }, nullptr);
+        }, this);
     ctx.set_field(-2, "show");
 
-    lua.push_callback([](LuaContext&, void*) -> int {
-            if (g_instance && g_instance->gl_window_ && g_instance->gl_window_->visible()) {
-                g_instance->gl_window_->hide();
-                g_instance->stop_timer();
+    lua.push_callback([](LuaContext&, void* ud) -> int {
+            auto* mod = static_cast<DebugUIModule*>(ud);
+            if (mod->gl_window_ && mod->gl_window_->visible()) {
+                mod->gl_window_->hide();
+                mod->stop_timer();
             }
             return 0;
-        }, nullptr);
+        }, this);
     ctx.set_field(-2, "hide");
 
     lua.set_module_table("debug_ui");
 }
 
 void DebugUIModule::on_start() {
-    // Nothing — window is created lazily on first toggle.
+    gl_port_ = backend.ports().gl;
 }
 
 void DebugUIModule::on_stop(bool /*is_exec_restart*/) {
@@ -190,9 +188,11 @@ void DebugUIModule::ensure_window() {
     if (gl_window_)
         return;
 
-    auto* port = runtime().ports().gl;
-    if (!port) {
-        LOG_WARN("debug_ui: backend does not provide GLPort — cannot create debug window");
+    if (!gl_port_) {
+        if (!gl_port_missing_warned_) {
+            LOG_WARN("debug_ui: backend does not provide GLPort — cannot create debug window");
+            gl_port_missing_warned_ = true;
+        }
         return;
     }
 
@@ -201,7 +201,7 @@ void DebugUIModule::ensure_window() {
         info.size              = { 900, 700 };
         info.override_redirect = false;
         info.keep_above        = true;
-        gl_window_             = port->create_window(info);
+        gl_window_             = gl_port_->create_window(info);
     } catch (const std::exception& e) {
         LOG_ERR("debug_ui: failed to create GL window: %s", e.what());
         return;
@@ -362,7 +362,7 @@ void DebugUIModule::start_timer() {
     ts.it_interval = { 0, 50'000'000 };  // 50ms
     ts.it_value    = { 0, 50'000'000 };
     timerfd_settime(tfd, 0, &ts, nullptr);
-    timer_ = EventLoop::FdHandle(runtime().event_loop(), tfd, [this, tfd]() {
+    timer_ = EventLoop::FdHandle(runtime.event_loop, tfd, [this, tfd]() {
             uint64_t expirations = 0;
             (void)read(tfd, &expirations, sizeof(expirations));
             tick();
@@ -378,8 +378,8 @@ void DebugUIModule::stop_timer() {
 // ---------------------------------------------------------------------------
 
 void DebugUIModule::panel_monitors() {
-    const auto& mons        = core().monitor_states();
-    int         focused_mon = core().focused_monitor_index();
+    const auto& mons        = core.monitor_states();
+    int         focused_mon = core.focused_monitor_index();
 
     ImGui::Text("Monitors: %d  |  Focused: %d", (int)mons.size(), focused_mon);
     ImGui::Separator();
@@ -407,14 +407,14 @@ void DebugUIModule::panel_monitors() {
             else
                 ImGui::TextDisabled("no");
             ImGui::TableNextColumn();
-            ImGui::Text("%d", (int)core().monitor_workspace_ids(i).size());
+            ImGui::Text("%d", (int)core.monitor_workspace_ids(i).size());
         }
         ImGui::EndTable();
     }
 }
 
 void DebugUIModule::panel_workspaces() {
-    const auto& wss = core().workspace_states();
+    const auto& wss = core.workspace_states();
 
     ImGui::Text("Workspaces: %d", (int)wss.size());
     ImGui::Separator();
@@ -430,13 +430,13 @@ void DebugUIModule::panel_workspaces() {
         ImGui::TableHeadersRow();
 
         for (const auto& ws : wss) {
-            bool visible = core().is_workspace_visible(ws.id);
+            bool visible = core.is_workspace_visible(ws.id);
             ImGui::TableNextRow();
             ImGui::TableNextColumn(); ImGui::Text("%d", ws.id);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(ws.name.c_str());
             ImGui::TableNextColumn();
             {
-                int mon = core().monitor_of_workspace(ws.id);
+                int mon = core.monitor_of_workspace(ws.id);
                 if (mon >= 0)
                     ImGui::Text("%d", mon);
                 else
@@ -455,7 +455,7 @@ void DebugUIModule::panel_workspaces() {
 }
 
 void DebugUIModule::panel_windows() {
-    auto all_ids = core().all_window_ids();
+    auto all_ids = core.all_window_ids();
 
     ImGui::Text("Windows: %d", (int)all_ids.size());
     ImGui::Separator();
@@ -475,13 +475,13 @@ void DebugUIModule::panel_windows() {
         ImGui::TableHeadersRow();
 
         for (WindowId wid : all_ids) {
-            auto ws = core().window_state_any(wid);
+            auto ws = core.window_state_any(wid);
             if (!ws) continue;
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn(); ImGui::Text("0x%x", wid);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(ws->wm_class.c_str());
-            ImGui::TableNextColumn(); ImGui::Text("%d", core().workspace_of_window(wid));
+            ImGui::TableNextColumn(); ImGui::Text("%d", core.workspace_of_window(wid));
             ImGui::TableNextColumn(); ImGui::Text("%d,%d %dx%d", ws->pos().x(), ws->pos().y(), ws->size().x(), ws->size().y());
             ImGui::TableNextColumn();
             if (ws->is_visible())
@@ -514,13 +514,13 @@ void DebugUIModule::panel_windows() {
 }
 
 void DebugUIModule::panel_focus() {
-    const auto& fs = core().focus_state();
+    const auto& fs = core.focus_state();
 
     ImGui::Text("Monitor: %d  |  Workspace: %d  |  Window: 0x%x",
         fs.monitor, fs.ws_id, fs.window);
     ImGui::Separator();
 
-    auto fw = core().focused_window_state();
+    auto fw = core.focused_window_state();
     if (fw) {
         ImGui::Text("Class:      %s", fw->wm_class.c_str());
         ImGui::Text("Instance:   %s", fw->wm_instance.c_str());

@@ -45,6 +45,7 @@ template<typename T>
 class TypedSetting : public Setting {
     public:
         using ParseFn = std::function<std::optional<std::string>(const RuntimeValue&, T&)>;
+        using ValidateFn = std::function<std::vector<std::string>(const T&)>;
 
         explicit TypedSetting(T default_val = {})
             : value_(std::move(default_val)), default_(value_) {}
@@ -64,6 +65,9 @@ class TypedSetting : public Setting {
             parse_ = std::move(fn);
             type_  = type;
         }
+        void set_validate(ValidateFn fn) {
+            validate_ = std::move(fn);
+        }
 
         RuntimeValueType expected_type() const override { return type_; }
 
@@ -77,11 +81,18 @@ class TypedSetting : public Setting {
             return std::nullopt;
         }
 
+        std::vector<std::string> validate() const override {
+            if (!validate_)
+                return {};
+            return validate_(value_);
+        }
+
     private:
         T value_;
         T default_;
         std::optional<T> snapshot_;
         ParseFn          parse_;
+        ValidateFn       validate_;
         RuntimeValueType type_ = RuntimeValueType::Null;
 };
 
@@ -98,6 +109,16 @@ class RuntimeStore {
         // Lookup (returns nullptr if not registered).
         Setting*       find(const std::string& key);
         const Setting* find(const std::string& key) const;
+
+        template<typename T>
+        TypedSetting<T>* find_typed(const std::string& key) {
+            return dynamic_cast<TypedSetting<T>*>(find(key));
+        }
+
+        template<typename T>
+        const TypedSetting<T>* find_typed(const std::string& key) const {
+            return dynamic_cast<const TypedSetting<T>*>(find(key));
+        }
 
         // Sorted list of registered keys.
         std::vector<std::string> keys() const;

@@ -159,7 +159,7 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
 
     std::size_t                      processed_events = 0;
     xcb_generic_event_t*             ev;
-    while (processed_events < max_events_per_tick && (ev = xconn.poll())) {
+    while (processed_events < max_events_per_tick && (ev = xconn.poll_event())) {
         processed_events++;
         uint8_t type = ev->response_type & ~0x80;
 

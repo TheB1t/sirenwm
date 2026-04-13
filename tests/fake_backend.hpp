@@ -130,10 +130,16 @@ class FakeBackend : public Backend {
     int pipe_fds_[2] = { -1, -1 };
 
     public:
+        FakeInputPort&    input_port    = input_port_;
+        FakeKeyboardPort& keyboard_port = keyboard_port_;
+        FakeMonitorPort&  monitor_port  = monitor_port_;
+
         explicit FakeBackend(std::vector<Monitor> monitors = {})
             : monitor_port_(std::move(monitors)) {
             pipe(pipe_fds_); // dummy event fd
         }
+        FakeBackend(Core&, Runtime&, std::vector<Monitor> monitors = {})
+            : FakeBackend(std::move(monitors)) {}
         ~FakeBackend() override {
             if (pipe_fds_[0] >= 0) close(pipe_fds_[0]);
             if (pipe_fds_[1] >= 0) close(pipe_fds_[1]);
@@ -152,11 +158,6 @@ class FakeBackend : public Backend {
                 .keyboard = keyboard_port_,
             };
         }
-
-        // Accessors for test assertions
-        FakeInputPort&    fake_input()    { return input_port_; }
-        FakeKeyboardPort& fake_keyboard() { return keyboard_port_; }
-        FakeMonitorPort&  fake_monitors() { return monitor_port_; }
 
         // Convenience: inject a monitor topology change
         void set_monitors(std::vector<Monitor> mons) {

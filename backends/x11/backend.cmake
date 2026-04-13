@@ -1,5 +1,4 @@
 list(APPEND SIRENWM_BACKEND_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/src/backend.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/x11_backend.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/adopt.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/events.cpp
@@ -11,6 +10,7 @@ list(APPEND SIRENWM_BACKEND_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/monitor_port.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/tray_host.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/xconn.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/x11_atoms.cpp
 )
 
 list(APPEND SIRENWM_BACKEND_INCLUDE_DIRS
@@ -23,6 +23,7 @@ list(APPEND SIRENWM_BACKEND_INCLUDE_DIRS
 )
 
 list(APPEND SIRENWM_BACKEND_LINK_LIBS
+    xcb_wrappers
     X11 X11-xcb xcb xcb-randr xkbfile Xfixes
     ${CAIRO_LIBRARIES}
     ${CAIROXCB_LIBRARIES}

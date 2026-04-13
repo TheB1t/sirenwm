@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="sirenwm_server_v1">
+
+  <copyright>
+    Copyright (c) 2026 SirenWM contributors
+    SPDX-License-Identifier: MIT
+  </copyright>
+
+  <description summary="SirenWM display server admin protocol">
+    Administrative protocol between the SirenWM window manager and
+    the display-server mode of sirenwm-wayland. The WM connects as the sole admin
+    client and receives surface lifecycle events, input interception,
+    and output topology changes. The WM sends configure, focus, and
+    stacking commands back to the server.
+
+    Only one admin client may be bound at a time.
+  </description>
+
+  <!-- ================================================================== -->
+  <!-- Admin singleton                                                     -->
+  <!-- ================================================================== -->
+
+  <interface name="sirenwm_admin_v1" version="1">
+    <description summary="admin control interface">
+      Global singleton bound by the WM. Provides surface management,
+      input interception, pointer control, and output topology events.
+    </description>
+
+    <!-- ─── Requests (WM → Server) ─── -->
+
+    <request name="get_surface_list">
+      <description summary="request enumeration of existing surfaces">
+        Ask the server to emit a surface_created event for every
+        currently known toplevel, followed by a surface_list_done event.
+        Used on WM startup and after exec-restart to discover state.
+      </description>
+    </request>
+
+    <request name="configure_surface">
+      <description summary="set surface position and size">
+        Position and size a toplevel surface. The server sends an
+        xdg_toplevel configure to the client and applies the geometry
+        once the client acks.
+      </description>
+      <arg name="surface_id" type="uint" summary="server-assigned surface id"/>
+      <arg name="x"          type="int"  summary="x position in global coords"/>
+      <arg name="y"          type="int"  summary="y position in global coords"/>
+      <arg name="width"      type="int"  summary="width in pixels"/>
+      <arg name="height"     type="int"  summary="height in pixels"/>
+    </request>
+
+    <request name="set_surface_activated">
+      <description summary="set keyboard focus to a surface">
+        Grant or revoke keyboard focus. Only one surface may be
+        activated at a time; the server deactivates the previous one.
+      </description>
+      <arg name="surface_id" type="uint" summary="surface to activate"/>
+      <arg name="activated"  type="uint" summary="1 = activate, 0 = deactivate"/>
+    </request>
+
+    <request name="set_surface_visible">
+      <description summary="map or unmap a surface">
+        Show or hide a surface without destroying it. Used for
+        workspace switching.
+      </description>
+      <arg name="surface_id" type="uint" summary="target surface"/>
+      <arg name="visible"    type="uint" summary="1 = show, 0 = hide"/>
+    </request>
+
+    <request name="set_surface_stacking">
+      <description summary="raise or lower a surface">
+        Change the z-order of a surface.
+      </description>
+      <arg name="surface_id" type="uint" summary="target surface"/>
+      <arg name="mode"       type="uint" enum="stacking_mode"/>
+    </request>
+
+    <request name="close_surface">
+      <description summary="request a surface to close">
+        Send an xdg_toplevel close event to the client.
+      </description>
+      <arg name="surface_id" type="uint" summary="target surface"/>
+    </request>
+
+    <request name="set_keyboard_intercepts">
+      <description summary="register keybindings for interception">
+        Replace the current set of intercepted key combinations.
+        When a matching key press occurs, the server sends a
+        key_press event to the admin instead of the focused client.
+        An empty list clears all intercepts.
+      </description>
+      <arg name="keys" type="array" summary="packed array of sirenwm_key_intercept structs"/>
+    </request>
+
+    <request name="warp_pointer">
+      <description summary="move the pointer to absolute coordinates">
+        Warp the pointer cursor to the given global position.
+      </description>
+      <arg name="x" type="int" summary="x in global coords"/>
+      <arg name="y" type="int" summary="y in global coords"/>
+    </request>
+
+    <request name="set_pointer_constraint">
+      <description summary="confine pointer to a rectangle">
+        Constrain the pointer to the given rectangle. Used for
+        monitor edge barriers. Pass width=0 to clear.
+      </description>
+      <arg name="x"      type="int" summary="constraint rect x"/>
+      <arg name="y"      type="int" summary="constraint rect y"/>
+      <arg name="width"  type="int" summary="constraint rect width (0 = clear)"/>
+      <arg name="height" type="int" summary="constraint rect height"/>
+    </request>
+
+    <request name="grab_pointer">
+      <description summary="start an exclusive pointer grab">
+        Begin an exclusive pointer grab for drag operations.
+        All pointer events are sent to the admin until ungrab.
+      </description>
+    </request>
+
+    <request name="ungrab_pointer">
+      <description summary="release the pointer grab"/>
+    </request>
+
+    <request name="set_surface_border">
+      <description summary="set decoration border around a surface">
+        Draw a solid border around the surface with the given width
+        and ARGB color. Set width=0 to remove the border.
+      </description>
+      <arg name="surface_id" type="uint" summary="target surface"/>
+      <arg name="width"      type="uint" summary="border width in pixels"/>
+      <arg name="color"      type="uint" summary="ARGB color (e.g. 0xFF4488CC)"/>
+    </request>
+
+    <request name="create_overlay">
+      <description summary="create a WM-owned overlay surface">
+        Create a surface owned by the admin client (e.g. status bar).
+        The server allocates an overlay with the given id, position, and
+        size. Overlays are drawn above all client surfaces.
+      </description>
+      <arg name="overlay_id" type="uint" summary="admin-chosen overlay id"/>
+      <arg name="x"          type="int"  summary="x position in global coords"/>
+      <arg name="y"          type="int"  summary="y position in global coords"/>
+      <arg name="width"      type="int"  summary="width in pixels"/>
+      <arg name="height"     type="int"  summary="height in pixels"/>
+    </request>
+
+    <request name="update_overlay">
+      <description summary="submit pixel data for an overlay surface">
+        Replace the overlay's content with ARGB32 pixel data stored in
+        the given file descriptor (shared memory). The fd maps to
+        width * height * 4 bytes in ARGB32 format, packed row by row
+        with stride = width * 4. The server reads and closes the fd.
+      </description>
+      <arg name="overlay_id" type="uint" summary="overlay to update"/>
+      <arg name="fd"         type="fd"   summary="shm fd with ARGB32 pixel data"/>
+      <arg name="size"       type="uint" summary="total byte size of pixel data"/>
+    </request>
+
+    <request name="destroy_overlay">
+      <description summary="destroy a WM-owned overlay surface">
+        Remove a previously created overlay. The overlay_id may be reused.
+      </description>
+      <arg name="overlay_id" type="uint" summary="overlay to destroy"/>
+    </request>
+
+    <!-- ─── Events (Server → WM) ─── -->
+
+    <event name="surface_created">
+      <description summary="a new toplevel appeared">
+        Emitted when an xdg_toplevel is created by a client, or
+        during get_surface_list enumeration.
+      </description>
+      <arg name="surface_id" type="uint"   summary="server-assigned id"/>
+      <arg name="app_id"     type="string" summary="xdg_toplevel app_id"/>
+      <arg name="title"      type="string" summary="xdg_toplevel title"/>
+      <arg name="pid"        type="uint"   summary="client pid (0 if unknown)"/>
+    </event>
+
+    <event name="surface_mapped">
+      <description summary="surface committed its first buffer">
+        The surface has content and is ready to be shown.
+      </description>
+      <arg name="surface_id" type="uint"/>
+    </event>
+
+    <event name="surface_unmapped">
+      <description summary="surface withdrew its content">
+        The client unmapped the surface. It may be remapped later.
+      </description>
+      <arg name="surface_id" type="uint"/>
+    </event>
+
+    <event name="surface_destroyed">
+      <description summary="surface is gone">
+        The toplevel was destroyed. The surface_id is now invalid.
+      </description>
+      <arg name="surface_id" type="uint"/>
+    </event>
+
+    <event name="surface_title_changed">
+      <description summary="toplevel title changed"/>
+      <arg name="surface_id" type="uint"/>
+      <arg name="title"      type="string"/>
+    </event>
+
+    <event name="surface_app_id_changed">
+      <description summary="toplevel app_id changed"/>
+      <arg name="surface_id" type="uint"/>
+      <arg name="app_id"     type="string"/>
+    </event>
+
+    <event name="surface_request_fullscreen">
+      <description summary="client requested fullscreen state change"/>
+      <arg name="surface_id" type="uint"/>
+      <arg name="requested"  type="uint" summary="1 = enter, 0 = leave"/>
+    </event>
+
+    <event name="surface_committed">
+      <description summary="client acked a configure">
+        The client committed a buffer with the given dimensions,
+        acknowledging a prior configure_surface request.
+      </description>
+      <arg name="surface_id" type="uint"/>
+      <arg name="width"      type="int"/>
+      <arg name="height"     type="int"/>
+    </event>
+
+    <event name="surface_geometry_hint">
+      <description summary="client-provided size constraints">
+        Forwarded from xdg_toplevel set_min_size / set_max_size.
+      </description>
+      <arg name="surface_id" type="uint"/>
+      <arg name="min_width"  type="int"/>
+      <arg name="min_height" type="int"/>
+      <arg name="max_width"  type="int"/>
+      <arg name="max_height" type="int"/>
+    </event>
+
+    <event name="key_press">
+      <description summary="intercepted key event">
+        A key matching the current intercept set was pressed.
+      </description>
+      <arg name="keycode" type="uint" summary="evdev keycode"/>
+      <arg name="keysym"  type="uint" summary="resolved keysym"/>
+      <arg name="mods"    type="uint" summary="modifier bitmask"/>
+    </event>
+
+    <event name="button_press">
+      <description summary="pointer button event"/>
+      <arg name="surface_id" type="uint" summary="surface under pointer (0 = none)"/>
+      <arg name="root_x"     type="int"  summary="pointer x in global coords"/>
+      <arg name="root_y"     type="int"  summary="pointer y in global coords"/>
+      <arg name="button"     type="uint" summary="linux button code"/>
+      <arg name="mods"       type="uint" summary="modifier bitmask"/>
+      <arg name="released"   type="uint" summary="1 = release, 0 = press"/>
+    </event>
+
+    <event name="pointer_motion">
+      <description summary="pointer moved"/>
+      <arg name="surface_id" type="uint" summary="surface under pointer (0 = none)"/>
+      <arg name="root_x"     type="int"/>
+      <arg name="root_y"     type="int"/>
+      <arg name="mods"       type="uint"/>
+    </event>
+
+    <event name="pointer_enter">
+      <description summary="pointer entered a surface"/>
+      <arg name="surface_id" type="uint"/>
+    </event>
+
+    <event name="output_added">
+      <description summary="a new output appeared"/>
+      <arg name="output_id" type="uint"   summary="server-assigned output id"/>
+      <arg name="name"      type="string" summary="output name (e.g. HDMI-A-1)"/>
+      <arg name="x"         type="int"/>
+      <arg name="y"         type="int"/>
+      <arg name="width"     type="int"/>
+      <arg name="height"    type="int"/>
+      <arg name="refresh"   type="int"    summary="refresh rate in mHz"/>
+    </event>
+
+    <event name="output_removed">
+      <description summary="an output was disconnected"/>
+      <arg name="output_id" type="uint"/>
+    </event>
+
+    <event name="surface_list_done">
+      <description summary="end of get_surface_list enumeration">
+        All existing surfaces have been sent. The WM may now
+        reconcile its state.
+      </description>
+    </event>
+
+    <event name="overlay_expose">
+      <description summary="overlay needs redraw">
+        Emitted when an overlay surface becomes visible or is
+        first created, so the admin can submit pixel data.
+      </description>
+      <arg name="overlay_id" type="uint"/>
+    </event>
+
+    <event name="overlay_button">
+      <description summary="pointer button on an overlay surface">
+        Emitted when the pointer clicks on an overlay surface.
+      </description>
+      <arg name="overlay_id" type="uint"/>
+      <arg name="x"          type="int"  summary="x relative to overlay"/>
+      <arg name="y"          type="int"  summary="y relative to overlay"/>
+      <arg name="button"     type="uint" summary="linux button code"/>
+      <arg name="released"   type="uint" summary="1 = release, 0 = press"/>
+    </event>
+
+    <!-- ─── Enums ─── -->
+
+    <enum name="stacking_mode">
+      <entry name="raise" value="0" summary="bring to top"/>
+      <entry name="lower" value="1" summary="send to bottom"/>
+    </enum>
+
+  </interface>
+
+</protocol>

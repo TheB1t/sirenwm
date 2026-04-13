@@ -70,8 +70,8 @@ class Surface {
         // surface_by_id_ and dispatch incoming WindowId-scoped events.
         WindowId id() const;
 
-        backend::RenderWindow*       backend_window()       { return window_.get(); }
-        const backend::RenderWindow* backend_window() const { return window_.get(); }
+        backend::RenderWindow&       backend_window()       { return *window_; }
+        const backend::RenderWindow& backend_window() const { return *window_; }
 
         Runtime&                               runtime_;
         std::unique_ptr<backend::RenderWindow> window_;

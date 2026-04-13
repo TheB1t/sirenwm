@@ -12,7 +12,7 @@ namespace {
 
 class X11InputPort final : public backend::InputPort {
     XConnection&        xconn;
-    xcb_key_symbols_t*& key_syms; // reference to X11Backend-owned pointer
+    xcb_key_symbols_t*& key_syms;
 
     xcb_key_symbols_t* ensure_key_syms() {
         if (!key_syms)
@@ -37,20 +37,16 @@ class X11InputPort final : public backend::InputPort {
 
             xcb_window_t root = xconn.root_window();
             for (xcb_keycode_t* kc = codes; *kc != XCB_NO_SYMBOL; kc++) {
-                xconn.call(xcb_grab_key, 1, root, mods, *kc,
-                    XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-                xconn.call(xcb_grab_key, 1, root, (uint16_t)(mods | XCB_MOD_MASK_2), *kc,
-                    XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-                xconn.call(xcb_grab_key, 1, root, (uint16_t)(mods | XCB_MOD_MASK_LOCK), *kc,
-                    XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-                xconn.call(xcb_grab_key, 1, root, (uint16_t)(mods | XCB_MOD_MASK_2 | XCB_MOD_MASK_LOCK), *kc,
-                    XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+                xconn.grab_key(root, *kc, mods);
+                xconn.grab_key(root, *kc, (uint16_t)(mods | XCB_MOD_MASK_2));
+                xconn.grab_key(root, *kc, (uint16_t)(mods | XCB_MOD_MASK_LOCK));
+                xconn.grab_key(root, *kc, (uint16_t)(mods | XCB_MOD_MASK_2 | XCB_MOD_MASK_LOCK));
             }
             free(codes);
         }
 
         void ungrab_all_keys() override {
-            xconn.call(xcb_ungrab_key, XCB_GRAB_ANY, xconn.root_window(), XCB_MOD_MASK_ANY);
+            xconn.ungrab_key(XCB_GRAB_ANY, xconn.root_window(), XCB_MOD_MASK_ANY);
         }
 
         void grab_button(WindowId window, uint8_t button, uint16_t mods) override {
@@ -62,32 +58,24 @@ class X11InputPort final : public backend::InputPort {
                 (uint16_t)(mods | XCB_MOD_MASK_LOCK),
                 (uint16_t)(mods | XCB_MOD_MASK_2 | XCB_MOD_MASK_LOCK),
             };
-            for (uint16_t v : variants) {
-                xconn.call(xcb_grab_button, 0, (xcb_window_t)window, evmask,
-                    XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC,
-                    XCB_WINDOW_NONE, XCB_CURSOR_NONE, button, v);
-            }
+            for (uint16_t v : variants)
+                xconn.grab_button((xcb_window_t)window, evmask, button, v);
         }
 
         void ungrab_all_buttons(WindowId window) override {
-            xconn.call(xcb_ungrab_button, XCB_BUTTON_INDEX_ANY, (xcb_window_t)window, XCB_MOD_MASK_ANY);
+            xconn.ungrab_button(XCB_BUTTON_INDEX_ANY, (xcb_window_t)window, XCB_MOD_MASK_ANY);
         }
 
         void grab_button_any(WindowId window) override {
             constexpr uint32_t evmask =
                 XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE;
-            // GrabModeSync freezes pointer on ButtonPress until xcb_allow_events().
-            // The WM focuses the window then calls allow_events(replay=true) so
-            // the click is re-delivered to the client — exact dwm click-to-focus model.
-            xconn.call(xcb_grab_button, 0, (xcb_window_t)window, evmask,
-                XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC,
-                XCB_WINDOW_NONE, XCB_CURSOR_NONE,
+            xconn.grab_button_sync((xcb_window_t)window, evmask,
                 XCB_BUTTON_INDEX_ANY, XCB_MOD_MASK_ANY);
         }
 
         void allow_events(bool replay) override {
             uint8_t mode = replay ? XCB_ALLOW_REPLAY_POINTER : XCB_ALLOW_ASYNC_POINTER;
-            xconn.call(xcb_allow_events, mode, XCB_CURRENT_TIME);
+            xconn.allow_events(mode);
             xconn.flush();
         }
 
@@ -102,17 +90,13 @@ class X11InputPort final : public backend::InputPort {
         }
 
         void warp_pointer(WindowId window, Vec2i16 pos) override {
-            xconn.call(xcb_warp_pointer,
-                XCB_WINDOW_NONE, (xcb_window_t)window,
-                (int16_t)0, (int16_t)0, (uint16_t)0, (uint16_t)0,
-                pos.x(), pos.y());
+            xconn.warp_pointer(XCB_WINDOW_NONE, (xcb_window_t)window,
+                0, 0, 0, 0, pos.x(), pos.y());
         }
 
         void warp_pointer_abs(Vec2i16 pos) override {
-            xconn.call(xcb_warp_pointer,
-                XCB_WINDOW_NONE, xconn.root_window(),
-                (int16_t)0, (int16_t)0, (uint16_t)0, (uint16_t)0,
-                pos.x(), pos.y());
+            xconn.warp_pointer(XCB_WINDOW_NONE, xconn.root_window(),
+                0, 0, 0, 0, pos.x(), pos.y());
         }
 
         void flush() override {

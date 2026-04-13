@@ -7,7 +7,9 @@ See the [Dependencies](README.md#1-dependencies) section in the README for packa
 ```bash
 cmake -S . -B build
 cmake --build build -j$(nproc)
-# binary: output/sirenwm
+# binaries:
+#   output/sirenwm-x11
+#   output/sirenwm-wayland
 ```
 
 ## Running Tests

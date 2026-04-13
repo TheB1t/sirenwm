@@ -1,4 +1,5 @@
 #include <x11_backend.hpp>
+#include <x11_atoms.hpp>
 
 #include <core.hpp>
 #include <log.hpp>
@@ -37,39 +38,6 @@ static bool is_override_redirect_window(XConnection& xconn, xcb_window_t win) {
     return attrs.valid && attrs.override_redirect;
 }
 
-static bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
-    if (needle == XCB_ATOM_NONE)
-        return false;
-    return std::find(atoms.begin(), atoms.end(), needle) != atoms.end();
-}
-
-struct WindowTypeAtoms {
-    xcb_atom_t net_wm_window_type = XCB_ATOM_NONE;
-    xcb_atom_t dialog             = XCB_ATOM_NONE;
-    xcb_atom_t utility            = XCB_ATOM_NONE;
-    xcb_atom_t splash             = XCB_ATOM_NONE;
-    xcb_atom_t modal              = XCB_ATOM_NONE;
-};
-
-static const WindowTypeAtoms& window_type_atoms(XConnection& xconn) {
-    static const WindowTypeAtoms atoms = [&xconn]() {
-            auto m = xconn.intern_atoms({
-                "_NET_WM_WINDOW_TYPE",
-                "_NET_WM_WINDOW_TYPE_DIALOG",
-                "_NET_WM_WINDOW_TYPE_UTILITY",
-                "_NET_WM_WINDOW_TYPE_SPLASH",
-                "_NET_WM_WINDOW_TYPE_MODAL",
-            });
-            WindowTypeAtoms out;
-            out.net_wm_window_type = m["_NET_WM_WINDOW_TYPE"];
-            out.dialog             = m["_NET_WM_WINDOW_TYPE_DIALOG"];
-            out.utility            = m["_NET_WM_WINDOW_TYPE_UTILITY"];
-            out.splash             = m["_NET_WM_WINDOW_TYPE_SPLASH"];
-            out.modal              = m["_NET_WM_WINDOW_TYPE_MODAL"];
-            return out;
-        }();
-    return atoms;
-}
 
 struct WindowMetadata {
     std::string wm_instance;
@@ -123,14 +91,9 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
     if (out.title.empty())
         out.title = xconn.get_text_property(window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
     if (net_wm_pid != XCB_ATOM_NONE) {
-        auto* conn   = const_cast<xcb_connection_t*>(xconn.raw_conn());
-        auto  cookie = xcb_get_property(conn, 0, window, net_wm_pid, XCB_ATOM_CARDINAL, 0, 1);
-        auto* reply  = xcb_get_property_reply(conn, cookie, nullptr);
-        if (reply) {
-            if (xcb_get_property_value_length(reply) >= 4)
-                out.pid = *(uint32_t*)xcb_get_property_value(reply);
-            free(reply);
-        }
+        auto vals = xconn.get_property_u32(window, net_wm_pid, 1);
+        if (!vals.empty())
+            out.pid = vals[0];
     }
     return out;
 }
@@ -217,13 +180,13 @@ static void place_window_on_monitor(Core& core,
 
 void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     if (is_override_redirect_window(xconn, ev->window)) {
-        xconn.call(xcb_map_window, ev->window);
+        xconn.map_window(ev->window);
         LOG_DEBUG("MapRequest(%d): override-redirect, mapping unmanaged", ev->window);
         return;
     }
 
     if (!runtime.invoke_hook(hook::ShouldManageWindow{ ev->window }).manage) {
-        xconn.call(xcb_map_window, ev->window);
+        xconn.map_window(ev->window);
         LOG_DEBUG("MapRequest(%d): unmanaged, mapping as-is", ev->window);
         return;
     }
@@ -257,7 +220,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
             }
         }
 
-        meta.transient_for = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+        meta.transient_for = xconn.get_transient_for(ev->window).value_or(XCB_WINDOW_NONE);
 
         // For fullscreen/borderless windows, use the first ConfigureRequest position
         // to determine the target workspace. Wine/Proton (and some native games) send
@@ -306,7 +269,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     }
 
     // Rules apply only to non-transient windows; transients are routed in SetWindowMetadata.
-    xcb_window_t transient_for     = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+    xcb_window_t transient_for     = xconn.get_transient_for(ev->window).value_or(XCB_WINDOW_NONE);
     bool         managed_transient = (transient_for != XCB_WINDOW_NONE) &&
         (core.workspace_of_window(transient_for) >= 0);
     if (!managed_transient) {
@@ -369,7 +332,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         int target_mon = -1;
 
         // Use transient parent's monitor for placement if available.
-        xcb_window_t transient_for = xconn.get_transient_for_window(ev->window)
+        xcb_window_t transient_for = xconn.get_transient_for(ev->window)
                 .value_or(XCB_WINDOW_NONE);
         if (transient_for != XCB_WINDOW_NONE) {
             int parent_ws = core.workspace_of_window(transient_for);
@@ -648,7 +611,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
         }
 
         if (ev->atom == XCB_ATOM_WM_TRANSIENT_FOR && !window->floating) {
-            xcb_window_t trans = xconn.get_transient_for_window(ev->window).value_or(XCB_WINDOW_NONE);
+            xcb_window_t trans = xconn.get_transient_for(ev->window).value_or(XCB_WINDOW_NONE);
             if (trans != XCB_WINDOW_NONE && core.window_state_any(trans)) {
                 int parent_ws = core.workspace_of_window(trans);
                 if (parent_ws >= 0) {
@@ -751,7 +714,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
 
         LOG_DEBUG("ConfigureRequest from unknown window %d, redirecting, pos=%d,%d mask=0x%x",
             ev->window, cfg_x, cfg_y, ev->value_mask);
-        xconn.call(xcb_configure_window, ev->window, msg.mask, msg.values.data());
+        xconn.configure_window(ev->window, msg.mask, msg.values.data());
         return;
     }
 
@@ -909,7 +872,7 @@ void X11Backend::handle_key_event(xcb_key_press_event_t* ev) {
     core.focus_monitor_at_point(ev->root_x, ev->root_y);
 
     if ((ev->response_type & ~0x80) == XCB_KEY_RELEASE) {
-        xcb_generic_event_t* next = xconn.poll();
+        xcb_generic_event_t* next = xconn.poll_event();
         if (next) {
             uint8_t next_type = next->response_type & ~0x80;
             bool    is_repeat = (next_type == XCB_KEY_PRESS) &&
@@ -1043,12 +1006,6 @@ void X11Backend::handle_expose(xcb_expose_event_t* ev) {
     runtime.post_event(event::ExposeWindow{ ev->window });
 }
 
-void X11Backend::handle_no_exposure(xcb_no_exposure_event_t*) {}
-
-void X11Backend::handle_graphics_exposure(xcb_graphics_exposure_event_t*) {}
-
-void X11Backend::handle_create_notify(xcb_create_notify_event_t*) {}
-
 void X11Backend::handle_ge_generic(xcb_ge_generic_event_t* ev) {
     int base = runtime.get_backend_extension_event_base();
     if (base < 0)
@@ -1133,9 +1090,6 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
         case XCB_CLIENT_MESSAGE:   handle_client_message((xcb_client_message_event_t*)ev); break;
         case XCB_PROPERTY_NOTIFY:  handle_property_notify((xcb_property_notify_event_t*)ev); break;
         case XCB_EXPOSE:           handle_expose((xcb_expose_event_t*)ev); break;
-        case XCB_NO_EXPOSURE:      handle_no_exposure((xcb_no_exposure_event_t*)ev); break;
-        case XCB_GRAPHICS_EXPOSURE: handle_graphics_exposure((xcb_graphics_exposure_event_t*)ev); break;
-        case XCB_CREATE_NOTIFY:    handle_create_notify((xcb_create_notify_event_t*)ev); break;
         case XCB_GE_GENERIC:       handle_ge_generic((xcb_ge_generic_event_t*)ev); break;
         case XCB_ENTER_NOTIFY:
         case XCB_LEAVE_NOTIFY:     handle_enter_notify((xcb_enter_notify_event_t*)ev); break;
