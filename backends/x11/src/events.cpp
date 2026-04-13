@@ -748,33 +748,23 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     }
 
     // A tiled window requesting monitor-covering geometry is going fullscreen
-    // without EWMH. Promote to borderless so the layout engine skips it.
+    // without EWMH. Core decides whether this should promote to borderless.
     bool borderless_fs = false;
     if (!floating && !borderless && !static_gravity &&
         (m & (XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT))) {
-        int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
-        const auto& mons    = core.monitor_states();
-        if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
-            const auto& mon = mons[(size_t)mon_idx];
-            // SDL2 subtracts bar insets from its requested size; compare against usable area.
-            int         usable_h = mon.size().y()
-                - std::max(0, mon.top_inset())
-                - std::max(0, mon.bottom_inset());
-            if ((int)ev->width >= mon.size().x() && (int)ev->height >= usable_h) {
-                LOG_INFO(
-                    "ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
-                    ev->window, ev->width, ev->height, mon.size().x(), usable_h);
-                (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
-                borderless    = true;
-                borderless_fs = true;
-                ev->x      = static_cast<int16_t>(std::clamp(mon.pos().x(), -32768, 32767));
-                ev->y      = static_cast<int16_t>(std::clamp(mon.pos().y(), -32768, 32767));
-                ev->width  = static_cast<uint16_t>(std::min(mon.size().x(), 65535));
-                ev->height = static_cast<uint16_t>(std::min(mon.size().y(), 65535));
-                m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
-                    | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
-                runtime.post_event(event::RaiseDocks{});
-            }
+        Vec2i req_size{ static_cast<int>(ev->width), static_cast<int>(ev->height) };
+        auto decision = core.evaluate_fullscreen_like_request(ev->window, req_size, true);
+        if (decision.promote) {
+            (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
+            borderless    = true;
+            borderless_fs = true;
+            ev->x      = static_cast<int16_t>(std::clamp(decision.pos.x(), -32768, 32767));
+            ev->y      = static_cast<int16_t>(std::clamp(decision.pos.y(), -32768, 32767));
+            ev->width  = static_cast<uint16_t>(std::min(decision.size.x(), 65535));
+            ev->height = static_cast<uint16_t>(std::min(decision.size.y(), 65535));
+            m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
+                | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+            runtime.post_event(event::RaiseDocks{});
         }
     }
 
@@ -1072,6 +1062,15 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
         case XCB_CLIENT_MESSAGE:   handle_client_message((xcb_client_message_event_t*)ev); break;
         case XCB_PROPERTY_NOTIFY:  handle_property_notify((xcb_property_notify_event_t*)ev); break;
         case XCB_EXPOSE:           handle_expose((xcb_expose_event_t*)ev); break;
+        case XCB_GRAPHICS_EXPOSURE:
+        case XCB_NO_EXPOSURE:
+            // Benign render-side notifications (often produced by CopyArea).
+            // They do not require WM-side state changes.
+            break;
+        case XCB_VISIBILITY_NOTIFY:
+        case XCB_CREATE_NOTIFY:
+            // Purely informative; no WM state changes required.
+            break;
         case XCB_GE_GENERIC:       handle_ge_generic((xcb_ge_generic_event_t*)ev); break;
         case XCB_ENTER_NOTIFY:
         case XCB_LEAVE_NOTIFY:     handle_enter_notify((xcb_enter_notify_event_t*)ev); break;
