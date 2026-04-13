@@ -212,7 +212,7 @@ jobs:
           path: |
             /tmp/cores/
             /tmp/sirenwm-itest/
-            output/sirenwm
+            output/sirenwm-x11
           if-no-files-found: ignore
           retention-days: 7
 

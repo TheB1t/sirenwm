@@ -68,7 +68,7 @@ bool is_rotated(const std::string& rotation) {
 
 // Applies the full output configuration described by layout entry.
 bool configure_output(xcb::Screen& screen,
-    xcb_connection_t* conn,
+    XConnection& xconn,
     const backend::MonitorLayout& layout,
     std::unordered_set<xcb_randr_crtc_t>& reserved_crtcs) {
     auto output = screen.find_output(layout.output);
@@ -122,7 +122,7 @@ bool configure_output(xcb::Screen& screen,
         // create RandR event loops on some drivers.
         if (layout.primary) {
             auto primary = xcb::reply(xcb_randr_get_output_primary_reply(
-                conn, xcb_randr_get_output_primary(conn, output->root_window()), nullptr));
+                xconn.raw(), xcb_randr_get_output_primary(xconn.raw(), output->root_window()), nullptr));
             if (!primary || primary->output != output->raw())
                 output->set_primary();
         }
@@ -174,8 +174,7 @@ bool configure_output(xcb::Screen& screen,
 }
 
 // Compute bounding box of all configured outputs and call SetScreenSize.
-void expand_screen_size(xcb_window_t root,
-    xcb_connection_t* conn,
+void expand_screen_size(XConnection& xconn,
     xcb::Screen& screen,
     const std::vector<backend::MonitorLayout>& layouts) {
     int max_x = 0, max_y = 0;
@@ -198,23 +197,19 @@ void expand_screen_size(xcb_window_t root,
 
     if (max_x <= 0 || max_y <= 0) return;
 
-    auto geo   = xcb_get_geometry_reply(conn, xcb_get_geometry(conn, root), nullptr);
+    auto geo = xconn.get_window_geometry(xconn.root_window());
     int  cur_w = geo ? (int)geo->width  : 0;
     int  cur_h = geo ? (int)geo->height : 0;
 
-    if (cur_w == max_x && cur_h == max_y) {
-        if (geo) free(geo);
+    if (cur_w == max_x && cur_h == max_y)
         return;
-    }
 
-    auto* xcb_screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
-    xcb_randr_set_screen_size(conn, root,
+    xcb_randr_set_screen_size(xconn.raw(), xconn.root_window(),
         (uint16_t)max_x, (uint16_t)max_y,
-        xcb_screen->width_in_millimeters,
-        xcb_screen->height_in_millimeters);
-    xcb_flush(conn);
+        xconn.screen()->width_in_millimeters,
+        xconn.screen()->height_in_millimeters);
+    xconn.force_flush();
     LOG_INFO("RandR: screen size set to %dx%d", max_x, max_y);
-    if (geo) free(geo);
 }
 
 } // anonymous namespace
@@ -233,19 +228,17 @@ class X11MonitorPort final : public backend::MonitorPort {
         }
 
         bool apply_monitor_layout(const std::vector<backend::MonitorLayout>& layouts) override {
-            auto*        conn = xconn.raw_conn();
-            xcb_window_t root = xconn.root_window();
-
             if (layouts.empty())
                 return true;
 
-            xcb::Screen screen(conn, root);
-            expand_screen_size(root, conn, screen, layouts);
+            xcb_window_t root = xconn.root_window();
+            xcb::Screen  screen(xconn.raw(), root);
+            expand_screen_size(xconn, screen, layouts);
 
             bool                                 all_ok = true;
             std::unordered_set<xcb_randr_crtc_t> reserved_crtcs;
             for (auto& layout : layouts)
-                all_ok = configure_output(screen, conn, layout, reserved_crtcs) && all_ok;
+                all_ok = configure_output(screen, xconn, layout, reserved_crtcs) && all_ok;
 
             if (!all_ok) {
                 LOG_WARN("RandR: retrying monitor apply with full CRTC reset");
@@ -257,11 +250,11 @@ class X11MonitorPort final : public backend::MonitorPort {
                 }
                 xconn.flush();
 
-                xcb::Screen                          retry_screen(conn, root);
-                expand_screen_size(root, conn, retry_screen, layouts);
+                xcb::Screen                          retry_screen(xconn.raw(), root);
+                expand_screen_size(xconn, retry_screen, layouts);
                 std::unordered_set<xcb_randr_crtc_t> retry_reserved_crtcs;
                 for (auto& layout : layouts)
-                    configure_output(retry_screen, conn, layout, retry_reserved_crtcs);
+                    configure_output(retry_screen, xconn, layout, retry_reserved_crtcs);
             }
 
             xconn.flush();

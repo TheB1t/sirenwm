@@ -13,7 +13,7 @@ TEST(Keybindings, GrabsButtonsOnWindowMap) {
     h.use<KeybindingsModule>();
     h.start();
 
-    h.backend.fake_input().log.clear();
+    h.backend.input_port.log.clear();
     h.map_window(0x1000, 0);
     h.emit(event::WindowMapped{ 0x1000 });
 

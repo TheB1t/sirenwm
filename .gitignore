@@ -7,3 +7,20 @@ output/
 glad/
 *.log*
 tools/
+
+# CMake build artifacts (in-source)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.a
+
+# External dependencies
+wlroots/
+
+# Core dumps
+core
+core.*
+
+# Generated desktop files
+*.desktop

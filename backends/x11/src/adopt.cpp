@@ -1,4 +1,5 @@
 #include <x11_backend.hpp>
+#include <x11_atoms.hpp>
 
 #include <log.hpp>
 #include <restart_state.hpp>
@@ -14,14 +15,6 @@
 #include <unistd.h>
 
 namespace {
-
-struct WindowTypeAtoms {
-    xcb_atom_t net_wm_window_type = XCB_ATOM_NONE;
-    xcb_atom_t dialog             = XCB_ATOM_NONE;
-    xcb_atom_t utility            = XCB_ATOM_NONE;
-    xcb_atom_t splash             = XCB_ATOM_NONE;
-    xcb_atom_t modal              = XCB_ATOM_NONE;
-};
 
 struct RestartWinState {
     int  ws_id             = -1;
@@ -44,12 +37,6 @@ struct WindowMetadata {
     bool        wm_fixed_size     = false;
     bool        wm_no_decorations = false;
 };
-
-bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
-    if (needle == XCB_ATOM_NONE)
-        return false;
-    return std::find(atoms.begin(), atoms.end(), needle) != atoms.end();
-}
 
 RestartState load_restart_state() {
     RestartState  out;
@@ -92,27 +79,6 @@ std::string read_window_title(XConnection& xconn, xcb_window_t win,
     if (title.empty())
         title = xconn.get_text_property(win, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
     return title;
-}
-
-const WindowTypeAtoms& window_type_atoms(XConnection& xconn) {
-    static const WindowTypeAtoms atoms = [&xconn]() {
-            auto m = xconn.intern_atoms({
-                "_NET_WM_WINDOW_TYPE",
-                "_NET_WM_WINDOW_TYPE_DIALOG",
-                "_NET_WM_WINDOW_TYPE_UTILITY",
-                "_NET_WM_WINDOW_TYPE_SPLASH",
-                "_NET_WM_WINDOW_TYPE_MODAL",
-            });
-
-            WindowTypeAtoms out;
-            out.net_wm_window_type = m["_NET_WM_WINDOW_TYPE"];
-            out.dialog             = m["_NET_WM_WINDOW_TYPE_DIALOG"];
-            out.utility            = m["_NET_WM_WINDOW_TYPE_UTILITY"];
-            out.splash             = m["_NET_WM_WINDOW_TYPE_SPLASH"];
-            out.modal              = m["_NET_WM_WINDOW_TYPE_MODAL"];
-            return out;
-        }();
-    return atoms;
 }
 
 WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {

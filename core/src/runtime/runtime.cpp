@@ -16,8 +16,10 @@
 
 #include <cstdlib>
 #include <csignal>
+#include <exception>
 #include <fcntl.h>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <unordered_set>
@@ -43,6 +45,11 @@ const char* runtime_state_name(RuntimeState s) {
 }
 
 void Runtime::transition(RuntimeState from, RuntimeState to) {
+    if (!runtime_transition_allowed(from, to)) {
+        LOG_ERR("FSM: transition edge %s→%s is not allowed by lifecycle table",
+            runtime_state_name(from), runtime_state_name(to));
+        std::abort();
+    }
     if (state_ != from) {
         LOG_ERR("FSM: illegal transition %s→%s: currently in %s",
             runtime_state_name(from), runtime_state_name(to),
@@ -57,11 +64,27 @@ void Runtime::transition(RuntimeState from, RuntimeState to) {
 // Runtime constructor
 // ---------------------------------------------------------------------------
 
-Runtime::Runtime(ModuleRegistry& module_registry)
-    : module_registry_(module_registry)
+Runtime::Runtime(BackendFactory backend_factory)
 {
+    module_registry_static::apply_static_registrations(module_registry_);
     config_runtime::register_core_config(core_config_, store_);
+
+    if (!backend_factory) {
+        throw std::invalid_argument("Runtime: backend factory is required");
+    }
+    try {
+        backend_ = backend_factory(core_, *this);
+    } catch (const std::exception& e) {
+        throw std::runtime_error(std::string("Runtime: backend factory threw: ") + e.what());
+    } catch (...) {
+        throw std::runtime_error("Runtime: backend factory threw non-standard exception");
+    }
+    if (!backend_) {
+        throw std::runtime_error("Runtime: backend factory returned null");
+    }
 }
+
+Runtime::~Runtime() = default;
 
 // ---------------------------------------------------------------------------
 // SIGCHLD self-pipe — global write-end for the async-signal-safe handler
@@ -263,15 +286,6 @@ std::vector<std::string> Runtime::validate_settings() const {
             return false;
         };
 
-    // Modifier
-    if (auto* s = store_.find("modifier")) {
-        auto* ts = dynamic_cast<const TypedSetting<std::optional<uint16_t>>*>(s);
-        if (!ts || !ts->get().has_value())
-            errs.push_back("modifier not set — use siren.modifier = 'mod4' (or shift/ctrl/alt/mod1..mod5)");
-    } else {
-        errs.push_back("modifier not set — use siren.modifier = 'mod4' (or shift/ctrl/alt/mod1..mod5)");
-    }
-
     // Workspaces
     if (workspaces.empty())
         errs.push_back("no workspaces defined — set siren.workspaces = {...}");
@@ -395,26 +409,37 @@ std::vector<std::string> Runtime::validate_settings() const {
     }
 
     // Bar → theme cross-checks
-    auto*       bar_s        = store_.find("bar");
-    auto*       bottom_bar_s = store_.find("bottom_bar");
-    const auto* bar_ts       = bar_s
-        ? dynamic_cast<const TypedSetting<std::optional<BarConfig>>*>(bar_s) : nullptr;
-    const auto* bottom_bar_ts = bottom_bar_s
-        ? dynamic_cast<const TypedSetting<std::optional<BarConfig>>*>(bottom_bar_s) : nullptr;
-    bool        has_bar    = (bar_ts && bar_ts->get().has_value());
-    bool        has_bottom = (bottom_bar_ts && bottom_bar_ts->get().has_value());
+    if (const auto* bar_set = store_.find_typed<BarSetConfig>("bar_set")) {
+        auto has_content = [](const BarConfig& cfg) {
+                return !cfg.left.empty() || !cfg.center.empty() || !cfg.right.empty();
+            };
+        auto check_side = [&](const BarSide& side, bool& any_bar, bool& missing_font) {
+                if (side.state != BarSideState::Custom || !has_content(side.cfg))
+                    return;
+                any_bar = true;
+                if (side.cfg.font.empty() && theme.font.empty())
+                    missing_font = true;
+            };
 
-    if (has_bar) {
-        if (bar_ts->get()->font.empty() && theme.font.empty())
-            errs.push_back("bar: 'font' is required (set in bar.top.font or theme.font)");
-    }
+        bool any_bar       = false;
+        bool missing_font  = false;
 
-    if (has_bar || has_bottom) {
-        if (theme.bg.empty())     errs.push_back("theme: 'bg' is required when bar is configured");
-        if (theme.fg.empty())     errs.push_back("theme: 'fg' is required when bar is configured");
-        if (theme.alt_bg.empty()) errs.push_back("theme: 'alt_bg' is required when bar is configured");
-        if (theme.alt_fg.empty()) errs.push_back("theme: 'alt_fg' is required when bar is configured");
-        if (theme.accent.empty()) errs.push_back("theme: 'accent' is required when bar is configured");
+        for (const auto& mon : monitors) {
+            auto cfg = bar_set->get().resolve(mon.alias);
+            check_side(cfg.top, any_bar, missing_font);
+            check_side(cfg.bottom, any_bar, missing_font);
+        }
+
+        if (missing_font)
+            errs.push_back("bar: 'font' is required (set in bar.settings.*.font or theme.font)");
+
+        if (any_bar) {
+            if (theme.bg.empty())     errs.push_back("theme: 'bg' is required when bar is configured");
+            if (theme.fg.empty())     errs.push_back("theme: 'fg' is required when bar is configured");
+            if (theme.alt_bg.empty()) errs.push_back("theme: 'alt_bg' is required when bar is configured");
+            if (theme.alt_fg.empty()) errs.push_back("theme: 'alt_fg' is required when bar is configured");
+            if (theme.accent.empty()) errs.push_back("theme: 'accent' is required when bar is configured");
+        }
     }
 
     return errs;
@@ -436,27 +461,25 @@ bool Runtime::load_config(const std::string& path) {
 }
 
 void Runtime::start() {
-    if (!backend_) {
-        LOG_ERR("Runtime::start() called before backend is bound"); std::abort();
-    }
+    auto& be = backend();
 
     // Wire up the unified event pipeline:
     //  - Core pushes domain events into the Runtime queue via this sink.
     //  - Backend subscribes as a receiver to hear domain events after Core.
     core_.set_event_sink(this);
-    add_receiver(backend_);
+    add_receiver(&be);
     add_hook_receiver(&lua_host_);
-    add_hook_receiver(backend_);
+    add_hook_receiver(&be);
 
     // Query initial monitor list from backend and init core.
     {
-        std::vector<Monitor> initial_monitors = ports().monitor.get_monitors();
+        std::vector<Monitor> initial_monitors = backend().ports().monitor.get_monitors();
         core_.init(std::move(initial_monitors));
     }
 
     // Let the backend supply a custom Window factory (for subclassing).
     core_.set_window_factory([this](WindowId id) {
-            return backend_->create_window(id);
+            return backend().create_window(id);
         });
 
     core_.mark_runtime_started(true);
@@ -465,29 +488,28 @@ void Runtime::start() {
     // modules start so they can rely on both.
     setup_sigchld_pipe();
     apply_and_refresh_monitors();
-    ports().monitor.select_change_events();
+    backend().ports().monitor.select_change_events();
 
     for (auto& mod : modules) {
         mod->on_start();
     }
     drain_events();
-    backend_->on_start(core_);
-    adopt_existing_windows(*this, core_, *backend_);
+    be.on_start(core_);
+    adopt_existing_windows(*this, core_, be);
     drain_events();
     post_event(event::RuntimeStarted{});
     drain_events();
 }
 
 void Runtime::stop(bool is_exec_restart) {
+    auto& be = backend();
     post_event(event::RuntimeStopping{ is_exec_restart });
     drain_events();
-    if (backend_) {
-        remove_receiver(backend_);
-        backend_->shutdown();
-    }
+    remove_receiver(&be);
     core_.set_event_sink(nullptr);
     for (auto it = modules.rbegin(); it != modules.rend(); ++it)
         (*it)->on_stop(is_exec_restart);
+    be.shutdown();
     if (!surface_registry_.empty())
         LOG_WARN("Runtime::stop: %zu Surface(s) still alive at shutdown",
             surface_registry_.size());
@@ -524,7 +546,7 @@ Surface* Runtime::resolve_surface(WindowId win) {
 }
 
 void Runtime::apply_and_refresh_monitors() {
-    auto& mp = ports().monitor;
+    auto& mp = backend().ports().monitor;
     mp.apply_monitor_layout(monitor_layout::build(
         core_config_.monitors.get(), core_config_.compose.get()));
 
@@ -537,8 +559,7 @@ void Runtime::apply_and_refresh_monitors() {
 }
 
 void Runtime::dispatch_display_change() {
-    if (backend_)
-        apply_and_refresh_monitors();
+    apply_and_refresh_monitors();
 }
 
 void Runtime::setup_sigchld_pipe() {
@@ -593,39 +614,17 @@ void Runtime::reap_children() {
     pid_t pid;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-        if (backend_)
-            post_event(event::ChildExited{ pid, exit_code });
+        post_event(event::ChildExited{ pid, exit_code });
     }
 }
 
 
 Backend& Runtime::backend() {
-    if (!backend_) {
-        LOG_ERR("Runtime::backend() called before backend is bound"); std::abort();
-    }
     return *backend_;
 }
 
 const Backend& Runtime::backend() const {
-    if (!backend_) {
-        LOG_ERR("Runtime::backend() called before backend is bound"); std::abort();
-    }
     return *backend_;
-}
-
-backend::BackendPorts Runtime::ports() {
-    if (!backend_) {
-        LOG_ERR("Runtime::ports() called before backend is bound"); std::abort();
-    }
-    return backend_->ports();
-}
-
-void Runtime::prepare_exec_restart() {
-    if (!backend_) {
-        LOG_ERR("Runtime::prepare_exec_restart() called before backend is bound");
-        std::abort();
-    }
-    backend_->prepare_exec_restart();
 }
 
 // ---------------------------------------------------------------------------
@@ -633,16 +632,11 @@ void Runtime::prepare_exec_restart() {
 // ---------------------------------------------------------------------------
 
 std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) {
-    if (!backend_) {
-        LOG_ERR("Runtime::create_surface() called before backend is bound");
-        return nullptr;
-    }
-
     backend::RenderWindowCreateInfo rw{};
     rw.monitor_index           = info.monitor_index;
     rw.pos                     = info.pos;
     rw.size                    = info.size;
-    rw.background_pixel        = ports().render.black_pixel();
+    rw.background_pixel        = backend().ports().render.black_pixel();
     rw.want_expose             = info.want_expose;
     rw.want_button_press       = info.want_button_press;
     rw.want_button_release     = info.want_button_release;
@@ -650,7 +644,7 @@ std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) 
     rw.hints.dock              = info.dock;
     rw.hints.keep_above        = info.keep_above;
 
-    auto window = ports().render.create_window(rw);
+    auto window = backend().ports().render.create_window(rw);
     if (!window)
         return nullptr;
 
@@ -662,19 +656,12 @@ std::unique_ptr<Surface> Runtime::create_surface(const SurfaceCreateInfo& info) 
 
 std::unique_ptr<backend::TrayHost>
 Runtime::create_tray(Surface& owner, bool own_selection) {
-    if (!backend_) {
-        LOG_ERR("Runtime::create_tray() called before backend is bound");
-        return nullptr;
-    }
-    auto* port = ports().tray_host;
+    auto* port = backend().ports().tray_host;
     if (!port)
         return nullptr;
 
-    auto* bw = owner.backend_window();
-    if (!bw)
-        return nullptr;
-
-    return port->create(bw->id(), bw->x(), bw->y(), bw->height(), own_selection);
+    auto& bw = owner.backend_window();
+    return port->create(bw.id(), bw.x(), bw.y(), bw.height(), own_selection);
 }
 
 void Runtime::unregister_surface(Surface* s) {
@@ -686,30 +673,32 @@ void Runtime::unregister_surface(Surface* s) {
 
 void Runtime::tick() {
     constexpr std::size_t kMaxBackendEventsPerTick = 2048;
+    auto&                 be                        = backend();
 
     event_loop_.poll(100);
-    backend_->pump_events(kMaxBackendEventsPerTick);
+    be.pump_events(kMaxBackendEventsPerTick);
 
     bool reloaded = process_pending_reload();
     if (reloaded) {
-        backend_->on_reload_applied();
+        be.on_reload_applied();
         post_event(event::RaiseDocks{});
     }
 
     drain_events();
 
-    backend_->render_frame();
+    be.render_frame();
 }
 
 void Runtime::run_loop() {
-    event_loop_.watch(backend_->event_fd(), []() {});
+    auto& be = backend();
+    event_loop_.watch(be.event_fd(), []() {});
     event_loop_.start();
 
     while (!stop_requested)
         tick();
 
     event_loop_.stop();
-    event_loop_.unwatch(backend_->event_fd());
+    event_loop_.unwatch(be.event_fd());
 
     LOG_INFO("Runtime: event loop stopped");
 }

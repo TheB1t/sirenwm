@@ -330,7 +330,11 @@ bool Core::dispatch(const command::CommandComposite& cmd) {
 }
 
 bool Core::dispatch(const command::atom::FocusWindow& cmd) {
-    return wsman.focus_window(cmd.window);
+    if (!wsman.focus_window(cmd.window))
+        return false;
+    emit_backend_effect(BackendEffectKind::FocusWindow, cmd.window);
+    emit_focus_changed(cmd.window);
+    return true;
 }
 
 bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {

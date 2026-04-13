@@ -85,6 +85,11 @@ target_link_libraries(sirenwm_core PUBLIC
 )
 
 # ---------------------------------------------------------------------------
+# libxcb (shared XCB wrappers)
+# ---------------------------------------------------------------------------
+add_subdirectory(libxcb)
+
+# ---------------------------------------------------------------------------
 # Backend
 # ---------------------------------------------------------------------------
 set(SIRENWM_BACKEND "x11" CACHE STRING "Backend to build: x11 or wayland")
@@ -93,19 +98,28 @@ set(SIRENWM_BACKEND_SOURCES)
 set(SIRENWM_BACKEND_INCLUDE_DIRS)
 set(SIRENWM_BACKEND_LINK_LIBS spdlog::spdlog)
 set(SIRENWM_BACKEND_COMPILE_DEFS)
+set(SIRENWM_APP_LINK_LIBS)
+set(SIRENWM_APP_COMPILE_DEFS)
 
 if(SIRENWM_BACKEND STREQUAL "x11")
     include(backends/x11/backend.cmake)
     list(APPEND SIRENWM_BACKEND_LINK_LIBS xkbcommon)
     set(SIRENWM_BACKEND_DEFINE "SIRENWM_BACKEND_X11")
 elseif(SIRENWM_BACKEND STREQUAL "wayland")
+    add_subdirectory(libwl)
+    add_subdirectory(libwlproto)
+    add_subdirectory(libwlserver)
     include(backends/wayland/backend.cmake)
+    list(APPEND SIRENWM_APP_LINK_LIBS wlserver)
+    list(APPEND SIRENWM_APP_COMPILE_DEFS SIRENWM_HAS_DISPLAY_SERVER=1)
     set(SIRENWM_BACKEND_DEFINE "SIRENWM_BACKEND_WAYLAND")
 else()
     message(FATAL_ERROR "Unknown SIRENWM_BACKEND: ${SIRENWM_BACKEND} (valid: x11, wayland)")
 endif()
 
 message(STATUS "Building with backend: ${SIRENWM_BACKEND}")
+
+set(SIRENWM_BINARY_NAME "${PROJECT_NAME}-${SIRENWM_BACKEND}")
 
 add_library(sirenwm_backend STATIC ${SIRENWM_BACKEND_SOURCES})
 target_include_directories(sirenwm_backend PRIVATE
@@ -128,6 +142,9 @@ endif()
 # Application
 # ---------------------------------------------------------------------------
 add_executable(${PROJECT_NAME} src/main.cpp)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    OUTPUT_NAME ${SIRENWM_BINARY_NAME}
+)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     modules
@@ -137,10 +154,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     ${SIRENWM_BACKEND_DEFINE}
     ${SIRENWM_BACKEND_COMPILE_DEFS}
+    ${SIRENWM_APP_COMPILE_DEFS}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     sirenwm_backend
+    ${SIRENWM_APP_LINK_LIBS}
     -Wl,--whole-archive
     ${SIRENWM_MODULE_TARGETS}
     -Wl,--no-whole-archive

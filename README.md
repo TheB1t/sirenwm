@@ -206,7 +206,9 @@ cmake --build build -j$(nproc)
 cmake -S . -B build -DSIRENWM_BACKEND=wayland
 cmake --build build -j$(nproc)
 
-# binary: output/sirenwm
+# binaries:
+#   output/sirenwm-x11
+#   output/sirenwm-wayland
 ```
 
 To build with the ImGui debug overlay (X11 only):
@@ -269,16 +271,16 @@ end
 **X11 — xinitrc** — add to `~/.xinitrc`:
 
 ```bash
-exec /path/to/output/sirenwm
+exec /path/to/output/sirenwm-x11
 ```
 
 **Wayland** — run directly from a TTY (wlroots opens DRM/KMS via libseat):
 
 ```bash
-/path/to/output/sirenwm
+/path/to/output/sirenwm-wayland
 ```
 
-**System install** (puts `sirenwm` in PATH and registers display manager sessions for both backends):
+**System install** (installs backend-specific binary and registers session entry):
 
 ```bash
 sudo cmake --install build

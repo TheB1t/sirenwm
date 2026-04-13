@@ -422,23 +422,11 @@ static int lua_sys_brightness(LuaContext& lua) {
 }
 
 // ---------------------------------------------------------------------------
-// kbd_layout — needs backend access via static module pointer
+// kbd_layout
 // ---------------------------------------------------------------------------
 
-static SysinfoModule* g_instance = nullptr;
-
-backend::KeyboardPort* SysinfoModule::backend_keyboard_port() {
-    return &runtime().ports().keyboard;
-}
-
-static int lua_sys_kbd_layout(LuaContext& lua) {
-    auto* kp = g_instance ? g_instance->backend_keyboard_port() : nullptr;
-    if (!kp) {
-        lua.push_nil();
-        return 1;
-    }
-    lua.push_string(kp->current_layout());
-    return 1;
+backend::KeyboardPort& SysinfoModule::backend_keyboard_port() {
+    return backend.ports().keyboard;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,9 +444,7 @@ void SysinfoModule::on_start() {
 }
 
 void SysinfoModule::on_lua_init() {
-    g_instance = this;
-
-    auto& lua = this->lua();
+    auto& lua = this->lua;
     auto  ctx = lua.context();
 
     ctx.new_table();
@@ -470,7 +456,6 @@ void SysinfoModule::on_lua_init() {
         { "loadavg",    lua_sys_loadavg    },
         { "net_ip",     lua_sys_net_ip     },
         { "disks",      lua_sys_disks      },
-        { "kbd_layout",  lua_sys_kbd_layout  },
         { "battery",     lua_sys_battery     },
         { "brightness",  lua_sys_brightness  },
     };
@@ -478,6 +463,13 @@ void SysinfoModule::on_lua_init() {
         lua.push_callback(r.func);
         ctx.set_field(-2, r.name);
     }
+    lua.push_callback([](LuaContext& lctx, void* ud) -> int {
+            auto* mod = static_cast<SysinfoModule*>(ud);
+            auto& kp  = mod->backend_keyboard_port();
+            lctx.push_string(kp.current_layout());
+            return 1;
+        }, this);
+    ctx.set_field(-2, "kbd_layout");
 
     lua.set_module_table("sysinfo");
 }

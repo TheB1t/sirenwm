@@ -46,16 +46,14 @@ struct X11Window : public swm::Window {
     void set_wm_state_normal() {
         if (atoms.WM_STATE != XCB_ATOM_NONE) {
             uint32_t data[2] = { 1 /* NormalState */, XCB_WINDOW_NONE };
-            xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, id,
-                atoms.WM_STATE, atoms.WM_STATE, 32, 2, data);
+            xconn.change_property(id, atoms.WM_STATE, atoms.WM_STATE, 32, 2, data);
         }
     }
 
     void set_wm_state(uint32_t state) {
         if (atoms.WM_STATE != XCB_ATOM_NONE) {
             uint32_t data[2] = { state, XCB_WINDOW_NONE };
-            xcb_change_property(xconn.raw_conn(), XCB_PROP_MODE_REPLACE, id,
-                atoms.WM_STATE, atoms.WM_STATE, 32, 2, data);
+            xconn.change_property(id, atoms.WM_STATE, atoms.WM_STATE, 32, 2, data);
         }
     }
 
@@ -125,10 +123,8 @@ struct X11Window : public swm::Window {
     }
 
     void focus(xcb_timestamp_t timestamp) {
-        if (!no_input_focus) {
-            xcb_set_input_focus(xconn.raw_conn(),
-                XCB_INPUT_FOCUS_POINTER_ROOT, id, timestamp);
-        }
+        if (!no_input_focus)
+            xconn.set_input_focus(id, timestamp);
         send_take_focus(timestamp);
     }
 

@@ -120,14 +120,10 @@ static int lua_audio_input(LuaContext& lua) {
 // Module lifecycle
 // ---------------------------------------------------------------------------
 
-static AudioModule* g_instance = nullptr;
-
 void AudioModule::on_init() {}
 
 void AudioModule::on_lua_init() {
-    g_instance = this;
-
-    auto& lua = this->lua();
+    auto& lua = this->lua;
     auto  ctx = lua.context();
 
     // Proxy table with __newindex for audio.settings = {...}
@@ -184,7 +180,7 @@ void AudioModule::on_start() {
 }
 
 void AudioModule::on_stop(bool) {
-    g_instance = nullptr;
+    // No-op.
 }
 
 SIRENWM_REGISTER_MODULE("audio", AudioModule)

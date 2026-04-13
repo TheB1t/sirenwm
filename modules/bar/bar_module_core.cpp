@@ -348,8 +348,8 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
 // ---------------------------------------------------------------------------
 
 std::string BarModule::monitor_alias(int mon_idx) const {
-    const auto& aliases  = core().current_settings().monitor_aliases;
-    const auto& monitors = core().monitor_states();
+    const auto& aliases  = core.current_settings().monitor_aliases;
+    const auto& monitors = core.monitor_states();
     if (mon_idx < 0 || mon_idx >= (int)monitors.size())
         return {};
     const std::string& mon_name = monitors[mon_idx].name;
@@ -384,7 +384,7 @@ void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool i
     info.dock                = true;
     info.keep_above          = true;
 
-    auto s = runtime().create_surface(info);
+    auto s = runtime.create_surface(info);
     if (!s) return;
 
     BarWindow bw;
@@ -397,7 +397,7 @@ void BarModule::create_bar_window(const MonRect& m, const BarConfig& cfg, bool i
 void BarModule::rebuild_bars() {
     all_bars_.clear();
 
-    const auto& monitors = core().monitor_states();
+    const auto& monitors = core.monitor_states();
 
     auto        has_content = [](const BarConfig& cfg) {
             return cfg.height > 0 || !cfg.left.empty()
@@ -436,34 +436,34 @@ void BarModule::rebuild_bars() {
             }
         }
 
-        (void)core().dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Top, top_h });
-        (void)core().dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Bottom, bottom_h });
+        (void)core.dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Top, top_h });
+        (void)core.dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Bottom, bottom_h });
     }
 }
 
 bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {
-    const ThemeConfig& theme = core().current_settings().theme;
-    return load_bar_set_config(this->lua(), theme, bar_set_setting_, lua, table_idx, err);
+    const ThemeConfig& theme = core.current_settings().theme;
+    return load_bar_set_config(this->lua, theme, bar_set_setting_, lua, table_idx, err);
 }
 
 void BarModule::on_init() {
-    store().register_setting("bar_set", bar_set_setting_);
+    store.register_setting("bar_set", bar_set_setting_);
 
     state_provider = [this](int mon_idx) -> BarState {
             BarState    s;
-            const auto& monitors = core().monitor_states();
+            const auto& monitors = core.monitor_states();
             if (monitors.empty()) return s;
 
             int mon_ws = (mon_idx >= 0 && mon_idx < (int)monitors.size())
                      ? monitors[mon_idx].active_ws
-                     : monitors[core().focused_monitor_index()].active_ws;
+                     : monitors[core.focused_monitor_index()].active_ws;
 
             const int safe_mon_idx = (mon_idx >= 0 && mon_idx < (int)monitors.size())
-            ? mon_idx : core().focused_monitor_index();
+            ? mon_idx : core.focused_monitor_index();
 
-            const auto& ws_ids = core().monitor_workspace_ids(safe_mon_idx);
+            const auto& ws_ids = core.monitor_workspace_ids(safe_mon_idx);
             for (int ws_id : ws_ids) {
-                auto ws = core().workspace_state(ws_id);
+                auto ws = core.workspace_state(ws_id);
                 if (!ws)
                     continue;
                 bool focused     = (ws_id == mon_ws);
@@ -477,12 +477,12 @@ void BarModule::on_init() {
             }
 
             if (mon_ws >= 0) {
-                WindowId w = core().ws().last_focused_window(safe_mon_idx, mon_ws);
-                if (w == NO_WINDOW && safe_mon_idx == core().focused_monitor_index())
-                    if (auto focused = core().focused_window_state())
+                WindowId w = core.ws().last_focused_window(safe_mon_idx, mon_ws);
+                if (w == NO_WINDOW && safe_mon_idx == core.focused_monitor_index())
+                    if (auto focused = core.focused_window_state())
                         w = focused->id;
                 if (w != NO_WINDOW) {
-                    if (auto ws = core().window_state_any(w))
+                    if (auto ws = core.window_state_any(w))
                         s.title = ws->title;
                 }
             }
@@ -491,7 +491,7 @@ void BarModule::on_init() {
 }
 
 void BarModule::on_lua_init() {
-    auto& host = this->lua();
+    auto& host = this->lua;
     auto  ctx  = host.context();
 
     // Proxy table: bar.settings = {...} triggers parse_setup immediately.
@@ -601,7 +601,7 @@ void BarModule::on(event::SurfaceButton ev) {
             return;
         int ws = tag_at(b.surface.get(), ev.event_pos.x());
         if (ws >= 0) {
-            (void)core().dispatch(command::atom::SwitchWorkspace{ ws, b.surface->monitor_index() });
+            (void)core.dispatch(command::atom::SwitchWorkspace{ ws, b.surface->monitor_index() });
             redraw();
         }
         return;
@@ -611,13 +611,13 @@ void BarModule::on(event::SurfaceButton ev) {
 void BarModule::on_reload() {
     bar_set_cfg_ = bar_set_setting_.get();
 
-    const ThemeConfig& th = core().current_settings().theme;
+    const ThemeConfig& th = core.current_settings().theme;
     apply_theme_to_monitor_cfg(bar_set_cfg_.default_cfg, th);
     for (auto& [alias, mcfg] : bar_set_cfg_.per_monitor)
         apply_theme_to_monitor_cfg(mcfg, th);
 
     rebuild_bars();
-    (void)core().dispatch(command::atom::ReconcileNow{});
+    (void)core.dispatch(command::atom::ReconcileNow{});
     rebuild_trays();
     rebalance_tray_icons();
     raise_all();
@@ -629,7 +629,7 @@ void BarModule::rebuild_trays() {
     // surfaces (and therefore all previous trays attached to them). Choose one
     // top bar to own the _NET_SYSTEM_TRAY_S selection: prefer focused monitor,
     // fall back to the first top bar.
-    int focused_mon = core().focused_monitor_index();
+    int focused_mon = core.focused_monitor_index();
     int owner_mon   = -1;
     for (auto& b : all_bars_) {
         if (!b.is_top || !b.surface) continue;
@@ -652,7 +652,7 @@ void BarModule::rebuild_trays() {
         int  mon_idx       = b.surface->monitor_index();
         bool own_selection = (mon_idx == owner_mon);
 
-        auto tray = runtime().create_tray(*b.surface, own_selection);
+        auto tray = runtime.create_tray(*b.surface, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
             LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx);
             continue;
@@ -683,7 +683,7 @@ void BarModule::on(const event::CustomEvent& ev) {
 
 void BarModule::on(event::DisplayTopologyChanged) {
     rebuild_bars();
-    (void)core().dispatch(command::atom::ReconcileNow{});
+    (void)core.dispatch(command::atom::ReconcileNow{});
     rebuild_trays();
     rebalance_tray_icons();
     raise_all();
@@ -693,13 +693,13 @@ void BarModule::on(event::DisplayTopologyChanged) {
 void BarModule::on_start() {
     bar_set_cfg_ = bar_set_setting_.get();
 
-    const ThemeConfig& th = core().current_settings().theme;
+    const ThemeConfig& th = core.current_settings().theme;
     apply_theme_to_monitor_cfg(bar_set_cfg_.default_cfg, th);
     for (auto& [alias, mcfg] : bar_set_cfg_.per_monitor)
         apply_theme_to_monitor_cfg(mcfg, th);
 
     rebuild_bars();
-    (void)core().dispatch(command::atom::ReconcileNow{});
+    (void)core.dispatch(command::atom::ReconcileNow{});
 
     rebuild_trays();
 
@@ -714,7 +714,7 @@ void BarModule::on_start() {
         } else {
             int rd = pipe_fds[0];
             wakeup_pipe_wr_ = pipe_fds[1];
-            wakeup_pipe_rd_ = EventLoop::FdHandle(runtime().event_loop(), rd, [this, rd]() {
+            wakeup_pipe_rd_ = EventLoop::FdHandle(runtime.event_loop, rd, [this, rd]() {
                     // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
                     char buf[64];
                     ssize_t n;
@@ -748,7 +748,7 @@ void BarModule::on_start() {
             ts.it_value.tv_sec    = 1;
             ts.it_interval.tv_sec = 1;
             timerfd_settime(tfd, 0, &ts, nullptr);
-            widget_timer_ = EventLoop::FdHandle(runtime().event_loop(), tfd, [this, tfd]() {
+            widget_timer_ = EventLoop::FdHandle(runtime.event_loop, tfd, [this, tfd]() {
                     uint64_t expirations;
                     if (read(tfd, &expirations, sizeof(expirations)) > 0) {
                         refresh_widgets();

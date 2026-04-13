@@ -34,7 +34,7 @@ Runtime& loader_runtime(void* userdata) {
 }
 
 Core& loader_core(void* userdata) {
-    return loader_runtime(userdata).core();
+    return loader_runtime(userdata).core;
 }
 
 // package.preload loader for a C++ module: require("bar") → module API table.
@@ -46,7 +46,7 @@ static int lua_module_preload(LuaContext& lua, void* userdata) {
     auto&             runtime = loader_runtime(userdata);
     runtime.use(name);
     runtime.emit_lua_init();
-    if (runtime.lua().push_module_table(name))
+    if (runtime.lua.push_module_table(name))
         return 1;
     // Module registered no table — return true as a sentinel so require() succeeds.
     lua.push_bool(true);
@@ -161,7 +161,7 @@ static int lua_root_spawn(LuaContext& lua, void* userdata) {
     }
 
     // Build and return a ProcessHandle userdata.
-    auto& host = loader_runtime(userdata).lua();
+    auto& host = loader_runtime(userdata).lua;
     ensure_process_metatable(lua, host);
 
     auto* handle = static_cast<ProcessHandle*>(lua.new_userdata(sizeof(ProcessHandle)));
@@ -211,7 +211,7 @@ static int lua_monitor_focused(LuaContext& lua, void* userdata) {
         lua.push_nil();
         return 1;
     }
-    const auto&        aliases = loader_runtime(userdata).core_config().monitors.get();
+    const auto&        aliases = loader_runtime(userdata).core_config.monitors.get();
     const std::string& output  = mon->name;
     std::string        name    = output;
     for (const auto& a : aliases)
@@ -235,7 +235,7 @@ static int lua_monitor_focused(LuaContext& lua, void* userdata) {
 // name   = logical alias (e.g. "primary") if configured; falls back to output name
 static int lua_monitor_list(LuaContext& lua, void* userdata) {
     const auto& mons    = loader_core(userdata).monitor_states();
-    const auto& aliases = loader_runtime(userdata).core_config().monitors.get();
+    const auto& aliases = loader_runtime(userdata).core_config.monitors.get();
     lua.new_table();
     for (int i = 0; i < (int)mons.size(); i++) {
         // mons[i].name is the RandR output name; find its logical alias if any.
@@ -360,7 +360,7 @@ static int lua_layout_inc_master(LuaContext& lua, void* userdata) {
 static int lua_layout_register(LuaContext& lua, void* userdata) {
     std::string    name = lua.check_string(1);
     lua.check_function(2);
-    LuaHost&       host = loader_runtime(userdata).lua();
+    LuaHost&       host = loader_runtime(userdata).lua;
     LuaRegistryRef ref  = host.ref_function(2);
     loader_core(userdata).register_lua_layout(name, std::move(ref));
     return 0;
@@ -391,7 +391,7 @@ static int lua_layout_place(LuaContext& lua, void* userdata) {
 static int lua_siren_on(LuaContext& lua, void* userdata) {
     std::string    event = lua.check_string(1);
     lua.check_function(2);
-    LuaHost&       host = loader_runtime(userdata).lua();
+    LuaHost&       host = loader_runtime(userdata).lua;
     LuaRegistryRef ref  = host.ref_function(2);
     host.register_handler(event, std::move(ref));
     return 0;
@@ -477,7 +477,7 @@ bool load(const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, b
     // Keep standard Lua libraries (single-word names like "string", "table", etc.)
     // and C++ modules registered via package.preload (identified by the registry).
     {
-        const auto& cpp_modules = runtime.module_registry().module_names();
+        const auto& cpp_modules = runtime.module_registry.module_names();
         auto        is_cpp = [&](const std::string& key) {
                 for (const auto& m : cpp_modules)
                     if (m == key) return true;
@@ -564,7 +564,7 @@ bool load(const std::string& path, Core& core, Runtime& runtime, LuaHost& lua, b
         if (ctx.is_table(-1)) {
             ctx.get_field(-1, "preload");
             if (ctx.is_table(-1)) {
-                for (const auto& name : runtime.module_registry().module_names()) {
+                for (const auto& name : runtime.module_registry.module_names()) {
                     lua.push_callback(lua_module_preload, &runtime);
                     ctx.set_field(-2, name.c_str());
                 }
@@ -630,7 +630,7 @@ setmetatable(Vec2, {__call = function(_, x, y) return Vec2.new(x, y) end})
     ctx.get_global("siren");
     int  siren_idx = ctx.abs_index(-1);
 
-    bool store_ok = runtime.store().apply_from_lua(ctx, siren_idx);
+    bool store_ok = runtime.store.apply_from_lua(ctx, siren_idx);
 
     ctx.pop();
     return store_ok;

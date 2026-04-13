@@ -11,7 +11,6 @@
 
 #include <core.hpp>
 #include <event_receiver.hpp>
-#include <module_registry.hpp>
 #include <runtime.hpp>
 
 #include <variant>
@@ -45,27 +44,27 @@ class CoreDomainEventRecorder : public IEventReceiver {
 };
 
 struct TestHarness {
-    ModuleRegistry          module_registry;
     Runtime                 runtime;
-    FakeBackend             backend;
+    FakeBackend&            backend;
     CoreDomainEventRecorder recorder;
 
     // Shorthand so test code can say h.core.dispatch(...).
     Core& core;
 
     explicit TestHarness(std::vector<Monitor> monitors = {})
-        : runtime(module_registry)
-          , backend(monitors.empty()
-            ? std::vector<Monitor>{ make_monitor(0, 0, 0, 1920, 1080, "primary") }
-            : std::move(monitors))
-          , core(runtime.core())
+        : runtime([mons = monitors.empty()
+                ? std::vector<Monitor>{ make_monitor(0, 0, 0, 1920, 1080, "primary") }
+                : std::move(monitors)](Core&, Runtime&) {
+                return std::make_unique<FakeBackend>(mons);
+            })
+          , backend(static_cast<FakeBackend&>(runtime.backend()))
+          , core(runtime.core)
     {
-        runtime.lua().init();
-        runtime.bind_backend(backend);
+        runtime.lua.init();
         runtime.add_receiver(&recorder);
         // Init core with fake monitors so tests can dispatch commands
         // before calling start().
-        auto mons = backend.fake_monitors().get_monitors();
+        auto mons = backend.monitor_port.get_monitors();
         core.init(std::move(mons));
     }
 
@@ -81,7 +80,6 @@ struct TestHarness {
         CoreSettings s;
         s.workspace_defs = {{ "[1]", "" }, { "[2]", "" }, { "[3]", "" }};
         core.apply_settings(s);
-        runtime.bind_backend(backend);
         runtime.mark_configured();  // bypass load_config() for test harness
         runtime.start();
     }

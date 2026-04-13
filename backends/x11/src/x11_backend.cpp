@@ -30,7 +30,7 @@ X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
 
     xcb_cursor_t cursor     = xconn.create_left_ptr_cursor();
     uint32_t     cursor_val = cursor;
-    xconn.call(xcb_change_window_attributes, root_window, XCB_CW_CURSOR, &cursor_val);
+    xconn.change_window_attributes(root_window, XCB_CW_CURSOR, &cursor_val);
     xconn.free_cursor(cursor);
     xconn.flush();
 
@@ -68,12 +68,9 @@ void X11Backend::on_start(Core& core) {
     // exec-restart the WM doesn't assume monitor 0 when the cursor is elsewhere.
     // Without this, adopt_existing_windows → SwitchWorkspace → sync_current_focus
     // gives X focus to the game on monitor 0 even if the pointer is on monitor 1.
-    auto  cookie = xcb_query_pointer(xconn.raw_conn(), root_window);
-    auto* reply  = xcb_query_pointer_reply(xconn.raw_conn(), cookie, nullptr);
-    if (reply) {
-        core.focus_monitor_at_point(reply->root_x, reply->root_y);
-        free(reply);
-    }
+    auto ptr = xconn.query_pointer();
+    if (ptr.valid)
+        core.focus_monitor_at_point(ptr.x, ptr.y);
 }
 
 void X11Backend::apply_xresources(Core& core) {
@@ -89,10 +86,8 @@ void X11Backend::apply_xresources(Core& core) {
     if (!theme.cursor_theme.empty())
         res += "Xcursor.theme: " + theme.cursor_theme + "\n";
 
-    xconn.call(xcb_change_property,
-        XCB_PROP_MODE_REPLACE, root_window,
-        XCB_ATOM_RESOURCE_MANAGER, XCB_ATOM_STRING, 8,
-        (uint32_t)res.size(), res.c_str());
+    xconn.change_property(root_window, XCB_ATOM_RESOURCE_MANAGER,
+        XCB_ATOM_STRING, 8, (uint32_t)res.size(), res.c_str());
     xconn.flush();
     LOG_INFO("theme: set RESOURCE_MANAGER: %s", res.c_str());
 }

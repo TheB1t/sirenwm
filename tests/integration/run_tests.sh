@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
-SIRENWM="$REPO_ROOT/output/sirenwm"
+SIRENWM="$REPO_ROOT/output/sirenwm-x11"
 DISPLAY_NUM=:99
 SCREEN_W=1280
 SCREEN_H=720
@@ -836,8 +836,18 @@ else
         fail "_NET_CLOSE_WINDOW: window removed from X tree" "still exists after 4s"
     fi
 
-    POST_LIST=$(DISPLAY=$DISPLAY_NUM xprop -root _NET_CLIENT_LIST 2>/dev/null)
-    if ! echo "$POST_LIST" | grep -qi "$WIN_HEX"; then
+    POST_LIST=""
+    REMOVED_FROM_CLIENT_LIST=0
+    for _ in $(seq 1 40); do
+        POST_LIST=$(DISPLAY=$DISPLAY_NUM xprop -root _NET_CLIENT_LIST 2>/dev/null || true)
+        if ! echo "$POST_LIST" | grep -qi "$WIN_HEX"; then
+            REMOVED_FROM_CLIENT_LIST=1
+            break
+        fi
+        sleep 0.1
+    done
+
+    if (( REMOVED_FROM_CLIENT_LIST )); then
         pass "_NET_CLOSE_WINDOW: window removed from _NET_CLIENT_LIST"
     else
         fail "_NET_CLOSE_WINDOW: window removed from client list" \

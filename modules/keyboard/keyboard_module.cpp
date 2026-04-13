@@ -63,12 +63,8 @@ bool KeyboardModule::parse_setup(LuaContext& lua, int idx, std::string& err) {
 void KeyboardModule::apply() {
     if (layouts_.empty())
         return;
-    auto* kp = &runtime().ports().keyboard;
-    if (!kp) {
-        LOG_WARN("keyboard: no keyboard port available");
-        return;
-    }
-    kp->apply(layouts_, options_);
+    auto& kp = backend.ports().keyboard;
+    kp.apply(layouts_, options_);
     LOG_INFO("keyboard: applied layouts='%s' options='%s'",
         [&]() {
             std::string s;
@@ -84,7 +80,7 @@ void KeyboardModule::apply() {
 void KeyboardModule::on_init() {}
 
 void KeyboardModule::on_lua_init() {
-    auto& lua = this->lua();
+    auto& lua = this->lua;
     auto  ctx = lua.context();
 
     // Proxy table: kbd.settings = {...} triggers parse_setup immediately.
@@ -121,9 +117,7 @@ void KeyboardModule::on_stop(bool is_exec_restart) {
     // settings via apply() in on_start().
     if (is_exec_restart)
         return;
-    auto* kp = &runtime().ports().keyboard;
-    if (kp)
-        kp->restore();
+    backend.ports().keyboard.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -131,12 +125,11 @@ void KeyboardModule::on_stop(bool is_exec_restart) {
 // ---------------------------------------------------------------------------
 
 void KeyboardModule::on(event::FocusChanged ev) {
-    auto* kp = &runtime().ports().keyboard;
-    if (!kp) return;
+    auto& kp = backend.ports().keyboard;
 
     // Save current group for the window that is losing focus.
     if (focused_window_ != NO_WINDOW)
-        window_groups_[focused_window_] = kp->get_group();
+        window_groups_[focused_window_] = kp.get_group();
 
     focused_window_ = ev.window;
 
@@ -145,11 +138,11 @@ void KeyboardModule::on(event::FocusChanged ev) {
     auto     it    = window_groups_.find(ev.window);
     if (it != window_groups_.end())
         group = it->second;
-    kp->set_group(group);
+    kp.set_group(group);
 
     // Notify listeners (e.g. bar widgets) about the layout change.
-    std::string layout = kp->current_layout();
-    runtime().post_event(event::CustomEvent{
+    std::string layout = kp.current_layout();
+    runtime.post_event(event::CustomEvent{
         MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
     });
 }

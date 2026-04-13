@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
 #include <vector>
 
 #include <lua_host.hpp>
@@ -41,10 +40,6 @@ class KeybindingsModule : public Module {
         void on(event::DestroyNotify) override;
         ~KeybindingsModule() override;
 
-        // Access for cross-module reads.
-        const TypedSetting<std::optional<uint16_t>>& mod_mask_setting() const { return mod_mask_; }
-        const TypedSetting<std::vector<MouseBinding>>& mouse_bindings_setting() const { return mouse_bindings_; }
-
     private:
         enum class DragOp { None, Move, Resize };
         struct DragState {
@@ -67,10 +62,9 @@ class KeybindingsModule : public Module {
         void apply_pending();
 
         // Owned settings registered in RuntimeStore.
-        TypedSetting<std::optional<uint16_t>>   mod_mask_;
+        TypedSetting<uint16_t>   mod_mask_;
         TypedSetting<std::vector<MouseBinding>> mouse_bindings_;
 
-        backend::InputPort* input_ = nullptr;
         WindowId  focused_window_  = NO_WINDOW;
         DragState drag;
 };

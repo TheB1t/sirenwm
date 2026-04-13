@@ -1,0 +1,294 @@
+#include <wl/server/output_x11.hpp>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+
+wl::server::SurfaceId surface_id_for_admin(uint32_t admin_id, Admin& admin) {
+    auto* surf = admin.surface(admin_id);
+    if (!surf) return {};
+    return surf->wl_surface_id;
+}
+
+} // namespace
+
+OutputX11::OutputX11(int width, int height)
+    : width_(width), height_(height) {
+    conn_ = xcb_connect(nullptr, nullptr);
+    if (!conn_ || xcb_connection_has_error(conn_)) {
+        fprintf(stderr, "output_x11: failed to connect to X11\n");
+        return;
+    }
+    owns_connection_ = true;
+
+    screen_ = xcb_setup_roots_iterator(xcb_get_setup(conn_)).data;
+    visual_ = xcb::find_visual(screen_, screen_->root_visual);
+    if (!visual_) {
+        fprintf(stderr, "output_x11: no suitable visual\n");
+        return;
+    }
+
+    window_ = generate_id();
+    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+    uint32_t values[] = {
+        screen_->black_pixel,
+        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY |
+        XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE |
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE |
+        XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_ENTER_WINDOW |
+        XCB_EVENT_MASK_LEAVE_WINDOW | XCB_EVENT_MASK_FOCUS_CHANGE
+    };
+
+    create_window(window_, screen_->root,
+                  0, 0, static_cast<uint16_t>(width_), static_cast<uint16_t>(height_),
+                  XCB_WINDOW_CLASS_INPUT_OUTPUT, screen_->root_visual, mask, values);
+
+    const char* title = "sirenwm-wayland-display-server";
+    change_property(window_, XCB_ATOM_WM_NAME, XCB_ATOM_STRING,
+                    8, static_cast<uint32_t>(strlen(title)), title);
+
+    setup_wm_delete();
+
+    auto cursor = create_left_ptr_cursor();
+    uint32_t cursor_val = cursor;
+    change_window_attributes(window_, XCB_CW_CURSOR, &cursor_val);
+
+    map_window(window_);
+    flush();
+
+    cairo_surface_ = cairo_xcb_surface_create(conn_, window_, visual_,
+                                               width_, height_);
+    create_back_buffer();
+}
+
+OutputX11::~OutputX11() {
+    if (back_surface_) cairo_surface_destroy(back_surface_);
+    if (back_pixmap_ && conn_) xcb_free_pixmap(conn_, back_pixmap_);
+    if (cairo_surface_) cairo_surface_destroy(cairo_surface_);
+    if (conn_ && window_)
+        destroy_window(window_);
+}
+
+void OutputX11::create_back_buffer() {
+    if (back_surface_) cairo_surface_destroy(back_surface_);
+    if (back_pixmap_ && conn_) xcb_free_pixmap(conn_, back_pixmap_);
+
+    back_pixmap_ = generate_id();
+    xcb_create_pixmap(conn_, screen_->root_depth, back_pixmap_,
+                      window_, static_cast<uint16_t>(width_),
+                      static_cast<uint16_t>(height_));
+    back_surface_ = cairo_xcb_surface_create(conn_, back_pixmap_, visual_,
+                                              width_, height_);
+}
+
+void OutputX11::setup_wm_delete() {
+    auto atoms = xcb::intern_batch(conn_, {"WM_PROTOCOLS", "WM_DELETE_WINDOW"});
+    auto protocols = atoms["WM_PROTOCOLS"];
+    wm_delete_window_ = atoms["WM_DELETE_WINDOW"];
+    if (protocols != XCB_ATOM_NONE && wm_delete_window_ != XCB_ATOM_NONE) {
+        change_property(window_, protocols, XCB_ATOM_ATOM, 32, 1, &wm_delete_window_);
+    }
+}
+
+bool OutputX11::handle_client_message(xcb_client_message_event_t* ev) {
+    return ev->data.data32[0] != wm_delete_window_;
+}
+
+void OutputX11::handle_configure_notify(xcb_configure_notify_event_t* ev) {
+    if (ev->width != width_ || ev->height != height_) {
+        width_  = ev->width;
+        height_ = ev->height;
+        cairo_xcb_surface_set_size(cairo_surface_, width_, height_);
+        create_back_buffer();
+        repaint_needed_ = true;
+    }
+}
+
+void OutputX11::handle_key_press(xcb_key_press_event_t* ev, Admin& admin, wl::server::Seat& seat) {
+    uint32_t evdev_key = ev->detail - 8;
+    uint32_t keysym = seat.resolve_keysym(evdev_key);
+    seat.update_xkb_state(evdev_key, true);
+    if (admin.is_intercepted(keysym, ev->state))
+        admin.key_press(evdev_key, keysym, ev->state);
+    else
+        seat.send_key(ev->time, evdev_key, true);
+}
+
+void OutputX11::handle_key_release(xcb_key_release_event_t* ev, wl::server::Seat& seat) {
+    uint32_t evdev_key = ev->detail - 8;
+    seat.update_xkb_state(evdev_key, false);
+    seat.send_key(ev->time, evdev_key, false);
+}
+
+void OutputX11::handle_button_press(xcb_button_press_event_t* ev, Admin& admin, wl::server::Seat& seat) {
+    auto* ov = admin.overlay_manager().overlay_at(ev->event_x, ev->event_y);
+    uint32_t button = 0x110 + ev->detail - 1;
+    if (ov) {
+        admin.overlay_button(ov->id, ev->event_x - ov->x, ev->event_y - ov->y, button, false);
+        return;
+    }
+    uint32_t sid = pointer_grabbed_ ? pointer_surface_
+                                    : admin.surface_at(ev->event_x, ev->event_y);
+    admin.button_press(sid, ev->event_x, ev->event_y, button, ev->state, false);
+    if (!pointer_grabbed_)
+        seat.send_pointer_button(ev->time, button, true);
+}
+
+void OutputX11::handle_button_release(xcb_button_release_event_t* ev, Admin& admin, wl::server::Seat& seat) {
+    auto* ov = admin.overlay_manager().overlay_at(ev->event_x, ev->event_y);
+    uint32_t button = 0x110 + ev->detail - 1;
+    if (ov) {
+        admin.overlay_button(ov->id, ev->event_x - ov->x, ev->event_y - ov->y, button, true);
+        return;
+    }
+    uint32_t sid = pointer_grabbed_ ? pointer_surface_
+                                    : admin.surface_at(ev->event_x, ev->event_y);
+    admin.button_press(sid, ev->event_x, ev->event_y, button, ev->state, true);
+    if (!pointer_grabbed_)
+        seat.send_pointer_button(ev->time, button, false);
+}
+
+void OutputX11::handle_motion_notify(xcb_motion_notify_event_t* ev,
+                                      Admin& admin, wl::server::Seat& seat, wl::server::XdgShell&) {
+    if (pointer_grabbed_) {
+        admin.pointer_motion(pointer_surface_, ev->event_x, ev->event_y, ev->state);
+        return;
+    }
+
+    uint32_t sid = admin.surface_at(ev->event_x, ev->event_y);
+    if (sid != pointer_surface_) {
+        uint32_t old_sid = pointer_surface_;
+        pointer_surface_ = sid;
+
+        if (old_sid != 0) {
+            auto old_surface = surface_id_for_admin(old_sid, admin);
+            if (old_surface)
+                seat.send_pointer_leave(old_surface);
+        }
+        if (sid != 0) {
+            admin.pointer_enter(sid);
+            auto surface = surface_id_for_admin(sid, admin);
+            if (surface) {
+                auto* surf = admin.surface(sid);
+                seat.send_pointer_enter(surface,
+                                        surf ? ev->event_x - surf->x : 0,
+                                        surf ? ev->event_y - surf->y : 0);
+            }
+        }
+    }
+
+    admin.pointer_motion(sid, ev->event_x, ev->event_y, ev->state);
+    auto* surf = admin.surface(sid);
+    if (surf)
+        seat.send_pointer_motion(ev->time,
+                                 ev->event_x - surf->x,
+                                 ev->event_y - surf->y);
+}
+
+bool OutputX11::pump_events(Admin& admin, wl::server::Seat& seat, wl::server::XdgShell& xdg_shell) {
+    xcb_generic_event_t* ev;
+    while ((ev = poll_event())) {
+        uint8_t type = ev->response_type & ~0x80;
+        switch (type) {
+        case XCB_CLIENT_MESSAGE:
+            if (!handle_client_message(reinterpret_cast<xcb_client_message_event_t*>(ev))) {
+                free(ev);
+                return false;
+            }
+            break;
+        case XCB_CONFIGURE_NOTIFY:
+            handle_configure_notify(reinterpret_cast<xcb_configure_notify_event_t*>(ev));
+            break;
+        case XCB_KEY_PRESS:
+            handle_key_press(reinterpret_cast<xcb_key_press_event_t*>(ev), admin, seat);
+            break;
+        case XCB_KEY_RELEASE:
+            handle_key_release(reinterpret_cast<xcb_key_release_event_t*>(ev), seat);
+            break;
+        case XCB_BUTTON_PRESS:
+            handle_button_press(reinterpret_cast<xcb_button_press_event_t*>(ev), admin, seat);
+            break;
+        case XCB_BUTTON_RELEASE:
+            handle_button_release(reinterpret_cast<xcb_button_release_event_t*>(ev), admin, seat);
+            break;
+        case XCB_MOTION_NOTIFY:
+            handle_motion_notify(reinterpret_cast<xcb_motion_notify_event_t*>(ev), admin, seat, xdg_shell);
+            break;
+        case XCB_EXPOSE:
+            repaint_needed_ = true;
+            break;
+        default:
+            break;
+        }
+        free(ev);
+    }
+    return true;
+}
+
+void OutputX11::repaint(wl::server::Compositor& compositor, wl::server::XdgShell&, Admin& admin) {
+    if (!cairo_surface_ || !back_surface_ || !repaint_needed_) return;
+    repaint_needed_ = false;
+
+    auto* cr = cairo_create(back_surface_);
+
+    cairo_set_source_rgb(cr, 0.15, 0.15, 0.18);
+    cairo_paint(cr);
+
+    for (auto* surf : admin.visible_surfaces_by_stacking()) {
+        auto surface = surface_id_for_admin(surf->id, admin);
+        if (!surface) continue;
+
+        auto bv = compositor.buffer_view(surface);
+        if (!bv.data || bv.width <= 0 || bv.height <= 0 || bv.stride <= 0) continue;
+
+        cairo_format_t fmt = CAIRO_FORMAT_ARGB32;
+        if (bv.format == 1)
+            fmt = CAIRO_FORMAT_RGB24;
+
+        auto* img = cairo_image_surface_create_for_data(
+            static_cast<unsigned char*>(bv.data),
+            fmt, bv.width, bv.height, bv.stride);
+
+        int draw_w = surf->width  > 0 ? surf->width  : bv.width;
+        int draw_h = surf->height > 0 ? surf->height : bv.height;
+
+        if (surf->border_width > 0) {
+            uint32_t c = surf->border_color;
+            double a = ((c >> 24) & 0xFF) / 255.0;
+            double r = ((c >> 16) & 0xFF) / 255.0;
+            double g = ((c >>  8) & 0xFF) / 255.0;
+            double b = ((c      ) & 0xFF) / 255.0;
+            int bw = static_cast<int>(surf->border_width);
+            cairo_set_source_rgba(cr, r, g, b, a);
+            cairo_rectangle(cr, surf->x - bw, surf->y - bw,
+                            draw_w + 2 * bw, draw_h + 2 * bw);
+            cairo_fill(cr);
+        }
+
+        cairo_set_source_surface(cr, img, surf->x, surf->y);
+        cairo_paint(cr);
+        cairo_surface_destroy(img);
+    }
+
+    for (auto& [id, ov] : admin.overlay_manager().overlays()) {
+        if (!ov.visible || ov.pixels.empty()) continue;
+        auto* img = cairo_image_surface_create_for_data(
+            const_cast<unsigned char*>(ov.pixels.data()),
+            CAIRO_FORMAT_ARGB32, ov.width, ov.height, ov.width * 4);
+        cairo_set_source_surface(cr, img, ov.x, ov.y);
+        cairo_paint(cr);
+        cairo_surface_destroy(img);
+    }
+
+    cairo_destroy(cr);
+    cairo_surface_flush(back_surface_);
+
+    auto* front = cairo_create(cairo_surface_);
+    cairo_set_source_surface(front, back_surface_, 0, 0);
+    cairo_paint(front);
+    cairo_destroy(front);
+    cairo_surface_flush(cairo_surface_);
+    flush();
+}

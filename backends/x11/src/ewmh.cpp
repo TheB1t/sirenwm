@@ -1,4 +1,5 @@
 #include <x11_backend.hpp>
+#include <x11_atoms.hpp>
 
 #include <xcb/atom.hpp>
 #include <xcb/property.hpp>
@@ -12,12 +13,6 @@
 #include <algorithm>
 
 namespace {
-
-bool has_atom(const std::vector<xcb_atom_t>& atoms, xcb_atom_t needle) {
-    if (needle == XCB_ATOM_NONE)
-        return false;
-    return std::find(atoms.begin(), atoms.end(), needle) != atoms.end();
-}
 
 bool has_xembed_info_property(XConnection& xconn, xcb_window_t win, xcb_atom_t xembed_info_atom) {
     return xconn.has_property_32(win, xembed_info_atom, 2);

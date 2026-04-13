@@ -13,5 +13,5 @@ class SysinfoModule : public Module {
         void                   on_start()    override;
         void                   on_stop(bool is_exec_restart = false) override;
 
-        backend::KeyboardPort* backend_keyboard_port();
+        backend::KeyboardPort& backend_keyboard_port();
 };
