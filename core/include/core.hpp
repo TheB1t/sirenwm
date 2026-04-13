@@ -66,6 +66,12 @@ struct BackendEffect {
     Vec2i16           pos;
 };
 
+struct FullscreenLikeDecision {
+    bool  promote = false;
+    Vec2i pos;
+    Vec2i size;
+};
+
 struct WindowFlush {
     enum Dirty : uint8_t {
         X           = 1 << 0,
@@ -369,6 +375,9 @@ class Core {
             }
             return false;
         }
+
+        FullscreenLikeDecision evaluate_fullscreen_like_request(WindowId win,
+            Vec2i requested_size, bool has_size) const;
 
 
         bool consume_window_suppress_focus_once(WindowId win);

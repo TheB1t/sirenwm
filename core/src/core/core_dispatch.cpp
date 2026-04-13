@@ -640,6 +640,43 @@ bool Core::dispatch(const command::composite::ToggleWindowFloating& cmd) {
     return true;
 }
 
+FullscreenLikeDecision Core::evaluate_fullscreen_like_request(WindowId win,
+    Vec2i requested_size, bool has_size) const {
+    FullscreenLikeDecision out;
+    if (!has_size)
+        return out;
+
+    auto w = wsman.find_window_in_all(win);
+    if (!w)
+        return out;
+    if (w->floating || w->borderless || w->preserve_position)
+        return out;
+    // Only promote "fullscreen-like" requests for fixed-size clients.
+    // This avoids treating normal resizable apps as borderless.
+    if (!w->size_locked)
+        return out;
+
+    int ws_id = wsman.workspace_of_window(win);
+    int mon_idx = wsman.monitor_of_workspace(ws_id);
+    const auto& mons = wsman.all_monitor_states();
+    if (mon_idx < 0 || mon_idx >= (int)mons.size())
+        return out;
+
+    const auto& mon = mons[(size_t)mon_idx];
+    int usable_h = mon.size().y()
+        - std::max(0, mon.top_inset())
+        - std::max(0, mon.bottom_inset());
+
+    if (requested_size.x() >= mon.size().x() && requested_size.y() >= usable_h) {
+        LOG_INFO("ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
+            win, requested_size.x(), requested_size.y(), mon.size().x(), usable_h);
+        out.promote = true;
+        out.pos = mon.pos();
+        out.size = mon.size();
+    }
+    return out;
+}
+
 bool Core::dispatch(const command::composite::FocusNextWindow&) {
     auto w = wsman.focus_next();
     if (!w || !w->is_visible()) {
