@@ -959,20 +959,6 @@ void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
     if (!release)
         core.focus_monitor_at_point(ev->root_x, ev->root_y);
 
-    // Surface routing: buttons on Runtime-owned surfaces get a surface-scoped
-    // event with only local coords; everything else fans out as a regular
-    // ButtonEv with backend identity.
-    if (auto* surface = runtime.resolve_surface(ev->event)) {
-        runtime.post_event(event::SurfaceButton{
-            .surface   = surface,
-            .event_pos = { ev->event_x, ev->event_y },
-            .time      = ev->time,
-            .button    = ev->detail,
-            .state     = ev->state,
-            .release   = release,
-        });
-        return;
-    }
     runtime.post_event(make_button_ev(ev, release));
 }
 
@@ -999,10 +985,6 @@ void X11Backend::handle_client_message(xcb_client_message_event_t* ev) {
 }
 
 void X11Backend::handle_expose(xcb_expose_event_t* ev) {
-    if (auto* surface = runtime.resolve_surface(ev->window)) {
-        runtime.post_event(event::ExposeSurface{ surface });
-        return;
-    }
     runtime.post_event(event::ExposeWindow{ ev->window });
 }
 

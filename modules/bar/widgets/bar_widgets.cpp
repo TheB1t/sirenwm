@@ -53,9 +53,9 @@ std::string xft_to_pango(const std::string& s) {
 
 } // namespace
 
-PaintContext::PaintContext(Surface& surface, const std::string& font_desc)
-    : surface_(surface) {
-    cr_ = surface_.cairo();
+PaintContext::PaintContext(backend::RenderWindow& window, const std::string& font_desc)
+    : window_(window) {
+    cr_ = window_.cairo();
     if (!cr_)
         return;
 
@@ -78,11 +78,11 @@ PaintContext::~PaintContext() {
 }
 
 int PaintContext::width() const {
-    return surface_.width();
+    return window_.width();
 }
 
 int PaintContext::height() const {
-    return surface_.height();
+    return window_.height();
 }
 
 void PaintContext::clear(const std::string& bg) {
@@ -152,7 +152,7 @@ void PaintContext::draw_rect(int x, int y, int w, int h, const std::string& colo
 }
 
 void PaintContext::present() {
-    surface_.present();
+    window_.present();
 }
 
 std::vector<TagHit> TagsWidget::draw(PaintContext& paint,
@@ -203,7 +203,7 @@ int TrayWidget::reserved_width(const backend::TrayHost* tray) const {
     return tray ? tray->width() : 0;
 }
 
-void TrayWidget::reposition(backend::TrayHost* tray, const Surface& bar) const {
+void TrayWidget::reposition(backend::TrayHost* tray, const backend::RenderWindow& bar) const {
     if (!tray)
         return;
     tray->reposition(bar.x() + bar.width(), bar.y());

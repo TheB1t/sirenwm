@@ -17,8 +17,6 @@
 using WindowId = uint32_t;
 static constexpr WindowId NO_WINDOW = 0;
 
-class Surface;
-
 namespace event {
 
 struct WindowMapped { WindowId window; };
@@ -28,10 +26,6 @@ struct WindowUnmapped { WindowId window; bool withdrawn = false; };
 struct FocusChanged { WindowId window; };        // NO_WINDOW = focus cleared
 struct WorkspaceSwitched { int workspace_id; };
 struct ExposeWindow { WindowId window; };
-// Surface-scoped expose — emitted by Runtime after resolving a WindowId to a
-// Surface it owns. Modules receive this instead of ExposeWindow for their own
-// surfaces, keeping backend identity (WindowId) out of the module API.
-struct ExposeSurface { ::Surface* surface; };
 struct RaiseDocks {};
 struct DisplayTopologyChanged {};
 struct RuntimeStarted {};   // fired once after start() completes: monitors and windows are ready
@@ -52,17 +46,6 @@ struct ButtonEv {
     uint8_t  button;
     uint16_t state;    // modifier mask
     bool     release;
-};
-
-// Surface-scoped button event — emitted by Runtime after resolving a WindowId
-// to a Surface it owns. Carries only surface-local coordinates.
-struct SurfaceButton {
-    ::Surface* surface;
-    Vec2i16    event_pos;
-    uint32_t   time;
-    uint8_t    button;
-    uint16_t   state;
-    bool       release;
 };
 
 struct MotionEv {

@@ -24,7 +24,6 @@ struct Shm::ShmPool {
     int      fd       = -1;
     void*    data     = nullptr;
     int32_t  size     = 0;
-    int      refcount = 0;
 
     ShmPool() = default;
     ~ShmPool() {
@@ -50,7 +49,7 @@ struct Shm::ShmBuffer {
     }
 };
 
-static const void* buffer_vtable() {
+static const struct wl_buffer_interface* buffer_vtable() {
     static const struct wl_buffer_interface impl = {
         .destroy = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
     };
@@ -61,6 +60,30 @@ const wl_interface* Shm::interface() { return &wl_shm_interface; }
 
 Shm::Shm(Display& display) : global_(display, this) {}
 Shm::~Shm() = default;
+
+BufferView Shm::buffer_view(wl_resource* buffer_resource) const {
+    if (!buffer_resource)
+        return {};
+
+    if (!wl_resource_instance_of(buffer_resource, &wl_buffer_interface, buffer_vtable()))
+        return {};
+
+    auto* buffer = static_cast<const ShmBuffer*>(wl_resource_get_user_data(buffer_resource));
+    if (!buffer)
+        return {};
+
+    void* data = buffer->data();
+    if (!data)
+        return {};
+
+    return BufferView{
+        .data   = data,
+        .width  = buffer->width,
+        .height = buffer->height,
+        .stride = buffer->stride,
+        .format = buffer->format,
+    };
+}
 
 void Shm::bind(wl_client* client, uint32_t version, uint32_t id) {
     auto* resource = wl_resource_create(client, &wl_shm_interface,
@@ -119,15 +142,12 @@ void Shm::create_pool(wl_client* client, wl_resource* resource,
 
             auto* buf_res = wl_resource_create(client, &wl_buffer_interface, 1, id);
             if (!buf_res) { wl_client_post_no_memory(client); return; }
-            pool->refcount++;
 
             wl_resource_set_implementation(buf_res, buffer_vtable(), buf.get(),
                 [](wl_resource* r) {
                     auto* b = static_cast<ShmBuffer*>(wl_resource_get_user_data(r));
-                    if (b) {
-                        if (b->pool) b->pool->refcount--;
+                    if (b)
                         delete b;
-                    }
                 });
             (void)buf.release();
         },

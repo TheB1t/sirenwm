@@ -66,7 +66,6 @@ add_library(sirenwm_core STATIC
     core/src/runtime/config_runtime.cpp
     core/src/runtime/runtime_config.cpp
     core/src/runtime/runtime.cpp
-    core/src/runtime/surface.cpp
     core/src/runtime_store.cpp
 )
 

@@ -1,10 +1,44 @@
 #include <wl/server/compositor.hpp>
 
+#include <algorithm>
+
 extern "C" {
 #include <wayland-server-protocol.h>
 }
 
 namespace wl::server {
+
+Compositor::SurfaceCommitSubscription::~SurfaceCommitSubscription() {
+    reset();
+}
+
+Compositor::SurfaceCommitSubscription::SurfaceCommitSubscription(
+    SurfaceCommitSubscription&& other) noexcept
+    : owner_(other.owner_)
+    , id_(other.id_) {
+    other.owner_ = nullptr;
+    other.id_    = 0;
+}
+
+Compositor::SurfaceCommitSubscription&
+Compositor::SurfaceCommitSubscription::operator=(SurfaceCommitSubscription&& other) noexcept {
+    if (this == &other)
+        return *this;
+    reset();
+    owner_       = other.owner_;
+    id_          = other.id_;
+    other.owner_ = nullptr;
+    other.id_    = 0;
+    return *this;
+}
+
+void Compositor::SurfaceCommitSubscription::reset() noexcept {
+    if (!owner_ || id_ == 0)
+        return;
+    owner_->unsubscribe_surface_commit(id_);
+    owner_ = nullptr;
+    id_    = 0;
+}
 
 // ── WlSurface methods ──
 
@@ -34,8 +68,9 @@ void Compositor::WlSurface::set_buffer(wl_resource* buf) {
 
 const wl_interface* Compositor::interface() { return &wl_compositor_interface; }
 
-Compositor::Compositor(Display& display, Shm&)
-    : global_(display, this) {}
+Compositor::Compositor(Display& display, Shm& shm)
+    : global_(display, this)
+    , shm_(shm) {}
 
 void Compositor::bind(wl_client* client, uint32_t version, uint32_t id) {
     auto* resource = wl_resource_create(client, &wl_compositor_interface,
@@ -60,6 +95,28 @@ SurfaceId Compositor::id_from_resource(wl_resource* resource) const {
     return it->second.id;
 }
 
+Compositor::SurfaceCommitSubscription
+Compositor::subscribe_surface_commit(SurfaceCommitCallback cb) {
+    if (!cb)
+        return {};
+
+    const uint64_t id = next_surface_commit_subscription_id_++;
+    surface_commit_listeners_.push_back(SurfaceCommitListener{
+        .id       = id,
+        .callback = std::move(cb),
+    });
+    return SurfaceCommitSubscription(this, id);
+}
+
+void Compositor::unsubscribe_surface_commit(uint64_t id) {
+    auto it = std::remove_if(surface_commit_listeners_.begin(),
+        surface_commit_listeners_.end(),
+        [id](const SurfaceCommitListener& listener) {
+            return listener.id == id;
+        });
+    surface_commit_listeners_.erase(it, surface_commit_listeners_.end());
+}
+
 const SurfaceInfo* Compositor::surface_info(SurfaceId id) const {
     auto* res = resource_for(id);
     if (!res) return nullptr;
@@ -82,25 +139,7 @@ BufferView Compositor::buffer_view(SurfaceId id) {
     if (!res) return {};
     auto* surf = surface_from_resource(res);
     if (!surf || !surf->buffer) return {};
-
-    struct ShmBufferView {
-        void*    pool_hack;
-        int32_t  offset;
-        int32_t  width;
-        int32_t  height;
-        int32_t  stride;
-        uint32_t format;
-    };
-
-    auto* shm_buf = static_cast<ShmBufferView*>(wl_resource_get_user_data(surf->buffer));
-    if (!shm_buf) return {};
-
-    struct ShmPoolView { int fd; void* data; int32_t size; };
-    auto* pool = static_cast<ShmPoolView*>(shm_buf->pool_hack);
-    if (!pool || !pool->data) return {};
-
-    void* data = static_cast<char*>(pool->data) + shm_buf->offset;
-    return BufferView{data, shm_buf->width, shm_buf->height, shm_buf->stride, shm_buf->format};
+    return shm_.buffer_view(surf->buffer);
 }
 
 void Compositor::create_surface(wl_client* client, uint32_t id, int ver) {
@@ -140,22 +179,19 @@ void Compositor::commit(wl_resource* resource) {
         surf.pending_attach = false;
 
         if (surf.buffer) {
-            struct ShmBufferView {
-                void* pool_hack; int32_t offset;
-                int32_t width, height, stride; uint32_t format;
-            };
-            auto* shm_buf = static_cast<ShmBufferView*>(wl_resource_get_user_data(surf.buffer));
-            if (shm_buf) {
-                surf.buf_width  = shm_buf->width;
-                surf.buf_height = shm_buf->height;
-            }
+            auto view = shm_.buffer_view(surf.buffer);
+            surf.buf_width  = view.width;
+            surf.buf_height = view.height;
         }
     }
 
     surf.has_commit = true;
 
-    for (auto& cb : on_surface_commit)
-        cb(surf.id);
+    auto listeners = surface_commit_listeners_;
+    for (const auto& listener : listeners) {
+        if (listener.callback)
+            listener.callback(surf.id);
+    }
 }
 
 const void* Compositor::compositor_vtable() {

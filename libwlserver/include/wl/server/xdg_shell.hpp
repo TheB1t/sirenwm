@@ -67,6 +67,7 @@ private:
 
     wl::Global<XdgShell> global_;
     Compositor&          compositor_;
+    Compositor::SurfaceCommitSubscription surface_commit_subscription_;
     XdgShellListener*    listener_ = nullptr;
 
     uint32_t next_toplevel_id_ = 1;

@@ -149,9 +149,9 @@ const void* XdgShell::wm_base_vtable() {
 
 XdgShell::XdgShell(Display& display, Compositor& compositor)
     : global_(display, this)
-    , compositor_(compositor) {
-    compositor_.on_surface_commit.push_back([this](SurfaceId sid) { on_surface_commit(sid); });
-}
+    , compositor_(compositor)
+    , surface_commit_subscription_(
+        compositor_.subscribe_surface_commit([this](SurfaceId sid) { on_surface_commit(sid); })) {}
 
 const wl_interface* XdgShell::interface() {
     return &xdg_wm_base_interface;

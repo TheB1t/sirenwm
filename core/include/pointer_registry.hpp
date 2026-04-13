@@ -27,6 +27,10 @@ class PointerRegistry {
             std::erase(items_, item);
         }
 
+        void clear() {
+            items_.clear();
+        }
+
         const std::vector<T*>& items() const { return items_; }
         std::size_t size() const { return items_.size(); }
         bool empty() const { return items_.empty(); }
