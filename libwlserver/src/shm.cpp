@@ -10,6 +10,16 @@ extern "C" {
 
 namespace wl::server {
 
+template <typename T>
+concept HasShmRelease = requires(T v) { v.release; };
+
+template <typename T>
+static void maybe_set_release(T& impl) {
+    if constexpr (HasShmRelease<T>) {
+        impl.release = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); };
+    }
+}
+
 struct Shm::ShmPool {
     int      fd       = -1;
     void*    data     = nullptr;
@@ -57,12 +67,15 @@ void Shm::bind(wl_client* client, uint32_t version, uint32_t id) {
                                         static_cast<int>(version), id);
     if (!resource) { wl_client_post_no_memory(client); return; }
 
-    static const struct wl_shm_interface vtable = {
-        .create_pool = [](wl_client* c, wl_resource* r, uint32_t id, int32_t fd, int32_t sz) {
+    static const struct wl_shm_interface vtable = [] {
+        struct wl_shm_interface impl {};
+        impl.create_pool = [](wl_client* c, wl_resource* r, uint32_t id, int32_t fd, int32_t sz) {
             auto* self = static_cast<Shm*>(wl_resource_get_user_data(r));
             self->create_pool(c, r, id, fd, sz);
-        },
-    };
+        };
+        maybe_set_release(impl);
+        return impl;
+    }();
     wl_resource_set_implementation(resource, &vtable, this, nullptr);
 
     wl_shm_send_format(resource, WL_SHM_FORMAT_ARGB8888);

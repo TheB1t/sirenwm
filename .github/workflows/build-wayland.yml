@@ -57,7 +57,7 @@ jobs:
           echo "--- wlroots packages available ---"
           pacman -Ss wlroots || true
           pacman -S --noconfirm \
-            cmake make pkgconf gcc git binutils \
+            cmake make pkgconf gcc git binutils python \
             lua spdlog \
             cairo pango fontconfig freetype2 libpng \
             ttf-dejavu \
