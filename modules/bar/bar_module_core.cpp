@@ -696,14 +696,14 @@ void BarModule::on_start() {
             int rd = pipe_fds[0];
             wakeup_pipe_wr_ = pipe_fds[1];
             wakeup_pipe_rd_ = EventLoop::FdHandle(runtime.event_loop, rd, [this, rd]() {
-                    // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
-                    char buf[64];
-                    ssize_t n;
-                    do {
-                        n = read(rd, buf, sizeof(buf));
-                    } while (n > 0 || (n < 0 && errno == EINTR));
-                    redraw();
-                });
+                        // Drain the pipe (O_NONBLOCK: stops at EAGAIN/EWOULDBLOCK).
+                        char buf[64];
+                        ssize_t n;
+                        do {
+                            n = read(rd, buf, sizeof(buf));
+                        } while (n > 0 || (n < 0 && errno == EINTR));
+                        redraw();
+                    });
         }
     }
 
@@ -730,12 +730,12 @@ void BarModule::on_start() {
             ts.it_interval.tv_sec = 1;
             timerfd_settime(tfd, 0, &ts, nullptr);
             widget_timer_ = EventLoop::FdHandle(runtime.event_loop, tfd, [this, tfd]() {
-                    uint64_t expirations;
-                    if (read(tfd, &expirations, sizeof(expirations)) > 0) {
-                        refresh_widgets();
-                        redraw();
-                    }
-                });
+                        uint64_t expirations;
+                        if (read(tfd, &expirations, sizeof(expirations)) > 0) {
+                            refresh_widgets();
+                            redraw();
+                        }
+                    });
             LOG_INFO("Bar: widget timer started (1s base tick)");
         }
     }

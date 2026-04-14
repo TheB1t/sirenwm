@@ -16,13 +16,13 @@ class TrayHost {
         virtual bool     owns_selection() const = 0;
         virtual int      width() const          = 0;
 
-        virtual void set_visible(bool visible)             = 0;
-        virtual void reposition(int bar_right_x, int bar_y) = 0;
+        virtual void     set_visible(bool visible)              = 0;
+        virtual void     reposition(int bar_right_x, int bar_y) = 0;
         // Move the tray window to a different bar (called during rebalance).
         // Updates the bar association regardless of current icon count.
-        virtual void attach_to_bar(WindowId bar_win, int bar_x, int bar_y, int bar_w) = 0;
-        virtual void raise()                                                          = 0;
-        virtual void lower()                                                          = 0;
+        virtual void                  attach_to_bar(WindowId bar_win, int bar_x, int bar_y, int bar_w) = 0;
+        virtual void                  raise() = 0;
+        virtual void                  lower() = 0;
 
         virtual bool                  contains_icon(WindowId win) const = 0;
         virtual std::vector<WindowId> icon_windows() const              = 0;

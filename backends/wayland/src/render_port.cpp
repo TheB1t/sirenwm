@@ -11,13 +11,13 @@ namespace backend {
 
 WlRenderWindow::WlRenderWindow(const RenderWindowCreateInfo& info, WindowId id, WlBackend& backend)
     : backend_(backend)
-    , id_(id)
-    , overlay_id_(static_cast<uint32_t>(id))
-    , monitor_index_(info.monitor_index)
-    , x_(info.pos.x()), y_(info.pos.y())
-    , w_(info.size.x()), h_(info.size.y()) {
+      , id_(id)
+      , overlay_id_(static_cast<uint32_t>(id))
+      , monitor_index_(info.monitor_index)
+      , x_(info.pos.x()), y_(info.pos.y())
+      , w_(info.size.x()), h_(info.size.y()) {
     surface_ = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w_, h_);
-    cr_ = cairo_create(surface_);
+    cr_      = cairo_create(surface_);
 
     backend_.create_overlay(overlay_id_, x_, y_, w_, h_);
     created_ = true;
@@ -36,7 +36,7 @@ void WlRenderWindow::present() {
     auto* data = cairo_image_surface_get_data(surface_);
     if (!data) return;
 
-    size_t size = static_cast<size_t>(w_) * h_ * 4;
+    size_t        size = static_cast<size_t>(w_) * h_ * 4;
     wl::ShmBuffer shm(size);
     if (!shm) return;
 

@@ -14,21 +14,51 @@ Admin* Admin::self(wl_resource* r) {
 
 const void* Admin::vtable() {
     static const struct sirenwm_admin_v1_interface impl = {
-        .get_surface_list        = [](wl_client*, wl_resource* r) { self(r)->req_get_surface_list(); },
-        .configure_surface       = [](wl_client*, wl_resource* r, uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h) { self(r)->req_configure_surface(id, x, y, w, h); },
-        .set_surface_activated   = [](wl_client*, wl_resource* r, uint32_t id, uint32_t a) { self(r)->req_set_surface_activated(id, a); },
-        .set_surface_visible     = [](wl_client*, wl_resource* r, uint32_t id, uint32_t v) { self(r)->req_set_surface_visible(id, v); },
-        .set_surface_stacking    = [](wl_client*, wl_resource* r, uint32_t id, uint32_t m) { self(r)->req_set_surface_stacking(id, m); },
-        .close_surface           = [](wl_client*, wl_resource* r, uint32_t id) { self(r)->req_close_surface(id); },
-        .set_keyboard_intercepts = [](wl_client*, wl_resource* r, wl_array* k) { self(r)->req_set_keyboard_intercepts(k); },
-        .warp_pointer            = [](wl_client*, wl_resource* r, int32_t x, int32_t y) { self(r)->req_warp_pointer(x, y); },
-        .set_pointer_constraint  = [](wl_client*, wl_resource* r, int32_t x, int32_t y, int32_t w, int32_t h) { self(r)->req_set_pointer_constraint(x, y, w, h); },
-        .grab_pointer            = [](wl_client*, wl_resource* r) { self(r)->req_grab_pointer(); },
-        .ungrab_pointer          = [](wl_client*, wl_resource* r) { self(r)->req_ungrab_pointer(); },
-        .set_surface_border      = [](wl_client*, wl_resource* r, uint32_t id, uint32_t w, uint32_t c) { self(r)->req_set_surface_border(id, w, c); },
-        .create_overlay          = [](wl_client*, wl_resource* r, uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h) { self(r)->req_create_overlay(id, x, y, w, h); },
-        .update_overlay          = [](wl_client*, wl_resource* r, uint32_t id, int32_t fd, uint32_t sz) { self(r)->req_update_overlay(id, fd, sz); },
-        .destroy_overlay         = [](wl_client*, wl_resource* r, uint32_t id) { self(r)->req_destroy_overlay(id); },
+        .get_surface_list = [](wl_client*, wl_resource* r) {
+                self(r)->req_get_surface_list();
+            },
+        .configure_surface = [](wl_client*, wl_resource* r, uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h) {
+                self(r)->req_configure_surface(id, x, y, w, h);
+            },
+        .set_surface_activated = [](wl_client*, wl_resource* r, uint32_t id, uint32_t a) {
+                self(r)->req_set_surface_activated(id, a);
+            },
+        .set_surface_visible = [](wl_client*, wl_resource* r, uint32_t id, uint32_t v) {
+                self(r)->req_set_surface_visible(id, v);
+            },
+        .set_surface_stacking = [](wl_client*, wl_resource* r, uint32_t id, uint32_t m) {
+                self(r)->req_set_surface_stacking(id, m);
+            },
+        .close_surface = [](wl_client*, wl_resource* r, uint32_t id) {
+                self(r)->req_close_surface(id);
+            },
+        .set_keyboard_intercepts = [](wl_client*, wl_resource* r, wl_array* k) {
+                self(r)->req_set_keyboard_intercepts(k);
+            },
+        .warp_pointer = [](wl_client*, wl_resource* r, int32_t x, int32_t y) {
+                self(r)->req_warp_pointer(x, y);
+            },
+        .set_pointer_constraint = [](wl_client*, wl_resource* r, int32_t x, int32_t y, int32_t w, int32_t h) {
+                self(r)->req_set_pointer_constraint(x, y, w, h);
+            },
+        .grab_pointer = [](wl_client*, wl_resource* r) {
+                self(r)->req_grab_pointer();
+            },
+        .ungrab_pointer = [](wl_client*, wl_resource* r) {
+                self(r)->req_ungrab_pointer();
+            },
+        .set_surface_border = [](wl_client*, wl_resource* r, uint32_t id, uint32_t w, uint32_t c) {
+                self(r)->req_set_surface_border(id, w, c);
+            },
+        .create_overlay = [](wl_client*, wl_resource* r, uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h) {
+                self(r)->req_create_overlay(id, x, y, w, h);
+            },
+        .update_overlay = [](wl_client*, wl_resource* r, uint32_t id, int32_t fd, uint32_t sz) {
+                self(r)->req_update_overlay(id, fd, sz);
+            },
+        .destroy_overlay = [](wl_client*, wl_resource* r, uint32_t id) {
+                self(r)->req_destroy_overlay(id);
+            },
     };
     return &impl;
 }
@@ -44,8 +74,10 @@ void Admin::bind(wl_client* client, uint32_t version, uint32_t id) {
         return;
     }
     auto* resource = wl_resource_create(client, &sirenwm_admin_v1_interface,
-                                        static_cast<int>(version), id);
-    if (!resource) { wl_client_post_no_memory(client); return; }
+            static_cast<int>(version), id);
+    if (!resource) {
+        wl_client_post_no_memory(client); return;
+    }
 
     wl_resource_set_implementation(resource, vtable(), this,
         [](wl_resource* r) {
@@ -62,10 +94,10 @@ void Admin::bind(wl_client* client, uint32_t version, uint32_t id) {
 void Admin::req_get_surface_list() {
     for (auto& [id, out] : outputs_)
         sirenwm_admin_v1_send_output_added(admin_resource_, out.id, out.name.c_str(),
-                                           out.x, out.y, out.w, out.h, out.refresh);
+            out.x, out.y, out.w, out.h, out.refresh);
     for (auto& [id, surf] : surfaces_) {
         sirenwm_admin_v1_send_surface_created(admin_resource_, id,
-                                              surf.app_id.c_str(), surf.title.c_str(), surf.pid);
+            surf.app_id.c_str(), surf.title.c_str(), surf.pid);
         if (surf.mapped)
             sirenwm_admin_v1_send_surface_mapped(admin_resource_, id);
     }
@@ -75,9 +107,9 @@ void Admin::req_get_surface_list() {
 void Admin::req_configure_surface(uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h) {
     auto it = surfaces_.find(id);
     if (it == surfaces_.end()) return;
-    it->second.x = x;
-    it->second.y = y;
-    it->second.width = w;
+    it->second.x      = x;
+    it->second.y      = y;
+    it->second.width  = w;
     it->second.height = h;
     if (listener_) listener_->on_configure(id, x, y, w, h);
 }
@@ -106,7 +138,7 @@ void Admin::req_set_keyboard_intercepts(wl_array* keys) {
     intercepts_.clear();
     if (keys && keys->size >= sizeof(KeyIntercept)) {
         size_t count = keys->size / sizeof(KeyIntercept);
-        auto* data = static_cast<const KeyIntercept*>(keys->data);
+        auto*  data  = static_cast<const KeyIntercept*>(keys->data);
         intercepts_.assign(data, data + count);
     }
 }
@@ -148,7 +180,7 @@ void Admin::req_destroy_overlay(uint32_t oid) {
 Admin::Admin(wl::Display& display, OverlayManager& overlays)
     : overlays_(overlays) {
     global_ = wl_global_create(display.raw(), &sirenwm_admin_v1_interface,
-                               1, this, &Admin::bind_thunk);
+            1, this, &Admin::bind_thunk);
 }
 
 Admin::~Admin() {
@@ -173,14 +205,14 @@ bool Admin::is_intercepted(uint32_t keysym, uint32_t mods) const {
 }
 
 uint32_t Admin::add_surface(const std::string& app_id, const std::string& title,
-                            uint32_t pid, uint32_t toplevel_id) {
-    uint32_t id = next_surface_id_++;
+    uint32_t pid, uint32_t toplevel_id) {
+    uint32_t     id = next_surface_id_++;
     AdminSurface s;
-    s.id = id;
+    s.id          = id;
     s.toplevel_id = toplevel_id;
-    s.app_id = app_id;
-    s.title = title;
-    s.pid = pid;
+    s.app_id      = app_id;
+    s.title       = title;
+    s.pid         = pid;
     surfaces_[id] = std::move(s);
     if (admin_resource_)
         sirenwm_admin_v1_send_surface_created(admin_resource_, id, app_id.c_str(), title.c_str(), pid);
@@ -254,13 +286,13 @@ void Admin::surface_request_fullscreen(uint32_t id, bool enter) {
 }
 
 void Admin::surface_geometry_hint(uint32_t id, int32_t min_w, int32_t min_h,
-                                   int32_t max_w, int32_t max_h) {
+    int32_t max_w, int32_t max_h) {
     if (admin_resource_)
         sirenwm_admin_v1_send_surface_geometry_hint(admin_resource_, id, min_w, min_h, max_w, max_h);
 }
 
 void Admin::output_added(uint32_t id, const std::string& name,
-                          int32_t x, int32_t y, int32_t w, int32_t h, int32_t refresh) {
+    int32_t x, int32_t y, int32_t w, int32_t h, int32_t refresh) {
     outputs_[id] = {id, name, x, y, w, h, refresh};
     if (admin_resource_)
         sirenwm_admin_v1_send_output_added(admin_resource_, id, name.c_str(), x, y, w, h, refresh);
@@ -342,10 +374,10 @@ void Admin::key_press(uint32_t keycode, uint32_t keysym, uint32_t mods) {
 }
 
 void Admin::button_press(uint32_t surface_id, int32_t root_x, int32_t root_y,
-                          uint32_t button, uint32_t mods, bool released) {
+    uint32_t button, uint32_t mods, bool released) {
     if (admin_resource_)
         sirenwm_admin_v1_send_button_press(admin_resource_, surface_id,
-                                            root_x, root_y, button, mods, released ? 1 : 0);
+            root_x, root_y, button, mods, released ? 1 : 0);
 }
 
 void Admin::pointer_motion(uint32_t surface_id, int32_t root_x, int32_t root_y, uint32_t mods) {
@@ -364,7 +396,7 @@ const AdminSurface* Admin::surface(uint32_t id) const {
 }
 
 uint32_t Admin::surface_at(int32_t x, int32_t y) const {
-    uint32_t best_id = 0;
+    uint32_t best_id       = 0;
     uint32_t best_stacking = 0;
     for (auto& [id, s] : surfaces_) {
         if (!s.mapped || !s.visible) continue;
@@ -372,7 +404,7 @@ uint32_t Admin::surface_at(int32_t x, int32_t y) const {
         if (x >= s.x - bw && x < s.x + s.width + bw &&
             y >= s.y - bw && y < s.y + s.height + bw) {
             if (best_id == 0 || s.stacking >= best_stacking) {
-                best_id = id;
+                best_id       = id;
                 best_stacking = s.stacking;
             }
         }
@@ -385,7 +417,9 @@ std::vector<const AdminSurface*> Admin::visible_surfaces_by_stacking() const {
     for (auto& [_, s] : surfaces_)
         if (s.mapped && s.visible) result.push_back(&s);
     std::sort(result.begin(), result.end(),
-              [](const AdminSurface* a, const AdminSurface* b) { return a->stacking < b->stacking; });
+        [](const AdminSurface* a, const AdminSurface* b) {
+            return a->stacking < b->stacking;
+        });
     return result;
 }
 

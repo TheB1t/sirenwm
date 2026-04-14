@@ -197,7 +197,7 @@ void expand_screen_size(XConnection& xconn,
 
     if (max_x <= 0 || max_y <= 0) return;
 
-    auto geo = xconn.get_window_geometry(xconn.root_window());
+    auto geo   = xconn.get_window_geometry(xconn.root_window());
     int  cur_w = geo ? (int)geo->width  : 0;
     int  cur_h = geo ? (int)geo->height : 0;
 

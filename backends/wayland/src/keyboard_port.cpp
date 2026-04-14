@@ -20,7 +20,7 @@ void WlKeyboardPort::apply(const std::vector<std::string>& layouts, const std::s
 
 void WlKeyboardPort::restore() {
     layouts_ = {"us"};
-    group_ = 0;
+    group_   = 0;
 }
 
 uint32_t WlKeyboardPort::get_group() const {

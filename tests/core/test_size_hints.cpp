@@ -132,8 +132,8 @@ TEST(SizeHints, TransientRoutesToParentWorkspace) {
     h.core.apply_settings(s);
     h.start();
 
-    WindowId                   parent = h.map_window(0x1000, 0);
-    WindowId                   child  = h.map_window(0x2000, 1);
+    WindowId                         parent = h.map_window(0x1000, 0);
+    WindowId                         child  = h.map_window(0x2000, 1);
 
     command::atom::SetWindowMetadata meta;
     meta.window        = child;
@@ -151,8 +151,8 @@ TEST(SizeHints, TransientSuppressesFocusOnce) {
     TestHarness h;
     h.start();
 
-    WindowId                   parent = h.map_window(0x1000, 0);
-    WindowId                   child  = h.map_window(0x2000, 0);
+    WindowId                         parent = h.map_window(0x1000, 0);
+    WindowId                         child  = h.map_window(0x2000, 0);
 
     command::atom::SetWindowMetadata meta;
     meta.window        = child;
@@ -171,7 +171,7 @@ TEST(SizeHints, DialogAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId                   win = h.map_window(0x1000, 0);
+    WindowId                         win = h.map_window(0x1000, 0);
 
     command::atom::SetWindowMetadata meta;
     meta.window = win;
@@ -186,7 +186,7 @@ TEST(SizeHints, UtilityAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId                   win = h.map_window(0x1000, 0);
+    WindowId                         win = h.map_window(0x1000, 0);
 
     command::atom::SetWindowMetadata meta;
     meta.window = win;
@@ -201,7 +201,7 @@ TEST(SizeHints, FixedSizeNonBorderlessAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId                   win = h.map_window(0x1000, 0);
+    WindowId                         win = h.map_window(0x1000, 0);
 
     command::atom::SetWindowMetadata meta;
     meta.window           = win;
@@ -216,7 +216,7 @@ TEST(SizeHints, SplashAutoFloats) {
     TestHarness h;
     h.start();
 
-    WindowId                   win = h.map_window(0x1000, 0);
+    WindowId                         win = h.map_window(0x1000, 0);
 
     command::atom::SetWindowMetadata meta;
     meta.window = win;

@@ -120,7 +120,9 @@ void BarModule::route_icon_to_monitor(WindowId icon_win, int target_mon) {
 
 void BarModule::rebalance_tray_icons() {
     bool any_tray = false;
-    for (const auto& b : all_bars_) if (b.tray) { any_tray = true; break; }
+    for (const auto& b : all_bars_) if (b.tray) {
+            any_tray = true; break;
+        }
     if (!any_tray) return;
     std::vector<std::pair<WindowId, int>> to_route;
     for (auto& b : all_bars_) {

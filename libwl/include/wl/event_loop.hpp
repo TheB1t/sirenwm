@@ -7,29 +7,29 @@ extern "C" {
 namespace wl {
 
 class EventLoop {
-public:
-    EventLoop() noexcept = default;
-    ~EventLoop();
+    public:
+        EventLoop() noexcept = default;
+        ~EventLoop();
 
-    EventLoop(const EventLoop&)            = delete;
-    EventLoop& operator=(const EventLoop&) = delete;
-    EventLoop(EventLoop&&) noexcept;
-    EventLoop& operator=(EventLoop&&) noexcept;
+        EventLoop(const EventLoop&)            = delete;
+        EventLoop& operator=(const EventLoop&) = delete;
+        EventLoop(EventLoop&&) noexcept;
+        EventLoop& operator=(EventLoop&&) noexcept;
 
-    int fd() const noexcept;
-    int dispatch(int timeout_ms) noexcept;
-    void dispatch_idle() noexcept;
+        int        fd() const noexcept;
+        int        dispatch(int timeout_ms) noexcept;
+        void       dispatch_idle() noexcept;
 
-    explicit operator bool() const noexcept;
+        explicit operator bool() const noexcept;
 
-    wl_event_loop* raw() const noexcept { return loop_; }
+        wl_event_loop* raw() const noexcept { return loop_; }
 
-private:
-    wl_event_loop* loop_  = nullptr;
-    bool           owned_ = false;
+    private:
+        wl_event_loop* loop_ = nullptr;
+        bool owned_          = false;
 
-    friend class Display;
-    EventLoop(wl_event_loop* loop, bool owned) noexcept;
+        friend class Display;
+        EventLoop(wl_event_loop* loop, bool owned) noexcept;
 };
 
 } // namespace wl

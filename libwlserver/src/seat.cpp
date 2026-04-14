@@ -41,20 +41,25 @@ wl_resource* Seat::resolve(SurfaceId id) const {
 
 void Seat::bind(wl_client* client, uint32_t version, uint32_t id) {
     auto* resource = wl_resource_create(client, &wl_seat_interface,
-                                        static_cast<int>(version), id);
-    if (!resource) { wl_client_post_no_memory(client); return; }
+            static_cast<int>(version), id);
+    if (!resource) {
+        wl_client_post_no_memory(client); return;
+    }
 
     static const struct wl_seat_interface vtable = {
         .get_pointer = [](wl_client* c, wl_resource* r, uint32_t id) {
-            auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
-            self->add_pointer(c, id, wl_resource_get_version(r));
-        },
+                auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
+                self->add_pointer(c, id, wl_resource_get_version(r));
+            },
         .get_keyboard = [](wl_client* c, wl_resource* r, uint32_t id) {
-            auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
-            self->add_keyboard(c, id, wl_resource_get_version(r));
-        },
-        .get_touch = [](wl_client*, wl_resource*, uint32_t) {},
-        .release   = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
+                auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
+                self->add_keyboard(c, id, wl_resource_get_version(r));
+            },
+        .get_touch = [](wl_client*, wl_resource*, uint32_t) {
+            },
+        .release = [](wl_client*, wl_resource* r) {
+                wl_resource_destroy(r);
+            },
     };
     wl_resource_set_implementation(resource, &vtable, this, nullptr);
 
@@ -66,15 +71,19 @@ void Seat::bind(wl_client* client, uint32_t version, uint32_t id) {
 
 void Seat::add_keyboard(wl_client* client, uint32_t id, int ver) {
     static const struct wl_keyboard_interface kb_vtable = {
-        .release = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
+        .release = [](wl_client*, wl_resource* r) {
+                wl_resource_destroy(r);
+            },
     };
 
-    auto* kb = wl_resource_create(client, &wl_keyboard_interface, ver, id);
-    if (!kb) { wl_client_post_no_memory(client); return; }
+    auto*                                     kb = wl_resource_create(client, &wl_keyboard_interface, ver, id);
+    if (!kb) {
+        wl_client_post_no_memory(client); return;
+    }
     wl_resource_set_implementation(kb, &kb_vtable, this,
         [](wl_resource* r) {
             auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
-            auto& v = self->keyboards_;
+            auto& v    = self->keyboards_;
             v.erase(std::remove(v.begin(), v.end(), r), v.end());
             auto* focused = self->resolve(self->focused_surface_);
             if (focused && wl_resource_get_client(r) == wl_resource_get_client(focused))
@@ -87,34 +96,38 @@ void Seat::add_keyboard(wl_client* client, uint32_t id, int ver) {
 void Seat::add_pointer(wl_client* client, uint32_t id, int ver) {
     static const struct wl_pointer_interface ptr_vtable = {
         .set_cursor = [](wl_client* client, wl_resource* r, uint32_t,
-                         wl_resource* surface, int32_t hotspot_x, int32_t hotspot_y) {
-            auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
-            if (!self || !self->cursor_update_)
-                return;
+            wl_resource* surface, int32_t hotspot_x, int32_t hotspot_y) {
+                auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
+                if (!self || !self->cursor_update_)
+                    return;
 
-            auto* pointed = self->resolve(self->pointer_surface_);
-            if (!pointed || wl_resource_get_client(pointed) != client)
-                return;
+                auto* pointed = self->resolve(self->pointer_surface_);
+                if (!pointed || wl_resource_get_client(pointed) != client)
+                    return;
 
-            if (!surface) {
-                self->cursor_update_(SurfaceId{}, 0, 0);
-                return;
-            }
+                if (!surface) {
+                    self->cursor_update_(SurfaceId{}, 0, 0);
+                    return;
+                }
 
-            auto sid = self->compositor_.id_from_resource(surface);
-            if (!sid)
-                return;
-            self->cursor_update_(sid, hotspot_x, hotspot_y);
-        },
-        .release    = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
+                auto sid = self->compositor_.id_from_resource(surface);
+                if (!sid)
+                    return;
+                self->cursor_update_(sid, hotspot_x, hotspot_y);
+            },
+        .release = [](wl_client*, wl_resource* r) {
+                wl_resource_destroy(r);
+            },
     };
 
-    auto* ptr = wl_resource_create(client, &wl_pointer_interface, ver, id);
-    if (!ptr) { wl_client_post_no_memory(client); return; }
+    auto*                                    ptr = wl_resource_create(client, &wl_pointer_interface, ver, id);
+    if (!ptr) {
+        wl_client_post_no_memory(client); return;
+    }
     wl_resource_set_implementation(ptr, &ptr_vtable, this,
         [](wl_resource* r) {
             auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
-            auto& v = self->pointers_;
+            auto& v    = self->pointers_;
             v.erase(std::remove(v.begin(), v.end(), r), v.end());
             auto* pointed = self->resolve(self->pointer_surface_);
             if (pointed && wl_resource_get_client(r) == wl_resource_get_client(pointed))
@@ -129,11 +142,11 @@ void Seat::send_keymap(wl_resource* kb) {
     if (!str) return;
 
     size_t size = strlen(str) + 1;
-    int fd = memfd_create("keymap", MFD_CLOEXEC);
+    int    fd   = memfd_create("keymap", MFD_CLOEXEC);
     if (fd >= 0) {
         if (write(fd, str, size) == static_cast<ssize_t>(size))
             wl_keyboard_send_keymap(kb, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
-                                    fd, static_cast<uint32_t>(size));
+                fd, static_cast<uint32_t>(size));
         close(fd);
     }
     free(str);
@@ -204,12 +217,12 @@ void Seat::send_key(uint32_t time, uint32_t key, bool pressed) {
     auto* kb = keyboard_for(focused);
     if (!kb) return;
     wl_keyboard_send_key(kb, next_serial(), time, key,
-                         pressed ? WL_KEYBOARD_KEY_STATE_PRESSED
+        pressed ? WL_KEYBOARD_KEY_STATE_PRESSED
                                  : WL_KEYBOARD_KEY_STATE_RELEASED);
 }
 
 void Seat::send_modifiers(uint32_t depressed, uint32_t latched,
-                           uint32_t locked, uint32_t group) {
+    uint32_t locked, uint32_t group) {
     auto* focused = resolve(focused_surface_);
     if (!focused) {
         focused_surface_ = SurfaceId{};
@@ -244,7 +257,7 @@ void Seat::send_pointer_enter(SurfaceId surface, int32_t x, int32_t y) {
     }
     pointer_surface_ = surface;
     wl_pointer_send_enter(ptr, next_serial(), res,
-                          wl_fixed_from_int(x), wl_fixed_from_int(y));
+        wl_fixed_from_int(x), wl_fixed_from_int(y));
     if (wl_resource_get_version(ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
         wl_pointer_send_frame(ptr);
 }
@@ -288,7 +301,7 @@ void Seat::send_pointer_button(uint32_t time, uint32_t button, bool pressed) {
     auto* ptr = pointer_for(pointed);
     if (!ptr) return;
     wl_pointer_send_button(ptr, next_serial(), time, button,
-                           pressed ? WL_POINTER_BUTTON_STATE_PRESSED
+        pressed ? WL_POINTER_BUTTON_STATE_PRESSED
                                    : WL_POINTER_BUTTON_STATE_RELEASED);
     if (wl_resource_get_version(ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
         wl_pointer_send_frame(ptr);
@@ -302,7 +315,7 @@ uint32_t Seat::resolve_keysym(uint32_t evdev_keycode) const {
 void Seat::update_xkb_state(uint32_t evdev_keycode, bool pressed) {
     if (!xkb_state_) return;
     xkb_state_update_key(xkb_state_, evdev_keycode + 8,
-                         pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
+        pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
 }
 
 // ── DataDeviceManager ──
@@ -314,28 +327,38 @@ DataDeviceManager::DataDeviceManager(Display& display)
 
 void DataDeviceManager::bind(wl_client* client, uint32_t version, uint32_t id) {
     auto* resource = wl_resource_create(client, &wl_data_device_manager_interface,
-                                        static_cast<int>(version), id);
-    if (!resource) { wl_client_post_no_memory(client); return; }
+            static_cast<int>(version), id);
+    if (!resource) {
+        wl_client_post_no_memory(client); return;
+    }
 
     static const struct wl_data_device_manager_interface vtable = {
         .create_data_source = [](wl_client* client, wl_resource*, uint32_t id) {
-            auto* src = wl_resource_create(client, &wl_data_source_interface, 1, id);
-            if (!src) { wl_client_post_no_memory(client); return; }
-            wl_resource_set_implementation(src, nullptr, nullptr, nullptr);
-        },
+                auto* src = wl_resource_create(client, &wl_data_source_interface, 1, id);
+                if (!src) {
+                    wl_client_post_no_memory(client); return;
+                }
+                wl_resource_set_implementation(src, nullptr, nullptr, nullptr);
+            },
         .get_data_device = [](wl_client* client, wl_resource* resource,
-                              uint32_t id, wl_resource*) {
-            int ver = wl_resource_get_version(resource);
-            auto* dd = wl_resource_create(client, &wl_data_device_interface, ver, id);
-            if (!dd) { wl_client_post_no_memory(client); return; }
+            uint32_t id, wl_resource*) {
+                int ver  = wl_resource_get_version(resource);
+                auto* dd = wl_resource_create(client, &wl_data_device_interface, ver, id);
+                if (!dd) {
+                    wl_client_post_no_memory(client); return;
+                }
 
-            static const struct wl_data_device_interface dd_impl = {
-                .start_drag    = [](wl_client*, wl_resource*, wl_resource*, wl_resource*, wl_resource*, uint32_t) {},
-                .set_selection = [](wl_client*, wl_resource*, wl_resource*, uint32_t) {},
-                .release       = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
-            };
-            wl_resource_set_implementation(dd, &dd_impl, nullptr, nullptr);
-        },
+                static const struct wl_data_device_interface dd_impl = {
+                    .start_drag = [](wl_client*, wl_resource*, wl_resource*, wl_resource*, wl_resource*, uint32_t) {
+                        },
+                    .set_selection = [](wl_client*, wl_resource*, wl_resource*, uint32_t) {
+                        },
+                    .release = [](wl_client*, wl_resource* r) {
+                            wl_resource_destroy(r);
+                        },
+                };
+                wl_resource_set_implementation(dd, &dd_impl, nullptr, nullptr);
+            },
     };
     wl_resource_set_implementation(resource, &vtable, this, nullptr);
 }

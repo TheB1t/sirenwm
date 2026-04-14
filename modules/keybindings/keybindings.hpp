@@ -62,9 +62,9 @@ class KeybindingsModule : public Module {
         void apply_pending();
 
         // Owned settings registered in RuntimeStore.
-        TypedSetting<uint16_t>   mod_mask_;
+        TypedSetting<uint16_t> mod_mask_;
         TypedSetting<std::vector<MouseBinding>> mouse_bindings_;
 
-        WindowId  focused_window_  = NO_WINDOW;
+        WindowId  focused_window_ = NO_WINDOW;
         DragState drag;
 };

@@ -6,12 +6,12 @@
 
 std::vector<Monitor> XConnection::get_monitors() const {
     xcb::Screen s(raw(), root_window());
-    auto raw = s.monitors();
+    auto        raw = s.monitors();
     if (raw.empty()) {
         LOG_WARN("RandR get_monitors returned nothing, falling back to screen size");
         auto* screen = raw_screen();
         return {Monitor(0, "default", 0, 0,
-                        screen->width_in_pixels, screen->height_in_pixels)};
+                    screen->width_in_pixels, screen->height_in_pixels)};
     }
 
     std::vector<Monitor> result;

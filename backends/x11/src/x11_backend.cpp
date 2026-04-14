@@ -13,7 +13,7 @@
 
 X11Backend::X11Backend(Core& core_ref, Runtime& runtime_ref)
     : core(core_ref), runtime(runtime_ref) {
-    root_window        = xconn.root_window();
+    root_window         = xconn.root_window();
     render_port_impl    = backend::x11::create_render_port(xconn);
     input_port_impl     = backend::x11::create_input_port(xconn, key_syms);
     monitor_port_impl   = backend::x11::create_monitor_port(xconn, runtime_ref);
@@ -205,14 +205,14 @@ void X11Backend::shutdown() {
 
 backend::BackendPorts X11Backend::ports() {
     return backend::BackendPorts{
-        .input     = *input_port_impl,
-        .monitor   = *monitor_port_impl,
-        .render    = *render_port_impl,
-        .keyboard  = *keyboard_port_impl,
+        .input    = *input_port_impl,
+        .monitor  = *monitor_port_impl,
+        .render   = *render_port_impl,
+        .keyboard = *keyboard_port_impl,
 #ifdef SIRENWM_DEBUG_UI
-        .gl        = gl_port_impl.get(),
+        .gl = gl_port_impl.get(),
 #else
-        .gl        = nullptr,
+        .gl = nullptr,
 #endif
         .tray_host = tray_host_port_impl.get(),
     };
@@ -223,4 +223,3 @@ std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {
     w->id = id;
     return w;
 }
-

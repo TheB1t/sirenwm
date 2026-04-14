@@ -18,8 +18,8 @@ EventLoop::EventLoop(EventLoop&& other) noexcept
 EventLoop& EventLoop::operator=(EventLoop&& other) noexcept {
     if (this != &other) {
         if (owned_ && loop_) wl_event_loop_destroy(loop_);
-        loop_  = other.loop_;
-        owned_ = other.owned_;
+        loop_        = other.loop_;
+        owned_       = other.owned_;
         other.loop_  = nullptr;
         other.owned_ = false;
     }

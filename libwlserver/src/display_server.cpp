@@ -115,11 +115,11 @@ int run_display_server(const DisplayServerOptions& options) {
     // Ignore SIGUSR1 so the display-server process does not terminate unexpectedly.
     signal(SIGUSR1, SIG_IGN);
 
-    const int width  = options.width;
-    const int height = options.height;
+    const int                 width  = options.width;
+    const int                 height = options.height;
 
-    wl::Display display;
-    const auto& socket = display.add_socket_auto();
+    wl::Display               display;
+    const auto&               socket = display.add_socket_auto();
 
     wl::server::Shm           shm(display);
     wl::server::Compositor    compositor(display, shm);
@@ -134,9 +134,9 @@ int run_display_server(const DisplayServerOptions& options) {
     xdg_shell.set_listener(&admin);
     AdminSurfaceSink          xwm_sink(admin);
 
-    XWayland xwayland(display, compositor, xwm_sink, width, height);
+    XWayland                  xwayland(display, compositor, xwm_sink, width, height);
 
-    OutputX11 output(width, height);
+    OutputX11                 output(width, height);
     if (!output.valid()) {
         std::fprintf(stderr, "sirenwm-wayland(display-server): failed to create X11 output\n");
         return EXIT_FAILURE;
@@ -148,7 +148,9 @@ int run_display_server(const DisplayServerOptions& options) {
             output.request_repaint();
         });
 
-    overlay_mgr.set_on_changed([&output]() { output.request_repaint(); });
+    overlay_mgr.set_on_changed([&output]() {
+            output.request_repaint();
+        });
 
     MainAdminListener listener(xdg_shell, admin, seat, output, xwayland);
     admin.set_listener(&listener);
@@ -176,16 +178,16 @@ int run_display_server(const DisplayServerOptions& options) {
 
         struct pollfd fds[3];
         int           nfds = 2;
-        fds[0].fd          = wl_loop.fd();
-        fds[0].events      = POLLIN;
-        fds[1].fd          = output.fd();
-        fds[1].events      = POLLIN;
+        fds[0].fd     = wl_loop.fd();
+        fds[0].events = POLLIN;
+        fds[1].fd     = output.fd();
+        fds[1].events = POLLIN;
 
         int xcb_fd = xwayland.xcb_fd();
         if (xcb_fd >= 0) {
             fds[2].fd     = xcb_fd;
             fds[2].events = POLLIN;
-            nfds = 3;
+            nfds          = 3;
         }
 
         int ret = poll(fds, static_cast<nfds_t>(nfds), 16);

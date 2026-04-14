@@ -31,8 +31,8 @@ bool has_all_keys(const std::unordered_map<std::string, std::string>& env,
 ChildProcessRegistry::ChildProcessRegistry(std::string app_name)
     : app_name_(std::move(app_name)) {
     const std::string run = runtime_dir();
-    state_path_           = run + "/" + app_name_ + "-children.state";
-    lock_path_            = run + "/" + app_name_ + "-children.lock";
+    state_path_ = run + "/" + app_name_ + "-children.state";
+    lock_path_  = run + "/" + app_name_ + "-children.lock";
     lock();
     load_state();
 }
@@ -68,7 +68,9 @@ bool ChildProcessRegistry::spawn_or_adopt(const ManagedChildSpec& spec, ManagedC
         return false;
 
     entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
-        [&](const Entry& e) { return e.role == spec.role; }),
+        [&](const Entry& e) {
+            return e.role == spec.role;
+        }),
         entries_.end());
     entries_.push_back(spawned);
     save_state();
@@ -88,7 +90,9 @@ bool ChildProcessRegistry::adopt(const std::string& role, const std::vector<std:
         existing->pid = -1;
         existing->env.clear();
         entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
-            [](const Entry& e) { return e.pid <= 0; }),
+            [](const Entry& e) {
+                return e.pid <= 0;
+            }),
             entries_.end());
         save_state_best_effort();
         return false;
@@ -119,7 +123,9 @@ void ChildProcessRegistry::shutdown_owned() {
 
     if (changed) {
         entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
-            [](const Entry& e) { return e.pid <= 0; }),
+            [](const Entry& e) {
+                return e.pid <= 0;
+            }),
             entries_.end());
         save_state_best_effort();
     }
@@ -131,8 +137,8 @@ void ChildProcessRegistry::load_state() {
     if (!in.is_open())
         return;
 
-    Entry current;
-    bool  in_entry = false;
+    Entry       current;
+    bool        in_entry = false;
     std::string line;
     while (std::getline(in, line)) {
         if (line.empty())
@@ -257,7 +263,7 @@ bool ChildProcessRegistry::wait_for_env_lines(int pipe_rd, pid_t pid,
     out_env.clear();
     std::string buffer;
     char        temp[512];
-    const int   step_ms = 100;
+    const int   step_ms   = 100;
     const int   max_ticks = std::max(1, timeout_ms / step_ms);
 
     for (int i = 0; i < max_ticks; ++i) {
@@ -350,8 +356,8 @@ bool ChildProcessRegistry::spawn(const ManagedChildSpec& spec, Entry& out_entry,
 
     close(pipefd[1]);
     std::unordered_map<std::string, std::string> env;
-    const bool ready = wait_for_env_lines(pipefd[0], pid, spec.required_env_keys,
-        spec.startup_timeout_ms, env);
+    const bool                                   ready = wait_for_env_lines(pipefd[0], pid, spec.required_env_keys,
+            spec.startup_timeout_ms, env);
     close(pipefd[0]);
 
     if (!ready) {

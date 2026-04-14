@@ -5,7 +5,7 @@ namespace backend {
 
 std::vector<Monitor> WlMonitorPort::get_monitors() {
     std::vector<Monitor> result;
-    int idx = 0;
+    int                  idx = 0;
     for (auto& [id, info] : backend_.outputs()) {
         result.emplace_back(idx++, info.name, info.x, info.y, info.w, info.h);
     }

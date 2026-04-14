@@ -9,18 +9,22 @@ namespace wl::server {
 const wl_interface* Output::interface() { return &wl_output_interface; }
 
 Output::Output(Display& display, int32_t width, int32_t height, int32_t refresh_mhz,
-               const std::string& make, const std::string& model)
+    const std::string& make, const std::string& model)
     : global_(display, this)
-    , width_(width), height_(height), refresh_(refresh_mhz)
-    , make_(make), model_(model) {}
+      , width_(width), height_(height), refresh_(refresh_mhz)
+      , make_(make), model_(model) {}
 
 void Output::bind(wl_client* client, uint32_t version, uint32_t id) {
     auto* resource = wl_resource_create(client, &wl_output_interface,
-                                        static_cast<int>(version), id);
-    if (!resource) { wl_client_post_no_memory(client); return; }
+            static_cast<int>(version), id);
+    if (!resource) {
+        wl_client_post_no_memory(client); return;
+    }
 
     static const struct wl_output_interface vtable = {
-        .release = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
+        .release = [](wl_client*, wl_resource* r) {
+                wl_resource_destroy(r);
+            },
     };
     wl_resource_set_implementation(resource, &vtable, nullptr, nullptr);
     send_info(resource);

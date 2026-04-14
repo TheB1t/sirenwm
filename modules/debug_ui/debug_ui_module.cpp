@@ -102,12 +102,12 @@ class DebugUIModule : public Module {
         void stop_timer();
 
         std::unique_ptr<backend::GLWindow> gl_window_;
-        backend::GLPort*                   gl_port_ = nullptr; // non-owning backend capability
-        bool                               gl_port_missing_warned_ = false;
-        bool                               imgui_initialized_ = false;
-        bool                               pending_close_     = false;
-        EventLoop::FdHandle                timer_;
-        Clock::time_point start_time_;
+        backend::GLPort* gl_port_    = nullptr;                // non-owning backend capability
+        bool gl_port_missing_warned_ = false;
+        bool imgui_initialized_      = false;
+        bool pending_close_          = false;
+        EventLoop::FdHandle timer_;
+        Clock::time_point   start_time_;
         float last_frame_time_ = 0.0f;
 
         std::deque<EventEntry>  event_log_;
@@ -363,10 +363,10 @@ void DebugUIModule::start_timer() {
     ts.it_value    = { 0, 50'000'000 };
     timerfd_settime(tfd, 0, &ts, nullptr);
     timer_ = EventLoop::FdHandle(runtime.event_loop, tfd, [this, tfd]() {
-            uint64_t expirations = 0;
-            (void)read(tfd, &expirations, sizeof(expirations));
-            tick();
-        });
+                uint64_t expirations = 0;
+                (void)read(tfd, &expirations, sizeof(expirations));
+                tick();
+            });
 }
 
 void DebugUIModule::stop_timer() {
