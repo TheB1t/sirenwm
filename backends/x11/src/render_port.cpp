@@ -61,7 +61,7 @@ class X11RenderWindow final : public backend::RenderWindow {
                 XCB_COPY_FROM_PARENT, mask, vals);
 
             buf_ = xc_.create_pixmap(xc_.screen_root_depth(), win_,
-                                     (uint16_t)w_, (uint16_t)h_);
+                    (uint16_t)w_, (uint16_t)h_);
 
             if (info.hints.dock) {
                 xc_.change_property(win_, NET_WM_WINDOW_TYPE_, XCB_ATOM_ATOM,

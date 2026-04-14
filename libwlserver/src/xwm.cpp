@@ -8,13 +8,13 @@ extern "C" {
 }
 
 XWindowManager::XWindowManager(int wm_fd, wl_client* xwl_client,
-                               XWaylandShell& shell,
-                               wl::server::Compositor& compositor,
-                               XwmSurfaceSink& sink,
-                               int output_w, int output_h)
+    XWaylandShell& shell,
+    wl::server::Compositor& compositor,
+    XwmSurfaceSink& sink,
+    int output_w, int output_h)
     : xwl_client_(xwl_client), shell_(shell)
-    , compositor_(compositor), sink_(sink)
-    , output_w_(output_w), output_h_(output_h) {
+      , compositor_(compositor), sink_(sink)
+      , output_w_(output_w), output_h_(output_h) {
     conn_ = xcb_connect_to_fd(wm_fd, nullptr);
     if (!*this) {
         fprintf(stderr, "xwm: failed to connect to Xwayland\n");
@@ -22,7 +22,7 @@ XWindowManager::XWindowManager(int wm_fd, wl_client* xwl_client,
         return;
     }
     owns_connection_ = true;
-    screen_ = first_screen(conn_);
+    screen_          = first_screen(conn_);
 
     intern_atoms();
     setup_wm();
@@ -45,7 +45,7 @@ void XWindowManager::intern_atoms() {
 }
 
 void XWindowManager::setup_wm() {
-    uint32_t mask = XCB_CW_EVENT_MASK;
+    uint32_t mask     = XCB_CW_EVENT_MASK;
     uint32_t values[] = {
         XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
         XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
@@ -54,12 +54,12 @@ void XWindowManager::setup_wm() {
     change_window_attributes(root(), mask, values);
 
     xcb_composite_redirect_subwindows(raw(), root(),
-                                       XCB_COMPOSITE_REDIRECT_MANUAL);
+        XCB_COMPOSITE_REDIRECT_MANUAL);
 
     create_wm_window();
 
     change_property(root(), atoms_[NET_SUPPORTED], XCB_ATOM_ATOM,
-                    32, 1, &atoms_[NET_ACTIVE_WINDOW]);
+        32, 1, &atoms_[NET_ACTIVE_WINDOW]);
 
     set_selection_owner(wm_window_, atoms_[WM_S0]);
     set_selection_owner(wm_window_, atoms_[NET_WM_CM_S0]);
@@ -68,17 +68,17 @@ void XWindowManager::setup_wm() {
 void XWindowManager::create_wm_window() {
     wm_window_ = generate_id();
     create_window(wm_window_, root(), 0, 0, 10, 10,
-                  XCB_WINDOW_CLASS_INPUT_OUTPUT);
+        XCB_WINDOW_CLASS_INPUT_OUTPUT);
 
     change_property(wm_window_, atoms_[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW,
-                    32, 1, &wm_window_);
+        32, 1, &wm_window_);
 
     const char* name = "sirenwm";
     change_property(wm_window_, atoms_[NET_WM_NAME], atoms_[UTF8_STRING],
-                    8, static_cast<uint32_t>(strlen(name)), name);
+        8, static_cast<uint32_t>(strlen(name)), name);
 
     change_property(root(), atoms_[NET_SUPPORTING_WM_CHECK], XCB_ATOM_WINDOW,
-                    32, 1, &wm_window_);
+        32, 1, &wm_window_);
 }
 
 void XWindowManager::dispatch() {
@@ -87,29 +87,29 @@ void XWindowManager::dispatch() {
     while ((ev = poll_event())) {
         uint8_t type = ev->response_type & 0x7f;
         switch (type) {
-        case XCB_CREATE_NOTIFY:
-            handle_create_notify(reinterpret_cast<xcb_create_notify_event_t*>(ev));
-            break;
-        case XCB_MAP_REQUEST:
-            handle_map_request(reinterpret_cast<xcb_map_request_event_t*>(ev));
-            break;
-        case XCB_CONFIGURE_REQUEST:
-            handle_configure_request(reinterpret_cast<xcb_configure_request_event_t*>(ev));
-            break;
-        case XCB_UNMAP_NOTIFY:
-            handle_unmap_notify(reinterpret_cast<xcb_unmap_notify_event_t*>(ev));
-            break;
-        case XCB_DESTROY_NOTIFY:
-            handle_destroy_notify(reinterpret_cast<xcb_destroy_notify_event_t*>(ev));
-            break;
-        case XCB_PROPERTY_NOTIFY:
-            handle_property_notify(reinterpret_cast<xcb_property_notify_event_t*>(ev));
-            break;
-        case XCB_CLIENT_MESSAGE:
-            handle_client_message(reinterpret_cast<xcb_client_message_event_t*>(ev));
-            break;
-        default:
-            break;
+            case XCB_CREATE_NOTIFY:
+                handle_create_notify(reinterpret_cast<xcb_create_notify_event_t*>(ev));
+                break;
+            case XCB_MAP_REQUEST:
+                handle_map_request(reinterpret_cast<xcb_map_request_event_t*>(ev));
+                break;
+            case XCB_CONFIGURE_REQUEST:
+                handle_configure_request(reinterpret_cast<xcb_configure_request_event_t*>(ev));
+                break;
+            case XCB_UNMAP_NOTIFY:
+                handle_unmap_notify(reinterpret_cast<xcb_unmap_notify_event_t*>(ev));
+                break;
+            case XCB_DESTROY_NOTIFY:
+                handle_destroy_notify(reinterpret_cast<xcb_destroy_notify_event_t*>(ev));
+                break;
+            case XCB_PROPERTY_NOTIFY:
+                handle_property_notify(reinterpret_cast<xcb_property_notify_event_t*>(ev));
+                break;
+            case XCB_CLIENT_MESSAGE:
+                handle_client_message(reinterpret_cast<xcb_client_message_event_t*>(ev));
+                break;
+            default:
+                break;
         }
         free(ev);
     }
@@ -120,21 +120,21 @@ void XWindowManager::handle_create_notify(xcb_create_notify_event_t* ev) {
     if (ev->window == wm_window_) return;
 
     XWindow xwin;
-    xwin.xcb_id = ev->window;
+    xwin.xcb_id            = ev->window;
     xwin.override_redirect = ev->override_redirect;
-    xwin.x = ev->x;
-    xwin.y = ev->y;
-    xwin.width = ev->width;
-    xwin.height = ev->height;
-    windows_[ev->window] = xwin;
+    xwin.x                 = ev->x;
+    xwin.y                 = ev->y;
+    xwin.width             = ev->width;
+    xwin.height            = ev->height;
+    windows_[ev->window]   = xwin;
 
-    uint32_t mask = XCB_CW_EVENT_MASK;
+    uint32_t mask     = XCB_CW_EVENT_MASK;
     uint32_t values[] = { XCB_EVENT_MASK_PROPERTY_CHANGE };
     change_window_attributes(ev->window, mask, values);
 }
 
 void XWindowManager::handle_map_request(xcb_map_request_event_t* ev) {
-    auto it = windows_.find(ev->window);
+    auto  it = windows_.find(ev->window);
     if (it == windows_.end()) return;
     auto& xwin = it->second;
 
@@ -164,21 +164,35 @@ void XWindowManager::handle_map_request(xcb_map_request_event_t* ev) {
 void XWindowManager::handle_configure_request(xcb_configure_request_event_t* ev) {
     uint32_t mask = 0;
     uint32_t values[7];
-    int i = 0;
+    int      i = 0;
 
-    if (ev->value_mask & XCB_CONFIG_WINDOW_X) { mask |= XCB_CONFIG_WINDOW_X; values[i++] = static_cast<uint32_t>(ev->x); }
-    if (ev->value_mask & XCB_CONFIG_WINDOW_Y) { mask |= XCB_CONFIG_WINDOW_Y; values[i++] = static_cast<uint32_t>(ev->y); }
-    if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH) { mask |= XCB_CONFIG_WINDOW_WIDTH; values[i++] = ev->width; }
-    if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT) { mask |= XCB_CONFIG_WINDOW_HEIGHT; values[i++] = ev->height; }
-    if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) { mask |= XCB_CONFIG_WINDOW_BORDER_WIDTH; values[i++] = ev->border_width; }
-    if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING) { mask |= XCB_CONFIG_WINDOW_SIBLING; values[i++] = ev->sibling; }
-    if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE) { mask |= XCB_CONFIG_WINDOW_STACK_MODE; values[i++] = ev->stack_mode; }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_X) {
+        mask |= XCB_CONFIG_WINDOW_X; values[i++] = static_cast<uint32_t>(ev->x);
+    }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_Y) {
+        mask |= XCB_CONFIG_WINDOW_Y; values[i++] = static_cast<uint32_t>(ev->y);
+    }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_WIDTH) {
+        mask |= XCB_CONFIG_WINDOW_WIDTH; values[i++] = ev->width;
+    }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_HEIGHT) {
+        mask |= XCB_CONFIG_WINDOW_HEIGHT; values[i++] = ev->height;
+    }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH) {
+        mask |= XCB_CONFIG_WINDOW_BORDER_WIDTH; values[i++] = ev->border_width;
+    }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_SIBLING) {
+        mask |= XCB_CONFIG_WINDOW_SIBLING; values[i++] = ev->sibling;
+    }
+    if (ev->value_mask & XCB_CONFIG_WINDOW_STACK_MODE) {
+        mask |= XCB_CONFIG_WINDOW_STACK_MODE; values[i++] = ev->stack_mode;
+    }
 
     configure_window(ev->window, static_cast<uint16_t>(mask), values);
 }
 
 void XWindowManager::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
-    auto it = windows_.find(ev->window);
+    auto  it = windows_.find(ev->window);
     if (it == windows_.end()) return;
     auto& xwin = it->second;
 
@@ -207,7 +221,7 @@ void XWindowManager::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
 }
 
 void XWindowManager::handle_property_notify(xcb_property_notify_event_t* ev) {
-    auto it = windows_.find(ev->window);
+    auto  it = windows_.find(ev->window);
     if (it == windows_.end()) return;
     auto& xwin = it->second;
 
@@ -223,18 +237,18 @@ void XWindowManager::handle_property_notify(xcb_property_notify_event_t* ev) {
 }
 
 void XWindowManager::handle_client_message(xcb_client_message_event_t* ev) {
-    auto it = windows_.find(ev->window);
+    auto  it = windows_.find(ev->window);
     if (it == windows_.end()) return;
     auto& xwin = it->second;
 
     if (ev->type == atoms_[WL_SURFACE_SERIAL]) {
         uint64_t serial = (static_cast<uint64_t>(ev->data.data32[1]) << 32)
-                        | ev->data.data32[0];
+            | ev->data.data32[0];
         xwin.serial = serial;
         try_associate(xwin);
     } else if (ev->type == atoms_[WL_SURFACE_ID]) {
         uint32_t resource_id = ev->data.data32[0];
-        auto* resource = wl_client_get_object(xwl_client_, resource_id);
+        auto*    resource    = wl_client_get_object(xwl_client_, resource_id);
         if (resource) {
             auto sid = compositor_.id_from_resource(resource);
             if (sid)
@@ -298,11 +312,11 @@ XWindow* XWindowManager::window_by_admin_id(uint32_t admin_id) {
 }
 
 void XWindowManager::configure(uint32_t admin_id, int32_t x, int32_t y,
-                                int32_t w, int32_t h) {
+    int32_t w, int32_t h) {
     auto* xwin = window_by_admin_id(admin_id);
     if (!xwin || !conn_) return;
     send_configure(xwin->xcb_id, static_cast<int16_t>(x), static_cast<int16_t>(y),
-                   static_cast<uint16_t>(w), static_cast<uint16_t>(h));
+        static_cast<uint16_t>(w), static_cast<uint16_t>(h));
     flush();
 }
 
@@ -327,9 +341,9 @@ bool XWindowManager::owns(uint32_t admin_id) const {
 }
 
 void XWindowManager::send_configure(uint32_t win, int16_t x, int16_t y,
-                                     uint16_t w, uint16_t h) {
+    uint16_t w, uint16_t h) {
     uint32_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-                    XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+        XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
     uint32_t values[] = {
         static_cast<uint32_t>(x), static_cast<uint32_t>(y),
         static_cast<uint32_t>(w), static_cast<uint32_t>(h)
@@ -338,7 +352,7 @@ void XWindowManager::send_configure(uint32_t win, int16_t x, int16_t y,
 }
 
 void XWindowManager::send_wm_delete(uint32_t win) {
-    auto atoms_list = xcb::get_atom_list_property(raw(), win, atoms_[WM_PROTOCOLS]);
+    auto atoms_list      = xcb::get_atom_list_property(raw(), win, atoms_[WM_PROTOCOLS]);
     bool supports_delete = false;
     for (auto a : atoms_list) {
         if (a == atoms_[WM_DELETE_WINDOW]) {
@@ -349,10 +363,10 @@ void XWindowManager::send_wm_delete(uint32_t win) {
 
     if (supports_delete) {
         xcb_client_message_event_t msg = {};
-        msg.response_type = XCB_CLIENT_MESSAGE;
-        msg.window = win;
-        msg.type = atoms_[WM_PROTOCOLS];
-        msg.format = 32;
+        msg.response_type  = XCB_CLIENT_MESSAGE;
+        msg.window         = win;
+        msg.type           = atoms_[WM_PROTOCOLS];
+        msg.format         = 32;
         msg.data.data32[0] = atoms_[WM_DELETE_WINDOW];
         msg.data.data32[1] = XCB_CURRENT_TIME;
         send_event(win, XCB_EVENT_MASK_NO_EVENT, reinterpret_cast<const char*>(&msg));

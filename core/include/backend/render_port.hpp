@@ -45,9 +45,9 @@ class RenderWindow {
         virtual cairo_t* cairo()   = 0;
         virtual void     present() = 0;
 
-        virtual void     set_visible(bool visible)                                      = 0;
-        virtual void     raise()                                                        = 0;
-        virtual void     lower()                                                        = 0;
+        virtual void     set_visible(bool visible) = 0;
+        virtual void     raise()                   = 0;
+        virtual void     lower()                   = 0;
 };
 
 class RenderPort {

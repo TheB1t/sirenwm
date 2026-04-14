@@ -112,8 +112,8 @@ class X11TrayHost final : public backend::TrayHost {
         void attach_to_bar(WindowId new_bar_win, int bar_x, int bar_y, int bar_w) override {
             if (!xc_ || tray_win_ == XCB_WINDOW_NONE)
                 return;
-            bar_win_ = new_bar_win;
-            bar_pos_ = { bar_x, bar_y };
+            bar_win_      = new_bar_win;
+            bar_pos_      = { bar_x, bar_y };
             tray_pos_.x() = bar_x + bar_w - std::max(tray_w_, 1);
             tray_pos_.y() = bar_y;
             uint32_t vals[] = {
@@ -300,8 +300,8 @@ class X11TrayHost final : public backend::TrayHost {
             if (!ic || !ic->mapped)
                 return false;
 
-            int16_t icon_x = (int16_t)std::max(0, local_x - ic->pos.x());
-            int16_t icon_y = (int16_t)std::max(0, local_y - ic->pos.y());
+            int16_t                  icon_x = (int16_t)std::max(0, local_x - ic->pos.x());
+            int16_t                  icon_y = (int16_t)std::max(0, local_y - ic->pos.y());
 
             xcb_button_press_event_t bev = {};
             bev.response_type = ev.release ? XCB_BUTTON_RELEASE : XCB_BUTTON_PRESS;
@@ -401,7 +401,7 @@ class X11TrayHost final : public backend::TrayHost {
             ic.win      = win;
             ic.size.x() = bar_h_;
             ic.size.y() = bar_h_;
-            ic.mapped = !has_xembed_info(win) || xembed_info_mapped(win);
+            ic.mapped   = !has_xembed_info(win) || xembed_info_mapped(win);
 
             auto geo2 = xc_.get_window_geometry(win);
             if (geo2) {

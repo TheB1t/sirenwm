@@ -11,11 +11,17 @@ void OverlayManager::create(uint32_t id, int32_t x, int32_t y, int32_t w, int32_
 
 bool OverlayManager::update(uint32_t id, int fd, uint32_t size) {
     auto it = overlays_.find(id);
-    if (it == overlays_.end()) { close(fd); return false; }
+    if (it == overlays_.end()) {
+        close(fd); return false;
+    }
     auto& ov = it->second;
-    if (ov.width <= 0 || ov.height <= 0) { close(fd); return false; }
+    if (ov.width <= 0 || ov.height <= 0) {
+        close(fd); return false;
+    }
     size_t expected = static_cast<size_t>(ov.width) * ov.height * 4;
-    if (static_cast<size_t>(size) != expected) { close(fd); return false; }
+    if (static_cast<size_t>(size) != expected) {
+        close(fd); return false;
+    }
 
     void* data = mmap(nullptr, expected, PROT_READ, MAP_SHARED, fd, 0);
     close(fd);

@@ -71,7 +71,7 @@ class BarModule : public Module {
 
         std::function<BarState(int mon_idx)> state_provider;
 
-        int                      wakeup_pipe_wr_ = -1;  // write-end of wakeup pipe
+        int wakeup_pipe_wr_ = -1;                       // write-end of wakeup pipe
         EventLoop::FdHandle wakeup_pipe_rd_;       // read-end, owns fd + watch
         EventLoop::FdHandle widget_timer_;         // timerfd for 1s widget tick
 

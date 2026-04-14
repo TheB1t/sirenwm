@@ -152,7 +152,7 @@ class FakeBackend : public Backend {
 
         backend::BackendPorts ports() override {
             return backend::BackendPorts{
-                .input    = input_port_,
+                . input   = input_port_,
                 .monitor  = monitor_port_,
                 .render   = render_port_,
                 .keyboard = keyboard_port_,

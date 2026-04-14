@@ -18,30 +18,30 @@ struct BufferView {
 };
 
 class Shm {
-public:
-    explicit Shm(Display& display);
-    ~Shm();
+    public:
+        explicit Shm(Display& display);
+        ~Shm();
 
-    Shm(const Shm&)            = delete;
-    Shm& operator=(const Shm&) = delete;
+        Shm(const Shm&)                                  = delete;
+        Shm&                       operator=(const Shm&) = delete;
 
-    static const wl_interface* interface();
-    static int version() { return 1; }
+        static const wl_interface* interface();
+        static int version() { return 1; }
 
-    void bind(wl_client* client, uint32_t version, uint32_t id);
-    BufferView buffer_view(wl_resource* buffer_resource) const;
+        void       bind(wl_client* client, uint32_t version, uint32_t id);
+        BufferView buffer_view(wl_resource* buffer_resource) const;
 
-private:
-    struct ShmPool;
-    struct ShmBuffer;
+    private:
+        struct ShmPool;
+        struct ShmBuffer;
 
-    wl::Global<Shm> global_;
-    std::vector<std::unique_ptr<ShmPool>> pools_;
+        wl::Global<Shm> global_;
+        std::vector<std::unique_ptr<ShmPool>> pools_;
 
-    void create_pool(wl_client* client, wl_resource* resource,
-                     uint32_t id, int32_t fd, int32_t size);
+        void create_pool(wl_client* client, wl_resource* resource,
+            uint32_t id, int32_t fd, int32_t size);
 
-    friend class Compositor;
+        friend class Compositor;
 };
 
 } // namespace wl::server

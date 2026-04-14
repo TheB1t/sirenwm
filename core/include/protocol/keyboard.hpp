@@ -24,10 +24,10 @@ inline constexpr std::size_t kLayoutNameMax = 24;
 
 struct LayoutChanged {
     static constexpr uint32_t kTag = fnv1a("keyboard:layout_changed");
-    char name[kLayoutNameMax];
+    char                      name[kLayoutNameMax];
 
     static LayoutChanged from(std::string_view sv) {
-        LayoutChanged out{};
+        LayoutChanged     out{};
         const std::size_t n = sv.size() < kLayoutNameMax - 1
                               ? sv.size()
                               : kLayoutNameMax - 1;

@@ -31,13 +31,13 @@
 
 class QueuedEvent {
     public:
-        virtual ~QueuedEvent() = default;
+        virtual ~QueuedEvent()                        = default;
         virtual void deliver(IEventReceiver& r) const = 0;
 };
 
 template<typename Ev>
 class TypedEvent final : public QueuedEvent {
-        Ev ev_;
+    Ev ev_;
     public:
         explicit TypedEvent(Ev ev) : ev_(std::move(ev)) {}
         void deliver(IEventReceiver& r) const override { r.on(ev_); }
@@ -74,8 +74,8 @@ inline IEventSink& null_event_sink() {
 }
 
 class EventQueue {
-        std::queue<std::unique_ptr<QueuedEvent>> q_;
-        bool draining_ = false;
+    std::queue<std::unique_ptr<QueuedEvent>> q_;
+    bool draining_ = false;
 
     public:
         bool empty()    const { return q_.empty(); }

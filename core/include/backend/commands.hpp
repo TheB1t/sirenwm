@@ -93,7 +93,7 @@ struct SetWindowMetadata {
     std::string wm_instance;
     std::string wm_class;
     std::string title;
-    uint32_t    pid = 0;
+    uint32_t    pid  = 0;
     WindowType  type = WindowType::Normal;
     WindowHints hints;
     WindowId    transient_for = NO_WINDOW;

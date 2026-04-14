@@ -6,17 +6,17 @@
 namespace wl::server {
 
 class SurfaceId {
-public:
-    constexpr SurfaceId() noexcept = default;
-    constexpr explicit SurfaceId(uint32_t v) noexcept : value_(v) {}
+    public:
+        constexpr SurfaceId() noexcept = default;
+        constexpr explicit SurfaceId(uint32_t v) noexcept : value_(v) {}
 
-    constexpr uint32_t value() const noexcept { return value_; }
-    constexpr explicit operator bool() const noexcept { return value_ != 0; }
+        constexpr uint32_t value() const noexcept { return value_; }
+        constexpr explicit operator bool() const noexcept { return value_ != 0; }
 
-    constexpr bool operator==(const SurfaceId&) const noexcept = default;
+        constexpr bool operator==(const SurfaceId&) const noexcept = default;
 
-private:
-    uint32_t value_ = 0;
+    private:
+        uint32_t value_ = 0;
 };
 
 } // namespace wl::server

@@ -456,6 +456,6 @@ TEST(EdgeCases, SetMetadataNonexistentReturnsFalse) {
 
     command::atom::SetWindowMetadata meta;
     meta.window = 0xDEAD;
-    bool                       ok = h.core.dispatch(meta);
+    bool                             ok = h.core.dispatch(meta);
     EXPECT_FALSE(ok);
 }

@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
         std::string cfg_path     = resolve_user_config_path();
         std::string default_path = resolve_default_config_path();
 
-        Runtime runtime([](Core& core, Runtime& rt) {
+        Runtime     runtime([](Core& core, Runtime& rt) {
                 return std::make_unique<ActiveBackend>(core, rt);
             });
         g_signal_runtime = &runtime;

@@ -21,10 +21,10 @@ XConnection::XConnection() {
     conn_ = XGetXCBConnection(dpy_);
 
     int xkb_opcode = 0;
-    int xkb_event = 0;
-    int xkb_error = 0;
-    int xkb_major = XkbMajorVersion;
-    int xkb_minor = XkbMinorVersion;
+    int xkb_event  = 0;
+    int xkb_error  = 0;
+    int xkb_major  = XkbMajorVersion;
+    int xkb_minor  = XkbMinorVersion;
     if (XkbQueryExtension(dpy_, &xkb_opcode, &xkb_event, &xkb_error, &xkb_major, &xkb_minor)) {
         XkbSelectEvents(dpy_, XkbUseCoreKbd, XkbStateNotifyMask, XkbStateNotifyMask);
         xkb_event_type_ = xkb_event;
@@ -50,10 +50,10 @@ XConnection::~XConnection() {
 void XConnection::shutdown() {
     if (!dpy_) return;
     XCloseDisplay(dpy_);
-    dpy_   = nullptr;
-    conn_  = nullptr;
+    dpy_    = nullptr;
+    conn_   = nullptr;
     screen_ = nullptr;
-    dirty_ = false;
+    dirty_  = false;
 }
 
 xcb_atom_t XConnection::get_atom_property(xcb_window_t win, xcb_atom_t prop) const {

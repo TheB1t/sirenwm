@@ -71,5 +71,5 @@ class Module : public IEventReceiver {
     private:
         friend class Runtime;
 
-        bool       lua_inited_ = false;
+        bool lua_inited_ = false;
 };

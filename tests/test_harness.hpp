@@ -55,8 +55,8 @@ struct TestHarness {
         : runtime([mons = monitors.empty()
                 ? std::vector<Monitor>{ make_monitor(0, 0, 0, 1920, 1080, "primary") }
                 : std::move(monitors)](Core&, Runtime&) {
-                return std::make_unique<FakeBackend>(mons);
-            })
+                  return std::make_unique<FakeBackend>(mons);
+              })
           , backend(static_cast<FakeBackend&>(runtime.backend()))
           , core(runtime.core)
     {

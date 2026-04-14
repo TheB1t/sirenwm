@@ -199,7 +199,6 @@ bool Core::focus_monitor_at_point(int x, int y) {
     return true;
 }
 
-
 void Core::init(std::vector<Monitor> initial_monitors) {
     register_layout("tile",      layout::tile);
     register_layout("monocle",   layout::monocle);
@@ -268,8 +267,8 @@ void Core::arrange() {
                 LOG_ERR("arrange: Lua layout '%s' not found", active_layout.c_str());
                 continue;
             }
-            const auto& ref  = lua_it->second;
-            LuaContext   ctx  = lua_host().context();
+            const auto&  ref = lua_it->second;
+            LuaContext   ctx = lua_host().context();
             LuaSinkGuard guard(this, &place); // cleared on scope exit
 
             lua_host().push_ref(ref);
@@ -311,7 +310,7 @@ void Core::arrange() {
             if (!w || !w->is_visible() || !w->floating || w->fullscreen || w->borderless) continue;
             if (w->border_width == (uint32_t)settings.theme.border_thickness) continue;
             (void)dispatch(command::atom::SetWindowBorderWidth{ w->id,
-                                                          (uint32_t)settings.theme.border_thickness });
+                                                                (uint32_t)settings.theme.border_thickness });
             emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);
         }
     }
@@ -656,14 +655,14 @@ FullscreenLikeDecision Core::evaluate_fullscreen_like_request(WindowId win,
     if (!w->size_locked)
         return out;
 
-    int ws_id = wsman.workspace_of_window(win);
-    int mon_idx = wsman.monitor_of_workspace(ws_id);
-    const auto& mons = wsman.all_monitor_states();
+    int         ws_id   = wsman.workspace_of_window(win);
+    int         mon_idx = wsman.monitor_of_workspace(ws_id);
+    const auto& mons    = wsman.all_monitor_states();
     if (mon_idx < 0 || mon_idx >= (int)mons.size())
         return out;
 
-    const auto& mon = mons[(size_t)mon_idx];
-    int usable_h = mon.size().y()
+    const auto& mon      = mons[(size_t)mon_idx];
+    int         usable_h = mon.size().y()
         - std::max(0, mon.top_inset())
         - std::max(0, mon.bottom_inset());
 
@@ -671,8 +670,8 @@ FullscreenLikeDecision Core::evaluate_fullscreen_like_request(WindowId win,
         LOG_INFO("ConfigureRequest(%d): borderless fullscreen detected (%dx%d >= %dx%d), promoting to borderless",
             win, requested_size.x(), requested_size.y(), mon.size().x(), usable_h);
         out.promote = true;
-        out.pos = mon.pos();
-        out.size = mon.size();
+        out.pos     = mon.pos();
+        out.size    = mon.size();
     }
     return out;
 }
@@ -784,7 +783,7 @@ bool Core::dispatch(const command::atom::ApplyMonitorTopology& cmd) {
 }
 
 bool Core::dispatch(const command::atom::ReserveMonitorArea& cmd) {
-    const auto& mons     = wsman.all_monitor_states();
+    const auto& mons = wsman.all_monitor_states();
     auto        apply_to = [&](int i) {
             int delta = cmd.px - mons[i].inset(cmd.edge);
             if (delta != 0)

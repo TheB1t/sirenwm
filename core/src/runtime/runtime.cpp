@@ -432,8 +432,8 @@ std::vector<std::string> Runtime::validate_settings() const {
                     missing_font = true;
             };
 
-        bool any_bar       = false;
-        bool missing_font  = false;
+        bool any_bar      = false;
+        bool missing_font = false;
 
         for (const auto& mon : monitors) {
             auto cfg = bar_set->get().resolve(mon.alias);
@@ -592,8 +592,8 @@ void Runtime::report_live_module_windows(const char* phase) const {
         return;
 
     std::ostringstream ids;
-    bool first = true;
-    int  count = 0;
+    bool               first = true;
+    int                count = 0;
     for (const auto& [id, _] : module_windows_by_id_) {
         if (count++ >= 16) {
             ids << ", ...";
@@ -685,7 +685,6 @@ void Runtime::reap_children() {
     }
 }
 
-
 Backend& Runtime::backend() {
     return *backend_;
 }
@@ -738,7 +737,7 @@ Runtime::create_tray(backend::RenderWindow& owner, bool own_selection) {
 
 void Runtime::unregister_module_window(backend::RenderWindow& window) {
     const WindowId id = window.id();
-    auto it = module_windows_by_id_.find(id);
+    auto           it = module_windows_by_id_.find(id);
     if (it == module_windows_by_id_.end()) {
         LOG_WARN("Runtime::unregister_module_window: id=%d not found in map", id);
         return;
@@ -753,7 +752,7 @@ void Runtime::unregister_module_window(backend::RenderWindow& window) {
 
 void Runtime::tick() {
     constexpr std::size_t kMaxBackendEventsPerTick = 2048;
-    auto&                 be                        = backend();
+    auto&                 be                       = backend();
 
     event_loop_.poll(100);
     be.pump_events(kMaxBackendEventsPerTick);
@@ -771,7 +770,8 @@ void Runtime::tick() {
 
 void Runtime::run_loop() {
     auto& be = backend();
-    event_loop_.watch(be.event_fd(), []() {});
+    event_loop_.watch(be.event_fd(), []() {
+        });
     event_loop_.start();
 
     while (!stop_requested)

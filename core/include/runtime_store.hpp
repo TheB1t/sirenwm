@@ -44,7 +44,7 @@ class Setting {
 template<typename T>
 class TypedSetting : public Setting {
     public:
-        using ParseFn = std::function<std::optional<std::string>(const RuntimeValue&, T&)>;
+        using ParseFn    = std::function<std::optional<std::string>(const RuntimeValue&, T&)>;
         using ValidateFn = std::function<std::vector<std::string>(const T&)>;
 
         explicit TypedSetting(T default_val = {})

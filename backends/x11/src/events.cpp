@@ -38,7 +38,6 @@ static bool is_override_redirect_window(XConnection& xconn, xcb_window_t win) {
     return attrs.valid && attrs.override_redirect;
 }
 
-
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
@@ -83,10 +82,10 @@ static WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) 
     out.wm_static_gravity = xconn.has_static_gravity(window);
     out.wm_no_decorations = xconn.motif_no_decorations(window);
 
-    static const auto  named       = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
-    static xcb_atom_t  net_wm_name = named.at("_NET_WM_NAME");
-    static xcb_atom_t  utf8_string = named.at("UTF8_STRING");
-    static xcb_atom_t  net_wm_pid  = named.at("_NET_WM_PID");
+    static const auto named       = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING", "_NET_WM_PID" });
+    static xcb_atom_t net_wm_name = named.at("_NET_WM_NAME");
+    static xcb_atom_t utf8_string = named.at("UTF8_STRING");
+    static xcb_atom_t net_wm_pid  = named.at("_NET_WM_PID");
     out.title = xconn.get_text_property(window, net_wm_name, utf8_string);
     if (out.title.empty())
         out.title = xconn.get_text_property(window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
@@ -557,11 +556,11 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
 void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
     auto window = core.window_state_any(ev->window);
     if (window) {
-        const auto&       atoms           = window_type_atoms(xconn);
-        static xcb_atom_t motif_atom      = xconn.intern_atoms({"_MOTIF_WM_HINTS"})["_MOTIF_WM_HINTS"];
+        const auto&       atoms            = window_type_atoms(xconn);
+        static xcb_atom_t motif_atom       = xconn.intern_atoms({"_MOTIF_WM_HINTS"})["_MOTIF_WM_HINTS"];
         static xcb_atom_t net_wm_name_prop =
             xconn.intern_atoms({"_NET_WM_NAME"})["_NET_WM_NAME"];
-        bool              refresh_meta    =
+        bool              refresh_meta =
             ev->atom == XCB_ATOM_WM_CLASS ||
             ev->atom == atoms.net_wm_window_type ||
             ev->atom == XCB_ATOM_WM_NORMAL_HINTS ||
@@ -753,16 +752,16 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
     if (!floating && !borderless && !static_gravity &&
         (m & (XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT))) {
         Vec2i req_size{ static_cast<int>(ev->width), static_cast<int>(ev->height) };
-        auto decision = core.evaluate_fullscreen_like_request(ev->window, req_size, true);
+        auto  decision = core.evaluate_fullscreen_like_request(ev->window, req_size, true);
         if (decision.promote) {
             (void)core.dispatch(command::atom::SetWindowBorderless{ ev->window, true });
             borderless    = true;
             borderless_fs = true;
-            ev->x      = static_cast<int16_t>(std::clamp(decision.pos.x(), -32768, 32767));
-            ev->y      = static_cast<int16_t>(std::clamp(decision.pos.y(), -32768, 32767));
-            ev->width  = static_cast<uint16_t>(std::min(decision.size.x(), 65535));
-            ev->height = static_cast<uint16_t>(std::min(decision.size.y(), 65535));
-            m         |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
+            ev->x         = static_cast<int16_t>(std::clamp(decision.pos.x(), -32768, 32767));
+            ev->y         = static_cast<int16_t>(std::clamp(decision.pos.y(), -32768, 32767));
+            ev->width     = static_cast<uint16_t>(std::min(decision.size.x(), 65535));
+            ev->height    = static_cast<uint16_t>(std::min(decision.size.y(), 65535));
+            m            |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y
                 | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
             runtime.post_event(event::RaiseDocks{});
         }

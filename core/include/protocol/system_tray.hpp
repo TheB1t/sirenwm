@@ -24,7 +24,7 @@ namespace protocol::system_tray {
 // A new tray icon window has appeared and wants to be adopted.
 struct IconDocked {
     static constexpr uint32_t kTag = fnv1a("system_tray:icon_docked");
-    WindowId icon;
+    WindowId                  icon;
 };
 static_assert(Message<IconDocked>);
 

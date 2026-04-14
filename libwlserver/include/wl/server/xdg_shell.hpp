@@ -32,59 +32,59 @@ struct XdgShellListener {
 };
 
 struct ToplevelState {
-    uint32_t  id              = 0;
-    SurfaceId surface_id;
+    uint32_t    id = 0;
+    SurfaceId   surface_id;
     std::string app_id;
     std::string title;
-    bool      mapped          = false;
+    bool        mapped = false;
 };
 
 class XdgShell {
-public:
-    XdgShell(Display& display, Compositor& compositor);
+    public:
+        XdgShell(Display& display, Compositor& compositor);
 
-    XdgShell(const XdgShell&)            = delete;
-    XdgShell& operator=(const XdgShell&) = delete;
+        XdgShell(const XdgShell&)            = delete;
+        XdgShell& operator=(const XdgShell&) = delete;
 
-    void set_listener(XdgShellListener* listener) { listener_ = listener; }
+        void set_listener(XdgShellListener* listener) { listener_ = listener; }
 
-    const ToplevelState* toplevel(uint32_t id) const;
-    const ToplevelState* toplevel_by_surface(SurfaceId sid) const;
+        const ToplevelState*       toplevel(uint32_t id) const;
+        const ToplevelState*       toplevel_by_surface(SurfaceId sid) const;
 
-    void configure_toplevel(uint32_t id, int32_t w, int32_t h);
-    void close_toplevel(uint32_t id);
+        void                       configure_toplevel(uint32_t id, int32_t w, int32_t h);
+        void                       close_toplevel(uint32_t id);
 
-    static const wl_interface* interface();
-    static int version() { return 3; }
-    void bind(wl_client* client, uint32_t version, uint32_t id);
+        static const wl_interface* interface();
+        static int version() { return 3; }
+        void                       bind(wl_client* client, uint32_t version, uint32_t id);
 
-private:
-    struct InternalToplevel {
-        ToplevelState  state;
-        wl_resource*   xdg_surface_res = nullptr;
-        wl_resource*   toplevel_res    = nullptr;
-    };
+    private:
+        struct InternalToplevel {
+            ToplevelState state;
+            wl_resource*  xdg_surface_res = nullptr;
+            wl_resource*  toplevel_res    = nullptr;
+        };
 
-    wl::Global<XdgShell> global_;
-    Compositor&          compositor_;
-    Compositor::SurfaceCommitSubscription surface_commit_subscription_;
-    XdgShellListener*    listener_ = nullptr;
+        wl::Global<XdgShell> global_;
+        Compositor&          compositor_;
+        Compositor::SurfaceCommitSubscription surface_commit_subscription_;
+        XdgShellListener* listener_ = nullptr;
 
-    uint32_t next_toplevel_id_ = 1;
-    std::unordered_map<wl_resource*, InternalToplevel> toplevels_;
-    std::unordered_map<wl_resource*, wl_resource*>     xdg_to_toplevel_;
-    std::unordered_map<wl_resource*, wl_resource*>     xdg_surface_to_surface_;
+        uint32_t next_toplevel_id_ = 1;
+        std::unordered_map<wl_resource*, InternalToplevel> toplevels_;
+        std::unordered_map<wl_resource*, wl_resource*>     xdg_to_toplevel_;
+        std::unordered_map<wl_resource*, wl_resource*>     xdg_surface_to_surface_;
 
-    InternalToplevel* find_by_id(uint32_t id);
-    InternalToplevel* find_by_surface(SurfaceId sid);
+        InternalToplevel*  find_by_id(uint32_t id);
+        InternalToplevel*  find_by_surface(SurfaceId sid);
 
-    void on_xdg_surface_destroyed(wl_resource* xdg_surface);
-    void on_surface_commit(SurfaceId sid);
+        void               on_xdg_surface_destroyed(wl_resource* xdg_surface);
+        void               on_surface_commit(SurfaceId sid);
 
-    static void toplevel_resource_destroy(wl_resource* resource);
-    static const void* wm_base_vtable();
-    static const void* xdg_surface_vtable();
-    static const void* toplevel_vtable();
+        static void        toplevel_resource_destroy(wl_resource* resource);
+        static const void* wm_base_vtable();
+        static const void* xdg_surface_vtable();
+        static const void* toplevel_vtable();
 };
 
 } // namespace wl::server

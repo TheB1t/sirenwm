@@ -173,26 +173,26 @@ class X11Backend final : public Backend {
         XConnection& connection() { return xconn; }
         const XConnection& connection() const { return xconn; }
 
-        int                    event_fd() const override;
-        void                   pump_events(std::size_t max_events_per_tick) override;
-        void                   render_frame() override;
-        void                   on_reload_applied() override;
-        void                   on_start(Core& core) override;
+        int  event_fd() const override;
+        void pump_events(std::size_t max_events_per_tick) override;
+        void render_frame() override;
+        void on_reload_applied() override;
+        void on_start(Core& core) override;
         // Domain-event overrides from IEventReceiver. WindowMapped/Unmapped
         // are intentionally handled synchronously via ewmh_on_* — see comment
         // on those declarations.
-        void                   on(event::WorkspaceSwitched ev) override;
-        void                   on(event::WindowAssignedToWorkspace ev) override;
-        void                   on(event::FocusChanged ev) override;
-        void                   on(event::WindowAdopted ev) override;
+        void on(event::WorkspaceSwitched ev) override;
+        void on(event::WindowAssignedToWorkspace ev) override;
+        void on(event::FocusChanged ev) override;
+        void on(event::WindowAdopted ev) override;
 
         // IHookReceiver — synchronous filters.
-        void                   on_hook(hook::ShouldManageWindow& h) override;
-        void                   on_hook(hook::CloseWindow& h) override;
-        void                   shutdown() override;
-        StartupSnapshot        scan_existing_windows() override;
-        backend::BackendPorts  ports() override;
-        xcb_key_symbols_t*     key_symbols();
+        void                         on_hook(hook::ShouldManageWindow& h) override;
+        void                         on_hook(hook::CloseWindow& h) override;
+        void                         shutdown() override;
+        StartupSnapshot              scan_existing_windows() override;
+        backend::BackendPorts        ports() override;
+        xcb_key_symbols_t*           key_symbols();
         std::shared_ptr<swm::Window> create_window(WindowId id) override;
 
         void                         handle_generic_event(xcb_generic_event_t* ev);
