@@ -3,12 +3,14 @@
 #include <wl/server/compositor.hpp>
 #include <wl/server/admin.hpp>
 #include <wl/server/seat.hpp>
+#include <wl/server/surface_id.hpp>
 #include <wl/server/xdg_shell.hpp>
 #include <xcb/connection.hpp>
 #include <xcb/visual.hpp>
 #include <xcb/atom.hpp>
 
 #include <cstdint>
+#include <unordered_set>
 
 extern "C" {
 #include <cairo/cairo.h>
@@ -32,6 +34,7 @@ public:
 
     void request_repaint() { repaint_needed_ = true; }
     void set_pointer_grabbed(bool g) { pointer_grabbed_ = g; }
+    void set_cursor_surface(wl::server::SurfaceId sid, int32_t hotspot_x, int32_t hotspot_y);
 
     int width()  const { return width_; }
     int height() const { return height_; }
@@ -48,6 +51,15 @@ private:
     bool repaint_needed_ = true;
     bool pointer_grabbed_ = false;
     uint32_t pointer_surface_ = 0;
+    std::unordered_set<uint32_t> intercepted_keys_;
+    wl::server::SurfaceId cursor_surface_;
+    int32_t              cursor_hotspot_x_ = 0;
+    int32_t              cursor_hotspot_y_ = 0;
+    int32_t              pointer_x_ = 0;
+    int32_t              pointer_y_ = 0;
+    bool                 pointer_valid_ = false;
+    xcb_cursor_t         default_cursor_ = XCB_CURSOR_NONE;
+    xcb_cursor_t         invisible_cursor_ = XCB_CURSOR_NONE;
 
     xcb_pixmap_t      back_pixmap_ = 0;
     cairo_surface_t*  back_surface_ = nullptr;

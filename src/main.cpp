@@ -7,9 +7,6 @@
 #include <string_view>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/poll.h>
-#include <fcntl.h>
 #include <string>
 #include <vector>
 #include <log.hpp>
@@ -19,6 +16,7 @@
 #if defined(SIRENWM_BACKEND_WAYLAND)
 #  include <wl_backend.hpp>
 #  include <wl/server/display_server.hpp>
+#  include "process/child_process_registry.hpp"
 using ActiveBackend = WlBackend;
 #else
 #  include <x11_backend.hpp>
@@ -32,7 +30,6 @@ namespace {
 
 // Non-owning. Written once before signal handlers are installed, read from signal context.
 std::atomic<Runtime*> g_signal_runtime { nullptr };
-pid_t                 g_spawned_display_server_pid = -1;
 
 void signal_handler(int signum) {
     if (auto* rt = g_signal_runtime.load()) {
@@ -140,103 +137,54 @@ CliOptions parse_cli(int argc, char** argv) {
     return opts;
 }
 
-bool wait_for_display_server_endpoints(int pipe_rd, pid_t pid, std::string& out_wayland, std::string& out_xdisplay) {
-    std::string buffer;
-    char        temp[512];
-    int         ticks = 0;
-
-    while (ticks++ < 100) { // 10s max
-        struct pollfd pfd {};
-        pfd.fd     = pipe_rd;
-        pfd.events = POLLIN;
-        int pr = poll(&pfd, 1, 100);
-        if (pr > 0 && (pfd.revents & POLLIN)) {
-            ssize_t n = read(pipe_rd, temp, sizeof(temp));
-            if (n > 0) {
-                buffer.append(temp, temp + n);
-                std::size_t pos = 0;
-                while (true) {
-                    auto nl = buffer.find('\n', pos);
-                    if (nl == std::string::npos) {
-                        buffer.erase(0, pos);
-                        break;
-                    }
-                    std::string line = buffer.substr(pos, nl - pos);
-                    pos = nl + 1;
-                    if (line.rfind("WAYLAND_DISPLAY=", 0) == 0)
-                        out_wayland = line.substr(std::strlen("WAYLAND_DISPLAY="));
-                    else if (line.rfind("DISPLAY=", 0) == 0)
-                        out_xdisplay = line.substr(std::strlen("DISPLAY="));
-                }
+bool ensure_embedded_display_server(const std::string& exec_path, bool from_exec_restart,
+    ChildProcessRegistry& child_registry) {
+    const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
+    if (wayland_display && *wayland_display) {
+        ManagedChildInfo adopted;
+        if (child_registry.adopt("display-server", { "WAYLAND_DISPLAY" }, adopted)) {
+            auto it_wayland = adopted.env.find("WAYLAND_DISPLAY");
+            if (it_wayland != adopted.env.end() && it_wayland->second == wayland_display) {
+                auto it_display = adopted.env.find("DISPLAY");
+                if (it_display != adopted.env.end() && !it_display->second.empty())
+                    setenv("DISPLAY", it_display->second.c_str(), 1);
+                LOG_INFO("display-server: adopted pid=%d WAYLAND_DISPLAY=%s",
+                    static_cast<int>(adopted.pid), it_wayland->second.c_str());
             }
         }
-
-        if (!out_wayland.empty())
-            return true;
-
-        int   status = 0;
-        pid_t wr     = waitpid(pid, &status, WNOHANG);
-        if (wr == pid)
-            return false;
-    }
-    return false;
-}
-
-bool ensure_embedded_display_server(const std::string& exec_path, bool from_exec_restart) {
-    const char* wayland_display = std::getenv("WAYLAND_DISPLAY");
-    if (wayland_display && *wayland_display)
         return true;
+    }
+
     if (from_exec_restart)
-        return true;
+        LOG_WARN("display-server: WAYLAND_DISPLAY missing after exec-restart, trying adopt/spawn");
 
-    int pipefd[2] = { -1, -1 };
-    if (pipe(pipefd) != 0) {
-        LOG_ERR("display-server: failed to create endpoint pipe: %s", std::strerror(errno));
+    ManagedChildSpec spec;
+    spec.role              = "display-server";
+    spec.argv              = { exec_path, "--display-server" };
+    spec.required_env_keys = { "WAYLAND_DISPLAY" };
+
+    ManagedChildInfo child;
+    std::string      err;
+    if (!child_registry.spawn_or_adopt(spec, child, &err)) {
+        LOG_ERR("display-server: startup failed: %s", err.c_str());
         return false;
     }
 
-    pid_t pid = fork();
-    if (pid < 0) {
-        LOG_ERR("display-server: fork failed: %s", std::strerror(errno));
-        close(pipefd[0]);
-        close(pipefd[1]);
+    auto it_wayland = child.env.find("WAYLAND_DISPLAY");
+    if (it_wayland == child.env.end() || it_wayland->second.empty()) {
+        LOG_ERR("display-server: startup failed: missing WAYLAND_DISPLAY");
         return false;
     }
+    setenv("WAYLAND_DISPLAY", it_wayland->second.c_str(), 1);
 
-    if (pid == 0) {
-        close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO);
-        close(pipefd[1]);
-        std::vector<char*> argv_vec {
-            const_cast<char*>(exec_path.c_str()),
-            const_cast<char*>("--display-server"),
-            nullptr
-        };
-        execvp(exec_path.c_str(), argv_vec.data());
-        _exit(127);
-    }
+    auto it_display = child.env.find("DISPLAY");
+    if (it_display != child.env.end() && !it_display->second.empty())
+        setenv("DISPLAY", it_display->second.c_str(), 1);
+    else
+        unsetenv("DISPLAY");
 
-    close(pipefd[1]);
-
-    std::string spawned_wayland;
-    std::string spawned_xdisplay;
-    bool ready = wait_for_display_server_endpoints(pipefd[0], pid, spawned_wayland, spawned_xdisplay);
-    close(pipefd[0]);
-
-    if (!ready) {
-        LOG_ERR("display-server: failed to receive WAYLAND_DISPLAY from spawned server");
-        kill(pid, SIGTERM);
-        waitpid(pid, nullptr, 0);
-        return false;
-    }
-
-    setenv("WAYLAND_DISPLAY", spawned_wayland.c_str(), 1);
-    if (!spawned_xdisplay.empty())
-        setenv("DISPLAY", spawned_xdisplay.c_str(), 1);
-
-    g_spawned_display_server_pid = pid;
-    LOG_INFO("display-server: spawned pid=%d WAYLAND_DISPLAY=%s",
-        static_cast<int>(pid), spawned_wayland.c_str());
+    LOG_INFO("display-server: using pid=%d WAYLAND_DISPLAY=%s",
+        static_cast<int>(child.pid), it_wayland->second.c_str());
     return true;
 }
 #endif
@@ -251,6 +199,10 @@ int main(int argc, char** argv) {
     log_init(log_path);
 
     std::string exec_path = resolve_exec_path(argc, argv);
+
+#if defined(SIRENWM_HAS_DISPLAY_SERVER)
+    std::unique_ptr<ChildProcessRegistry> child_registry;
+#endif
 
     try {
 #if !defined(SIRENWM_HAS_DISPLAY_SERVER)
@@ -271,7 +223,8 @@ int main(int argc, char** argv) {
 
         bool from_exec_restart = (std::getenv("SIRENWM_EXEC_RESTART") != nullptr);
         unsetenv("SIRENWM_EXEC_RESTART");
-        if (!ensure_embedded_display_server(exec_path, from_exec_restart))
+        child_registry = std::make_unique<ChildProcessRegistry>("sirenwm");
+        if (!ensure_embedded_display_server(exec_path, from_exec_restart, *child_registry))
             return 1;
 #endif
 
@@ -295,24 +248,26 @@ int main(int argc, char** argv) {
             char* exec_argv[] = { (char*)exec_path.c_str(), nullptr };
             execvp(exec_path.c_str(), exec_argv);
             LOG_ERR("restart: execvp failed: %s", std::strerror(errno));
+#if defined(SIRENWM_HAS_DISPLAY_SERVER)
+            if (child_registry)
+                child_registry->shutdown_owned();
+#endif
             return 1;
         }
         g_signal_runtime = nullptr;
     } catch (const std::exception& e) {
         g_signal_runtime = nullptr;
         LOG_ERR("main: fatal startup/runtime error: %s", e.what());
-        if (g_spawned_display_server_pid > 0) {
-            kill(g_spawned_display_server_pid, SIGTERM);
-            waitpid(g_spawned_display_server_pid, nullptr, 0);
-            g_spawned_display_server_pid = -1;
-        }
+#if defined(SIRENWM_HAS_DISPLAY_SERVER)
+        if (child_registry)
+            child_registry->shutdown_owned();
+#endif
         return 1;
     }
-    if (g_spawned_display_server_pid > 0) {
-        kill(g_spawned_display_server_pid, SIGTERM);
-        waitpid(g_spawned_display_server_pid, nullptr, 0);
-        g_spawned_display_server_pid = -1;
-    }
+#if defined(SIRENWM_HAS_DISPLAY_SERVER)
+    if (child_registry)
+        child_registry->shutdown_owned();
+#endif
     LOG_INFO("main: exit");
     return 0;
 }

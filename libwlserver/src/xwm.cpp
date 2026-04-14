@@ -155,6 +155,7 @@ void XWindowManager::handle_map_request(xcb_map_request_event_t* ev) {
     if (xwin.surface_id) {
         xwin.admin_id = sink_.add_surface(xwin.wm_class, xwin.title, xwin.pid);
         admin_ids_.insert(xwin.admin_id);
+        sink_.set_surface_wl_id(xwin.admin_id, xwin.surface_id);
         sink_.surface_mapped(xwin.admin_id);
         sink_.surface_committed(xwin.admin_id, xwin.width, xwin.height);
     }
@@ -263,6 +264,8 @@ void XWindowManager::associate(XWindow& xwin, wl::server::SurfaceId sid) {
         sink_.set_surface_wl_id(xwin.admin_id, sid);
         sink_.surface_mapped(xwin.admin_id);
         sink_.surface_committed(xwin.admin_id, xwin.width, xwin.height);
+    } else if (xwin.admin_id != 0) {
+        sink_.set_surface_wl_id(xwin.admin_id, sid);
     }
 }
 
