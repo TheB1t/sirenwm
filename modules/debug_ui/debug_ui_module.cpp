@@ -1,11 +1,11 @@
-#include <module.hpp>
-#include <module_registry.hpp>
-#include <core.hpp>
-#include <lua_host.hpp>
-#include <runtime.hpp>
+#include <runtime/module.hpp>
+#include <runtime/module_registry.hpp>
+#include <domain/core.hpp>
+#include <lua/lua_host.hpp>
+#include <runtime/runtime.hpp>
 #include <backend/backend.hpp>
 #include <backend/gl_port.hpp>
-#include <log.hpp>
+#include <support/log.hpp>
 
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>

@@ -7,7 +7,7 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 #include <backend/render_port.hpp>
-#include <monitor.hpp>
+#include <domain/monitor.hpp>
 
 #include <string>
 #include <vector>

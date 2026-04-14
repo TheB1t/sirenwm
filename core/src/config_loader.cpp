@@ -1,14 +1,14 @@
-#include <config_loader.hpp>
+#include <config/config_loader.hpp>
 
 #include <backend/backend.hpp>
 #include <backend/keyboard_port.hpp>
-#include <core_config.hpp>
-#include <core.hpp>
-#include <log.hpp>
-#include <lua_helpers.hpp>
-#include <module_registry.hpp>
-#include <runtime.hpp>
-#include <runtime_store.hpp>
+#include <config/core_config.hpp>
+#include <domain/core.hpp>
+#include <support/log.hpp>
+#include <lua/lua_helpers.hpp>
+#include <runtime/module_registry.hpp>
+#include <runtime/runtime.hpp>
+#include <runtime/runtime_store.hpp>
 
 extern "C" {
 #include <lua.h>

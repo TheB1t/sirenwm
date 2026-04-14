@@ -12,8 +12,8 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 #include <backend/tray_host_port.hpp>
-#include <x11_window.hpp>
-#include <xconn.hpp>
+#include <x11/x11_window.hpp>
+#include <x11/xconn.hpp>
 
 class Core;
 class Runtime;

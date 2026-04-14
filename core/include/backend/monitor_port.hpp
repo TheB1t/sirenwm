@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 
-#include <monitor.hpp>
-#include <vec.hpp>
+#include <domain/monitor.hpp>
+#include <support/vec.hpp>
 
 namespace backend {
 

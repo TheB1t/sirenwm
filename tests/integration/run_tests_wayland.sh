@@ -665,7 +665,7 @@ fi
 # ===========================================================================
 # Test 12: monitor layout applied
 # ===========================================================================
-if grep -qE "WlMonitorPort: applied|monitors: found [1-9][0-9]* monitor\\(s\\):" \
+if grep -qE "DisplayServerMonitorPort: applied|monitors: found [1-9][0-9]* monitor\\(s\\):" \
        "$TEST_HOME/runtime.log" 2>/dev/null; then
     pass "monitor layout applied"
 else
@@ -684,7 +684,7 @@ fi
 # ===========================================================================
 # Test 14: bar allocated shm buffer (0.18+ rendering path)
 # ===========================================================================
-if grep -q 'shm allocator\|shm.*buffer\|WlRenderWindow.*alloc\|wlr_allocator_create_buffer' \
+if grep -q 'shm allocator\|shm.*buffer\|DisplayServerRenderWindow.*alloc\|wlr_allocator_create_buffer' \
        "$SIRENWM_LOG" 2>/dev/null ||
    ! grep -q 'bar.*not implemented\|bar.*invisible' "$SIRENWM_LOG" 2>/dev/null; then
     pass "bar rendering path active (no stub error)"
@@ -795,7 +795,7 @@ else
         fail "xdg-toplevel: configure received by client" "no 'mapped' in client output"
     fi
 
-    if grep -qE 'WaylandBackend: surface [0-9]+ mapped|WlBackend: surface [0-9]+ mapped|WindowMapped' \
+    if grep -qE 'WaylandBackend: surface [0-9]+ mapped|DisplayServerBackend: surface [0-9]+ mapped|WindowMapped' \
            "$TEST_HOME/runtime.log" 2>/dev/null; then
         pass "xdg-toplevel: surface mapped logged"
     else
@@ -805,7 +805,7 @@ else
     assert_pid_alive "$SIRENWM_PID" "xdg-toplevel: compositor alive after window" "compositor crashed"
     assert_pid_alive "$DISPLAY_SERVER_PID" "xdg-toplevel: display-server alive after window" "display-server crashed"
 
-    if grep -qE 'WaylandBackend: surface [0-9]+ destroyed|WlBackend: surface [0-9]+ destroyed' \
+    if grep -qE 'WaylandBackend: surface [0-9]+ destroyed|DisplayServerBackend: surface [0-9]+ destroyed' \
            "$TEST_HOME/runtime.log" 2>/dev/null; then
         pass "xdg-toplevel: surface destroyed cleanly"
     else

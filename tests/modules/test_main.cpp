@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <log.hpp>
+#include <support/log.hpp>
 
 int main(int argc, char** argv) {
     log_init("/dev/null", spdlog::level::off);

@@ -1,17 +1,17 @@
-#include <runtime.hpp>
+#include <runtime/runtime.hpp>
 
 #include <backend/backend.hpp>
 #include <backend/commands.hpp>
 #include <backend/render_port.hpp>
 #include <backend/tray_host.hpp>
 #include <backend/tray_host_port.hpp>
-#include <config_loader.hpp>
-#include <core.hpp>
-#include <module_registry.hpp>
-#include <monitor_layout.hpp>
-#include <log.hpp>
-#include <string_utils.hpp>
-#include <bar_config.hpp>
+#include <config/config_loader.hpp>
+#include <domain/core.hpp>
+#include <runtime/module_registry.hpp>
+#include <domain/monitor_layout.hpp>
+#include <support/log.hpp>
+#include <support/string_utils.hpp>
+#include <config/bar_config.hpp>
 
 #include <cstdlib>
 #include <csignal>
@@ -25,7 +25,7 @@
 #include <unordered_set>
 #include <unistd.h>
 #include <sys/epoll.h>
-#include <restart_state.hpp>
+#include <runtime/restart_state.hpp>
 #include <sys/wait.h>
 
 // ---------------------------------------------------------------------------

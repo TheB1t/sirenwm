@@ -4,10 +4,10 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/events.hpp>
 
-#include <log.hpp>
-#include <module_registry.hpp>
+#include <support/log.hpp>
+#include <runtime/module_registry.hpp>
 #include <protocol/keyboard.hpp>
-#include <runtime.hpp>
+#include <runtime/runtime.hpp>
 
 // ---------------------------------------------------------------------------
 // Lua config parsing

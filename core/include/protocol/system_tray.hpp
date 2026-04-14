@@ -1,7 +1,7 @@
 #pragma once
 
-#include <message.hpp>
-#include <window_state.hpp>
+#include <support/message.hpp>
+#include <domain/window_state.hpp>
 
 // ---------------------------------------------------------------------------
 // System tray protocol.

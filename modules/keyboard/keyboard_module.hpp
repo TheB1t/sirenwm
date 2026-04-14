@@ -1,6 +1,6 @@
 #pragma once
 
-#include <module.hpp>
+#include <runtime/module.hpp>
 #include <backend/events.hpp>
 #include <string>
 #include <vector>

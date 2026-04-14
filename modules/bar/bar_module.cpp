@@ -1,10 +1,10 @@
 #include "bar_module.hpp"
 
-#include <module_registry.hpp>
-#include <core.hpp>
-#include <log.hpp>
+#include <runtime/module_registry.hpp>
+#include <domain/core.hpp>
+#include <support/log.hpp>
 #include <backend/backend.hpp>
-#include <runtime.hpp>
+#include <runtime/runtime.hpp>
 
 #include <algorithm>
 #include <cstdint>

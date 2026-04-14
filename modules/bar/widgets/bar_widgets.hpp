@@ -3,7 +3,7 @@
 #include <backend/tray_host.hpp>
 #include <backend/render_port.hpp>
 #include <bar/bar_state.hpp>
-#include <bar_config.hpp>
+#include <config/bar_config.hpp>
 #include <cairo/cairo.h>
 #include <pango/pangocairo.h>
 

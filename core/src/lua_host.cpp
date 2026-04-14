@@ -1,5 +1,5 @@
-#include <lua_host.hpp>
-#include <log.hpp>
+#include <lua/lua_host.hpp>
+#include <support/log.hpp>
 #include <protocol/keyboard.hpp>
 
 #include <cstdarg>
@@ -447,8 +447,8 @@ void LuaHost::emit_to_lua(const std::string& event,
 //   process.*    — child process lifecycle
 // ---------------------------------------------------------------------------
 
-#include <core.hpp>
-#include <window_state.hpp>
+#include <domain/core.hpp>
+#include <domain/window_state.hpp>
 
 // -- window.mapped --------------------------------------------------------
 

@@ -2,10 +2,10 @@
 
 #include <backend/backend.hpp>
 #include <backend/keyboard_port.hpp>
-#include <lua_host.hpp>
-#include <log.hpp>
-#include <module_registry.hpp>
-#include <runtime.hpp>
+#include <lua/lua_host.hpp>
+#include <support/log.hpp>
+#include <runtime/module_registry.hpp>
+#include <runtime/runtime.hpp>
 
 #include <fcntl.h>
 #include <unistd.h>

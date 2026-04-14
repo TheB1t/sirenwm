@@ -1,5 +1,5 @@
-#include <module.hpp>
-#include <runtime.hpp>
+#include <runtime/module.hpp>
+#include <runtime/runtime.hpp>
 
 Module::Module(ModuleDeps deps)
     : runtime(deps.runtime)

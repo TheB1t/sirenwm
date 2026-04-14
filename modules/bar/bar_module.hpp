@@ -1,9 +1,9 @@
 #pragma once
 
-#include <module.hpp>
-#include <runtime.hpp>
-#include <bar_config.hpp>
-#include <runtime_store.hpp>
+#include <runtime/module.hpp>
+#include <runtime/runtime.hpp>
+#include <config/bar_config.hpp>
+#include <runtime/runtime_store.hpp>
 #include <bar/bar_state.hpp>
 #include <bar/widgets/bar_widgets.hpp>
 #include <backend/render_port.hpp>

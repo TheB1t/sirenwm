@@ -3,22 +3,21 @@ pkg_check_modules(XKBCOMMON      REQUIRED xkbcommon)
 pkg_check_modules(CAIRO          REQUIRED cairo)
 
 list(APPEND SIRENWM_BACKEND_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/src/backend.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/input_port.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/monitor_port.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/render_port.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/keyboard_port.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/backend/display_server_backend.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/ports/display_server_input_port.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/ports/display_server_monitor_port.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/ports/display_server_render_port.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/ports/display_server_keyboard_port.cpp
 )
 
 list(APPEND SIRENWM_BACKEND_INCLUDE_DIRS
     ${CMAKE_CURRENT_LIST_DIR}/include
-    ${CMAKE_CURRENT_LIST_DIR}/../../libwl/include
     ${XKBCOMMON_INCLUDE_DIRS}
     ${CAIRO_INCLUDE_DIRS}
 )
 
 list(APPEND SIRENWM_BACKEND_LINK_LIBS
-    wlproto
+    sirenwm_ipc
     ${XKBCOMMON_LIBRARIES}
     ${CAIRO_LIBRARIES}
 )
