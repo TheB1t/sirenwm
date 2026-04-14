@@ -1,8 +1,8 @@
 #include "audio_module.hpp"
 
-#include <lua_host.hpp>
-#include <log.hpp>
-#include <module_registry.hpp>
+#include <lua/lua_host.hpp>
+#include <support/log.hpp>
+#include <runtime/module_registry.hpp>
 
 #include <alsa/asoundlib.h>
 #include <cstring>

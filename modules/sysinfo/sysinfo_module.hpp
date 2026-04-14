@@ -1,6 +1,6 @@
 #pragma once
 
-#include <module.hpp>
+#include <runtime/module.hpp>
 
 namespace backend { class KeyboardPort; }
 

@@ -3,11 +3,11 @@
 #include <bar/bar_state.hpp>
 #include <backend/backend.hpp>
 #include <backend/events.hpp>
-#include <core.hpp>
-#include <log.hpp>
+#include <domain/core.hpp>
+#include <support/log.hpp>
 #include <protocol/keyboard.hpp>
 #include <protocol/system_tray.hpp>
-#include <runtime.hpp>
+#include <runtime/runtime.hpp>
 #include <algorithm>
 #include <unordered_set>
 #include <cstdlib>

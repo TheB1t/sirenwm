@@ -1,12 +1,12 @@
 #include "keybindings.hpp"
 #include <backend/backend.hpp>
 #include <backend/input_port.hpp>
-#include <core.hpp>
-#include <runtime.hpp>
-#include <module_registry.hpp>
-#include <log.hpp>
+#include <domain/core.hpp>
+#include <runtime/runtime.hpp>
+#include <runtime/module_registry.hpp>
+#include <support/log.hpp>
 
-#include <string_utils.hpp>
+#include <support/string_utils.hpp>
 #include <algorithm>
 #include <string>
 #include <sstream>

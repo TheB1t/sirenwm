@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <backend/events.hpp>
 #include <backend/hooks.hpp>
-#include <core.hpp>
+#include <domain/core.hpp>
 
 #include "test_harness.hpp"
 

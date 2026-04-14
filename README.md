@@ -1,131 +1,96 @@
 # SirenWM
 
-SirenWM is a tiling window manager with selectable X11 and Wayland backends.
+SirenWM is a tiling window manager with selectable X11 and Wayland builds,
+transactional Lua reloads, integrated modules, and a strict split between the
+WM core and platform backends.
 
 ![SirenWM](picture.png)
 
-## About
+## Overview
 
-SirenWM runs on X11 or Wayland, selected at build time. The C++ core handles
-layout, window management, and runtime lifecycle. Keybindings, rules, bars,
-autostart, wallpaper, and widgets are Lua-driven and hot-reloaded without full
-process restart. Failed reloads roll back automatically.
+SirenWM is organized around three layers:
+
+- `Runtime` owns lifecycle, configuration loading, modules, and the unified
+  event loop.
+- `Core` owns authoritative window-manager state and reducer-style command
+  handling.
+- backends own native protocol integration and presentation.
+
+There are two build profiles:
+
+- `sirenwm-x11`: direct X11 window-manager backend
+- `sirenwm-wayland`: WM controller process plus SirenWM display-server process
+
+The current Wayland implementation uses SirenWM's own embedded display-server
+and presents through a nested X11 output. It is not a generic Wayland client
+backend for third-party compositors.
+
+## Highlights
+
+- Tile, monocle, and Lua-defined layouts
+- Multi-monitor workspace composition
+- Hot config reload with rollback on failure
+- Exec-restart flow that preserves session state
+- Statically linked modules for bars, keybindings, keyboard, audio, sysinfo,
+  and debug tooling
+- X11 support with EWMH, ICCCM, RandR, XEmbed tray, and fullscreen interop
+- Wayland support through a private IPC split between the WM controller and the
+  embedded display-server
+- XWayland support in Wayland mode
+- Integration tests for both X11 and Wayland paths
+
+## Architecture at a Glance
+
+```text
+                           +---------------------------+
+                           | src/main.cpp              |
+                           | process bootstrap         |
+                           +-------------+-------------+
+                                         |
+                                         v
+                           +---------------------------+
+                           | Runtime                   |
+                           | lifecycle + event loop    |
+                           +-------------+-------------+
+                                         |
+                                         v
+                           +---------------------------+
+                           | Core                      |
+                           | authoritative WM state    |
+                           +------+------+-------------+
+                                  |      |
+                                  |      +-----------------------------+
+                                  |                                    |
+                                  v                                    v
+                       +----------------------+             +----------------------+
+                       | X11Backend           |             | DisplayServerBackend |
+                       | direct X11 adapter   |             | WM-side IPC adapter  |
+                       +----------+-----------+             +----------+-----------+
+                                  |                                    |
+                                  v                                    v
+                            +-----------+                      +------------------+
+                            | X11 server |                      | libwlserver      |
+                            +-----------+                      | display-server   |
+                                                               +------------------+
+```
+
+For the full architectural description, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Requirements
 
 | Requirement | Minimum |
 | ----------- | ------- |
-| Display stack | X11 build: X11 server. Wayland build: SirenWM Wayland display-server mode (`--display-server`) |
-| C++ compiler | GCC 12 / Clang 16 (C++20) |
+| C++ compiler | GCC 12 or Clang 16 |
 | CMake | 3.14 |
 | Lua | 5.4 |
+| X11 build | X11 server |
+| Wayland build | SirenWM display-server mode, currently hosted in X11 |
 
-## Features
-
-### Generic
-
-#### Window management
-
-- Tile and monocle layouts; custom layouts in Lua with full geometry control
-- Master factor, gap, and border width adjustable at runtime
-- Multi-monitor support with compose graph and workspace migration
-- Per-monitor workspace pools with deterministic topology restore after restart
-- Focus-follows-mouse and click-to-focus
-- Floating windows with mod+drag move/resize
-- Fullscreen and pseudo-fullscreen modes
-
-#### Configuration
-
-- Hot config reload (`mod+r`) and exec-restart (`mod+shift+r`) with Lua syntax pre-check
-- Fallback to built-in default config when user config fails to parse
-- `siren.load()` for optional modules — returns a null-object on failure so the config keeps working
-- Window rules, process autostart, per-monitor wallpapers — all via Lua modules
-
-#### Status bar
-
-- Cairo/Pango bar at top and/or bottom of each monitor
-- Lua widget API: write `render()`, set `interval`, drop into any bar zone
-- Built-in widgets: workspace tags, focused window title
-- Urgent workspaces highlighted in the tag strip
-
-#### Developer
-
-- ImGui debug overlay for live WM state inspection (`-DSIRENWM_DEBUG_UI=ON`, X11 only)
-- Runtime lifecycle FSM (Idle → Configured → Starting → Running → Stopping → Stopped)
-- Typed setting registry with transactional reload and per-setting validation
+## Dependencies
 
 ### X11 backend
 
-- ICCCM: WM_DELETE_WINDOW, WM_TAKE_FOCUS, WM_HINTS (InputHint, UrgencyHint), WM_NORMAL_HINTS size constraints
-- EWMH: `_NET_WM_STATE` fullscreen, `_NET_ACTIVE_WINDOW`, `_NET_CLOSE_WINDOW`, client list
-- RandR hotplug — monitors added/removed at runtime without restart
-- Pointer barriers confine cursor to active fullscreen monitor
-- Fullscreen compatibility: MOTIF hints, Wine/Proton, SDL2, LibGDK
-- System tray (XEmbed protocol)
-
-### Wayland backend
-
-- Wayland client backend driven by generated admin protocol wrappers (`libwlproto`)
-- Embedded display-server mode in the same binary (`--display-server`)
-- xdg-shell toplevel lifecycle on server side with configure/map/commit/destroy flow
-- XWayland integration in display-server mode for X11 app interoperability
-- Nested X11 presentation path for development/integration testing (Xephyr/Xvfb)
-
-## Architecture
-
-```text
-              +---------------------+
-              | src/main.cpp        |
-              | mode/bootstrap       |
-              +----------+----------+
-                         |
-                         v
-              +---------------------+
-              | Runtime             |
-              | FSM/event loop      |
-              | module orchestration|
-              +----------+----------+
-                         |
-                         v
-              +---------------------+
-              | Core                |
-              | authoritative state |
-              | command reducers    |
-              +----------+----------+
-                         |
-                   BackendEffects/
-                    DomainEvents
-                         |
-            +------------+------------+
-            |                         |
-            v                         v
-   +-------------------+     +-------------------+
-   | X11Backend        |     | WlBackend         |
-   | + libxcb wrappers |     | + libwl/libwlproto|
-   +---------+---------+     +---------+---------+
-             |                         |
-             v                         v
-      +-------------+         +---------------------+
-      | X11 server  |         | libwlserver         |
-      |             |         | (--display-server)  |
-      +-------------+         +---------------------+
-```
-
-The core never reads `init.lua` directly — it exposes a command/event API and the Lua layer drives it. C++ modules bridge the two: they register with the Lua host and translate Lua calls into core commands.
-
-**Key design decisions:**
-
-- **Port interfaces** (`MonitorPort`, `InputPort`, `RenderPort`, `KeyboardPort`) decouple the core from any display protocol. Swapping backends requires no core changes.
-- **No global config object** — each module owns its settings via a typed registry. Hot-reload is transactional: snapshot → clear → re-execute `init.lua` → commit or rollback automatically.
-- **Lua boundary is strict** — the core has no Lua dependency. Modules expose an API table; the user config is pure Lua on top.
-
-For full architecture details, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
-
-## Getting Started
-
-### 1. Dependencies
-
-#### X11 backend — Debian / Ubuntu
+#### Debian / Ubuntu
 
 ```bash
 sudo apt install \
@@ -137,7 +102,7 @@ sudo apt install \
   libspdlog-dev
 ```
 
-#### X11 backend — Fedora
+#### Fedora
 
 ```bash
 sudo dnf install \
@@ -148,7 +113,7 @@ sudo dnf install \
   spdlog-devel
 ```
 
-#### X11 backend — Arch Linux
+#### Arch Linux
 
 ```bash
 sudo pacman -S \
@@ -159,7 +124,9 @@ sudo pacman -S \
   spdlog
 ```
 
-#### Wayland backend — Debian (trixie+)
+### Wayland backend
+
+#### Debian / Ubuntu
 
 ```bash
 sudo apt install \
@@ -172,7 +139,7 @@ sudo apt install \
   libcairo2-dev libpango1.0-dev libfontconfig1-dev libfreetype-dev libpng-dev
 ```
 
-#### Wayland backend — Arch Linux
+#### Arch Linux
 
 ```bash
 sudo pacman -S \
@@ -183,131 +150,170 @@ sudo pacman -S \
   lua spdlog cairo pango fontconfig freetype2 libpng
 ```
 
-### 2. Build
+## Build
 
 ```bash
-# X11 backend (default)
-cmake -S . -B build
+# X11 build
+cmake -S . -B build -DSIRENWM_BACKEND=x11
 cmake --build build -j$(nproc)
 
-# Wayland backend
-cmake -S . -B build -DSIRENWM_BACKEND=wayland
-cmake --build build -j$(nproc)
-
-# binaries:
-#   output/sirenwm-x11
-#   output/sirenwm-wayland
+# Wayland build
+cmake -S . -B build-wayland -DSIRENWM_BACKEND=wayland
+cmake --build build-wayland -j$(nproc)
 ```
 
-To build with the ImGui debug overlay (X11 only):
+Generated binaries:
+
+```text
+output/sirenwm-x11
+output/sirenwm-wayland
+```
+
+### Optional debug UI
+
+The ImGui debug overlay is currently available on the X11 build.
 
 ```bash
-# extra dependencies — Debian/Ubuntu
+# Debian / Ubuntu
 sudo apt install libegl-dev libgl-dev
-# extra dependencies — Fedora
+
+# Fedora
 sudo dnf install mesa-libEGL-devel mesa-libGL-devel
-# extra dependencies — Arch Linux
+
+# Arch Linux
 sudo pacman -S mesa
 
-cmake -S . -B build -DSIRENWM_DEBUG_UI=ON
+cmake -S . -B build -DSIRENWM_BACKEND=x11 -DSIRENWM_DEBUG_UI=ON
 cmake --build build -j$(nproc)
 ```
 
-### 3. Config
+## Configuration
 
-A default config is written to `~/.config/sirenwm/init.lua` automatically on first run.
-To start from the full annotated example instead:
+On first start, SirenWM writes a default config to:
+
+```text
+~/.config/sirenwm/init.lua
+```
+
+To start from the annotated example instead:
 
 ```bash
 mkdir -p ~/.config/sirenwm
 cp init.lua.example ~/.config/sirenwm/init.lua
 ```
 
-Edit `output = "HDMI-1"` to match your monitor name. On X11 use `xrandr` to
-list outputs. In Wayland display-server mode, use the names exposed by the
-server (for example `X11-1` / `default`) as shown in runtime logs.
-
-Minimal working config:
+Minimal example:
 
 ```lua
 local kb  = require("keybindings")
 local bar = require("bar")
 
-siren.modifier = "mod4"   -- Super/Win key
+siren.modifier = "mod4"
 
-siren.workspaces = { { name = "[1]" }, { name = "[2]" }, { name = "[3]" } }
+siren.workspaces = {
+  { name = "[1]" },
+  { name = "[2]" },
+  { name = "[3]" },
+}
 
-siren.theme = { font = "monospace:size=9", bg = "#111111", fg = "#cccccc",
-                accent = "#005577", gap = 4, border = { thickness = 1 } }
+siren.theme = {
+  font = "monospace:size=9",
+  bg = "#111111",
+  fg = "#cccccc",
+  accent = "#005577",
+  gap = 4,
+  border = { thickness = 1 },
+}
 
 bar.settings = {
-    top = { height = 18,
-            left   = { siren.load("widgets.tags") },
-            center = { siren.load("widgets.title") } }
+  top = {
+    height = 18,
+    left   = { siren.load("widgets.tags") },
+    center = { siren.load("widgets.title") },
+  },
 }
 
 kb.binds = {
-    { "mod+Return",  function() siren.spawn("xterm") end },
-    { "mod+shift+q", function() siren.win.close() end },
-    { "mod+r",       function() siren.reload() end },
+  { "mod+Return",  function() siren.spawn("xterm") end },
+  { "mod+shift+q", function() siren.win.close() end },
+  { "mod+r",       function() siren.reload() end },
 }
-for i = 1, 9 do
-    table.insert(kb.binds, { "mod+"..i, function() siren.ws.switch(i) end })
-end
 ```
 
-### 4. Run
+For the full configuration reference, see [`CONFIG.md`](CONFIG.md).
 
-**X11 — xinitrc** — add to `~/.xinitrc`:
+## Run
+
+### X11
+
+Typical `~/.xinitrc` entry:
 
 ```bash
 exec /path/to/output/sirenwm-x11
 ```
 
-**Wayland (single command, recommended):**
+### Wayland
+
+The Wayland build is designed to run against SirenWM's own display-server.
+
+Controller mode:
 
 ```bash
 /path/to/output/sirenwm-wayland
 ```
 
-This mode auto-spawns an embedded display-server when `WAYLAND_DISPLAY` is not
-set.
+If `WAYLAND_DISPLAY` is not already set, this will spawn the display-server
+process automatically.
 
-**Wayland (explicit split mode):**
+Display-server only:
 
 ```bash
-# terminal 1: start display-server only
 /path/to/output/sirenwm-wayland --display-server --size 1920x1080
-
-# terminal 2: start WM client against emitted WAYLAND_DISPLAY
-WAYLAND_DISPLAY=wayland-0 /path/to/output/sirenwm-wayland
 ```
 
-Note: `WlBackend` requires `sirenwm_admin_v1` protocol support. Running
-`sirenwm-wayland` against a generic external compositor without this protocol
-is not supported.
+Important operational note:
 
-**System install** (installs backend-specific binary and registers session entry):
+- the current display-server presents through an X11 output window
+- for development and tests, use an existing X session, Xephyr, or Xvfb
+- `output/run-debug-wl.sh` is the easiest local nested debug entrypoint
+
+System install:
 
 ```bash
 sudo cmake --install build
+sudo cmake --install build-wayland
 ```
 
-Then select "SirenWM" from your display manager's session list.
+Install the build profile you want to run. Session desktop files are installed
+for the selected backend build.
 
-### 5. Tests
+## Tests
 
 ```bash
 # X11 integration
 bash tests/integration/run_tests.sh
 
-# Wayland integration (wayland build required)
+# Wayland integration
 bash tests/integration/run_tests_wayland.sh
+
+# unit and module tests
+cmake -S . -B build-test -DBUILD_TESTING=ON
+cmake --build build-test -j$(nproc)
+ctest --test-dir build-test --output-on-failure
+```
+
+The Wayland integration suite runs a nested process stack:
+
+```text
+Xephyr or Xvfb
+  -> sirenwm-wayland --display-server
+  -> sirenwm-wayland
+  -> Wayland and XWayland test clients
 ```
 
 ## Default Keybindings
 
-`mod` = Super/Win key (configurable via `siren.modifier`).
+`mod` defaults to the Super/Win key and is configurable in Lua.
 
 | Binding | Action |
 | ------- | ------ |
@@ -320,21 +326,21 @@ bash tests/integration/run_tests_wayland.sh
 | `mod+i` / `mod+d` | Increase / decrease master count |
 | `mod+t` | Switch to tile layout |
 | `mod+m` | Switch to monocle layout |
-| `mod+1`…`mod+9` | Switch to workspace 1–9 |
-| `mod+shift+1`…`mod+shift+9` | Move window to workspace 1–9 |
-| `mod+ctrl+1`…`mod+ctrl+8` | Focus monitor 1–8 |
-| `mod+ctrl+shift+1`…`mod+ctrl+shift+8` | Move window to monitor 1–8 |
-| `mod+r` | Hot-reload config |
-| `mod+shift+r` | Exec-restart (preserves windows) |
+| `mod+1` ... `mod+9` | Switch to workspace 1 ... 9 |
+| `mod+shift+1` ... `mod+shift+9` | Move window to workspace 1 ... 9 |
+| `mod+ctrl+1` ... `mod+ctrl+8` | Focus monitor 1 ... 8 |
+| `mod+ctrl+shift+1` ... `mod+ctrl+shift+8` | Move window to monitor 1 ... 8 |
+| `mod+r` | Hot reload |
+| `mod+shift+r` | Exec-restart |
 | `mod+Button1` | Drag-move floating window |
 | `mod+Button3` | Drag-resize floating window |
 | `mod+Button2` | Toggle floating |
 
 ## Documentation
 
-- [`CONFIG.md`](CONFIG.md) — full Lua configuration reference
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — detailed architecture and boundary map
-- [`init.lua.example`](init.lua.example) — annotated multi-monitor config
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — full system architecture
+- [`CONFIG.md`](CONFIG.md) — Lua configuration reference
+- [`init.lua.example`](init.lua.example) — annotated example configuration
 
 ## License
 

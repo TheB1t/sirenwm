@@ -9,15 +9,15 @@
 #include <sys/stat.h>
 #include <string>
 #include <vector>
-#include <log.hpp>
+#include <support/log.hpp>
 
-#include <runtime.hpp>
+#include <runtime/runtime.hpp>
 
 #if defined(SIRENWM_BACKEND_WAYLAND)
-#  include <wl_backend.hpp>
-#  include <wl/server/display_server.hpp>
+#  include <display_server_backend.hpp>
+#  include <wl/server/runtime/display_server.hpp>
 #  include "process/child_process_registry.hpp"
-using ActiveBackend = WlBackend;
+using ActiveBackend = DisplayServerBackend;
 #else
 #  include <x11_backend.hpp>
 using ActiveBackend = X11Backend;
@@ -145,6 +145,9 @@ bool ensure_embedded_display_server(const std::string& exec_path, bool from_exec
         if (child_registry.adopt("display-server", { "WAYLAND_DISPLAY" }, adopted)) {
             auto it_wayland = adopted.env.find("WAYLAND_DISPLAY");
             if (it_wayland != adopted.env.end() && it_wayland->second == wayland_display) {
+                auto it_ipc = adopted.env.find("SIRENWM_IPC_SOCKET");
+                if (it_ipc != adopted.env.end() && !it_ipc->second.empty())
+                    setenv("SIRENWM_IPC_SOCKET", it_ipc->second.c_str(), 1);
                 auto it_display = adopted.env.find("DISPLAY");
                 if (it_display != adopted.env.end() && !it_display->second.empty())
                     setenv("DISPLAY", it_display->second.c_str(), 1);
@@ -161,7 +164,7 @@ bool ensure_embedded_display_server(const std::string& exec_path, bool from_exec
     ManagedChildSpec spec;
     spec.role              = "display-server";
     spec.argv              = { exec_path, "--display-server" };
-    spec.required_env_keys = { "WAYLAND_DISPLAY" };
+    spec.required_env_keys = { "WAYLAND_DISPLAY", "SIRENWM_IPC_SOCKET" };
 
     ManagedChildInfo child;
     std::string      err;
@@ -176,6 +179,10 @@ bool ensure_embedded_display_server(const std::string& exec_path, bool from_exec
         return false;
     }
     setenv("WAYLAND_DISPLAY", it_wayland->second.c_str(), 1);
+
+    auto it_ipc = child.env.find("SIRENWM_IPC_SOCKET");
+    if (it_ipc != child.env.end() && !it_ipc->second.empty())
+        setenv("SIRENWM_IPC_SOCKET", it_ipc->second.c_str(), 1);
 
     auto it_display = child.env.find("DISPLAY");
     if (it_display != child.env.end() && !it_display->second.empty())

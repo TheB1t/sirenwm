@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <vector>
 
-#include <lua_host.hpp>
-#include <module.hpp>
-#include <runtime_store.hpp>
-#include <vec.hpp>
+#include <lua/lua_host.hpp>
+#include <runtime/module.hpp>
+#include <runtime/runtime_store.hpp>
+#include <support/vec.hpp>
 
 namespace backend { class InputPort; }
 

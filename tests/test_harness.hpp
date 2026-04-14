@@ -9,9 +9,9 @@
 //   h.start();                              // call on_start on all modules
 //   h.core.dispatch(command::atom::MapWindow{…}); // drive the state machine
 
-#include <core.hpp>
-#include <event_receiver.hpp>
-#include <runtime.hpp>
+#include <domain/core.hpp>
+#include <runtime/event_receiver.hpp>
+#include <runtime/runtime.hpp>
 
 #include <variant>
 #include <vector>

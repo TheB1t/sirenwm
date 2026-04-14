@@ -1,5 +1,5 @@
-#include <runtime_config.hpp>
-#include <lua_host.hpp>
+#include <config/runtime_config.hpp>
+#include <lua/lua_host.hpp>
 
 // GCC 14 false positive: -Wfree-nonheap-object triggered by recursive
 // std::variant<..., std::unordered_map<std::string, RuntimeValue>> destruction

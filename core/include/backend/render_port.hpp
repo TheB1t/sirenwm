@@ -5,7 +5,7 @@
 
 #include <backend/events.hpp>
 #include <cairo/cairo.h>
-#include <vec.hpp>
+#include <support/vec.hpp>
 
 namespace backend {
 

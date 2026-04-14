@@ -4,7 +4,7 @@
 #include <cstring>
 #include <string_view>
 
-#include <message.hpp>
+#include <support/message.hpp>
 
 // ---------------------------------------------------------------------------
 // Keyboard protocol.

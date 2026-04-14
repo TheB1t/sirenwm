@@ -1,7 +1,7 @@
-#include <core.hpp>
-#include <layout.hpp>
-#include <log.hpp>
-#include <lua_helpers.hpp>
+#include <domain/core.hpp>
+#include <domain/layout.hpp>
+#include <support/log.hpp>
+#include <lua/lua_helpers.hpp>
 
 // Apply WM_NORMAL_HINTS size constraints to a requested size.
 // Clamps to [min, max] then snaps to the nearest increment grid.

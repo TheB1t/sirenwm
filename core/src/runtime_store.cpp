@@ -1,7 +1,7 @@
-#include <runtime_store.hpp>
+#include <runtime/runtime_store.hpp>
 
-#include <log.hpp>
-#include <lua_host.hpp>  // LuaContext
+#include <support/log.hpp>
+#include <lua/lua_host.hpp>  // LuaContext
 
 // ---------------------------------------------------------------------------
 // RuntimeStore

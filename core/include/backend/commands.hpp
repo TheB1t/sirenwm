@@ -6,9 +6,9 @@
 #include <vector>
 
 #include <backend/events.hpp>
-#include <monitor.hpp>
-#include <vec.hpp>
-#include <window_state.hpp>
+#include <domain/monitor.hpp>
+#include <support/vec.hpp>
+#include <domain/window_state.hpp>
 
 // ---------------------------------------------------------------------------
 // Command surface — two typed layers over the core reducer.

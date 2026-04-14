@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <backend/commands.hpp>
-#include <core.hpp>
+#include <domain/core.hpp>
 
 #include "test_harness.hpp"
 

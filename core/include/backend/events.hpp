@@ -11,8 +11,8 @@
 #include <cstdint>
 #include <string>
 
-#include <message.hpp>
-#include <vec.hpp>
+#include <support/message.hpp>
+#include <support/vec.hpp>
 
 using WindowId = uint32_t;
 static constexpr WindowId NO_WINDOW = 0;

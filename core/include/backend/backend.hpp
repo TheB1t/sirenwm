@@ -10,9 +10,9 @@
 #include <backend/commands.hpp>
 #include <backend/events.hpp>
 #include <backend/render_port.hpp>
-#include <event_receiver.hpp>
-#include <hook_registry.hpp>
-#include <window.hpp>
+#include <runtime/event_receiver.hpp>
+#include <runtime/hook_registry.hpp>
+#include <domain/window.hpp>
 
 class Core;
 class Runtime;

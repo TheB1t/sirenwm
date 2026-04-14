@@ -84,6 +84,11 @@ target_link_libraries(sirenwm_core PUBLIC
 )
 
 # ---------------------------------------------------------------------------
+# IPC foundation
+# ---------------------------------------------------------------------------
+add_subdirectory(libipc)
+
+# ---------------------------------------------------------------------------
 # libxcb (shared XCB wrappers)
 # ---------------------------------------------------------------------------
 add_subdirectory(libxcb)
@@ -105,8 +110,6 @@ if(SIRENWM_BACKEND STREQUAL "x11")
     list(APPEND SIRENWM_BACKEND_LINK_LIBS xkbcommon)
     set(SIRENWM_BACKEND_DEFINE "SIRENWM_BACKEND_X11")
 elseif(SIRENWM_BACKEND STREQUAL "wayland")
-    add_subdirectory(libwl)
-    add_subdirectory(libwlproto)
     add_subdirectory(libwlserver)
     include(backends/wayland/backend.cmake)
     list(APPEND SIRENWM_APP_LINK_LIBS wlserver)
