@@ -159,8 +159,16 @@ void Admin::set_listener(AdminListener* listener) { listener_ = listener; }
 bool Admin::has_admin() const { return admin_resource_ != nullptr; }
 
 bool Admin::is_intercepted(uint32_t keysym, uint32_t mods) const {
-    for (const auto& ki : intercepts_)
-        if (ki.keysym == keysym && (ki.mods & mods) == ki.mods) return true;
+    constexpr uint32_t kModMask      = 0xFFu;
+    constexpr uint32_t kCapsLockMask = 0x02u;
+    constexpr uint32_t kNumLockMask  = 0x10u;
+    const uint32_t     state         = (mods & kModMask) & ~(kCapsLockMask | kNumLockMask);
+
+    for (const auto& ki : intercepts_) {
+        uint32_t wanted = (ki.mods & kModMask) & ~(kCapsLockMask | kNumLockMask);
+        if (ki.keysym == keysym && (state & wanted) == wanted)
+            return true;
+    }
     return false;
 }
 

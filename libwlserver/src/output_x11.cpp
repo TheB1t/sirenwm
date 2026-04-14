@@ -51,8 +51,9 @@ OutputX11::OutputX11(int width, int height)
 
     setup_wm_delete();
 
-    auto cursor = create_left_ptr_cursor();
-    uint32_t cursor_val = cursor;
+    default_cursor_   = create_left_ptr_cursor();
+    invisible_cursor_ = create_invisible_cursor();
+    uint32_t cursor_val = default_cursor_;
     change_window_attributes(window_, XCB_CW_CURSOR, &cursor_val);
 
     map_window(window_);
@@ -64,11 +65,31 @@ OutputX11::OutputX11(int width, int height)
 }
 
 OutputX11::~OutputX11() {
+    if (conn_) {
+        if (default_cursor_ != XCB_CURSOR_NONE)
+            free_cursor(default_cursor_);
+        if (invisible_cursor_ != XCB_CURSOR_NONE)
+            free_cursor(invisible_cursor_);
+    }
     if (back_surface_) cairo_surface_destroy(back_surface_);
     if (back_pixmap_ && conn_) xcb_free_pixmap(conn_, back_pixmap_);
     if (cairo_surface_) cairo_surface_destroy(cairo_surface_);
     if (conn_ && window_)
         destroy_window(window_);
+}
+
+void OutputX11::set_cursor_surface(wl::server::SurfaceId sid,
+                                    int32_t hotspot_x, int32_t hotspot_y) {
+    cursor_surface_   = sid;
+    cursor_hotspot_x_ = hotspot_x;
+    cursor_hotspot_y_ = hotspot_y;
+
+    uint32_t cursor = default_cursor_;
+    if (cursor_surface_ && invisible_cursor_ != XCB_CURSOR_NONE)
+        cursor = invisible_cursor_;
+
+    change_window_attributes(window_, XCB_CW_CURSOR, &cursor);
+    repaint_needed_ = true;
 }
 
 void OutputX11::create_back_buffer() {
@@ -110,54 +131,88 @@ void OutputX11::handle_key_press(xcb_key_press_event_t* ev, Admin& admin, wl::se
     uint32_t evdev_key = ev->detail - 8;
     uint32_t keysym = seat.resolve_keysym(evdev_key);
     seat.update_xkb_state(evdev_key, true);
-    if (admin.is_intercepted(keysym, ev->state))
+    if (admin.is_intercepted(keysym, ev->state)) {
+        intercepted_keys_.insert(evdev_key);
         admin.key_press(evdev_key, keysym, ev->state);
-    else
+    } else {
         seat.send_key(ev->time, evdev_key, true);
+    }
+    seat.send_current_modifiers();
 }
 
 void OutputX11::handle_key_release(xcb_key_release_event_t* ev, wl::server::Seat& seat) {
     uint32_t evdev_key = ev->detail - 8;
     seat.update_xkb_state(evdev_key, false);
-    seat.send_key(ev->time, evdev_key, false);
+    if (!intercepted_keys_.erase(evdev_key))
+        seat.send_key(ev->time, evdev_key, false);
+    seat.send_current_modifiers();
 }
 
 void OutputX11::handle_button_press(xcb_button_press_event_t* ev, Admin& admin, wl::server::Seat& seat) {
-    auto* ov = admin.overlay_manager().overlay_at(ev->event_x, ev->event_y);
+    const int32_t px = ev->root_x;
+    const int32_t py = ev->root_y;
+    pointer_x_ = px;
+    pointer_y_ = py;
+    pointer_valid_ = true;
+    auto* ov = admin.overlay_manager().overlay_at(px, py);
     uint32_t button = 0x110 + ev->detail - 1;
     if (ov) {
-        admin.overlay_button(ov->id, ev->event_x - ov->x, ev->event_y - ov->y, button, false);
+        admin.overlay_button(ov->id, px - ov->x, py - ov->y, button, false);
         return;
     }
     uint32_t sid = pointer_grabbed_ ? pointer_surface_
-                                    : admin.surface_at(ev->event_x, ev->event_y);
-    admin.button_press(sid, ev->event_x, ev->event_y, button, ev->state, false);
+                                    : admin.surface_at(px, py);
+    if (!pointer_grabbed_ && sid != 0 && sid != pointer_surface_) {
+        pointer_surface_ = sid;
+        admin.pointer_enter(sid);
+        auto surface = surface_id_for_admin(sid, admin);
+        if (surface) {
+            auto* surf = admin.surface(sid);
+            seat.send_pointer_enter(surface,
+                                    surf ? px - surf->x : 0,
+                                    surf ? py - surf->y : 0);
+        }
+    }
+    admin.button_press(sid, px, py, button, ev->state, false);
     if (!pointer_grabbed_)
         seat.send_pointer_button(ev->time, button, true);
 }
 
 void OutputX11::handle_button_release(xcb_button_release_event_t* ev, Admin& admin, wl::server::Seat& seat) {
-    auto* ov = admin.overlay_manager().overlay_at(ev->event_x, ev->event_y);
+    const int32_t px = ev->root_x;
+    const int32_t py = ev->root_y;
+    pointer_x_ = px;
+    pointer_y_ = py;
+    pointer_valid_ = true;
+    auto* ov = admin.overlay_manager().overlay_at(px, py);
     uint32_t button = 0x110 + ev->detail - 1;
     if (ov) {
-        admin.overlay_button(ov->id, ev->event_x - ov->x, ev->event_y - ov->y, button, true);
+        admin.overlay_button(ov->id, px - ov->x, py - ov->y, button, true);
         return;
     }
     uint32_t sid = pointer_grabbed_ ? pointer_surface_
-                                    : admin.surface_at(ev->event_x, ev->event_y);
-    admin.button_press(sid, ev->event_x, ev->event_y, button, ev->state, true);
+                                    : admin.surface_at(px, py);
+    admin.button_press(sid, px, py, button, ev->state, true);
     if (!pointer_grabbed_)
         seat.send_pointer_button(ev->time, button, false);
 }
 
 void OutputX11::handle_motion_notify(xcb_motion_notify_event_t* ev,
                                       Admin& admin, wl::server::Seat& seat, wl::server::XdgShell&) {
+    const int32_t px = ev->root_x;
+    const int32_t py = ev->root_y;
+    pointer_x_ = px;
+    pointer_y_ = py;
+    pointer_valid_ = true;
+    const bool has_sw_cursor = static_cast<bool>(cursor_surface_);
     if (pointer_grabbed_) {
-        admin.pointer_motion(pointer_surface_, ev->event_x, ev->event_y, ev->state);
+        admin.pointer_motion(pointer_surface_, px, py, ev->state);
+        if (has_sw_cursor)
+            repaint_needed_ = true;
         return;
     }
 
-    uint32_t sid = admin.surface_at(ev->event_x, ev->event_y);
+    uint32_t sid = admin.surface_at(px, py);
     if (sid != pointer_surface_) {
         uint32_t old_sid = pointer_surface_;
         pointer_surface_ = sid;
@@ -173,18 +228,20 @@ void OutputX11::handle_motion_notify(xcb_motion_notify_event_t* ev,
             if (surface) {
                 auto* surf = admin.surface(sid);
                 seat.send_pointer_enter(surface,
-                                        surf ? ev->event_x - surf->x : 0,
-                                        surf ? ev->event_y - surf->y : 0);
+                                        surf ? px - surf->x : 0,
+                                        surf ? py - surf->y : 0);
             }
         }
     }
 
-    admin.pointer_motion(sid, ev->event_x, ev->event_y, ev->state);
+    admin.pointer_motion(sid, px, py, ev->state);
     auto* surf = admin.surface(sid);
     if (surf)
         seat.send_pointer_motion(ev->time,
-                                 ev->event_x - surf->x,
-                                 ev->event_y - surf->y);
+                                 px - surf->x,
+                                 py - surf->y);
+    if (has_sw_cursor)
+        repaint_needed_ = true;
 }
 
 bool OutputX11::pump_events(Admin& admin, wl::server::Seat& seat, wl::server::XdgShell& xdg_shell) {
@@ -280,6 +337,23 @@ void OutputX11::repaint(wl::server::Compositor& compositor, wl::server::XdgShell
         cairo_set_source_surface(cr, img, ov.x, ov.y);
         cairo_paint(cr);
         cairo_surface_destroy(img);
+    }
+
+    if (pointer_valid_ && cursor_surface_) {
+        auto bv = compositor.buffer_view(cursor_surface_);
+        if (bv.data && bv.width > 0 && bv.height > 0 && bv.stride > 0) {
+            cairo_format_t fmt = CAIRO_FORMAT_ARGB32;
+            if (bv.format == 1)
+                fmt = CAIRO_FORMAT_RGB24;
+            auto* img = cairo_image_surface_create_for_data(
+                static_cast<unsigned char*>(bv.data),
+                fmt, bv.width, bv.height, bv.stride);
+            cairo_set_source_surface(cr, img,
+                                     pointer_x_ - cursor_hotspot_x_,
+                                     pointer_y_ - cursor_hotspot_y_);
+            cairo_paint(cr);
+            cairo_surface_destroy(img);
+        }
     }
 
     cairo_destroy(cr);

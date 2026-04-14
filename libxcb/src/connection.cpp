@@ -434,6 +434,26 @@ xcb_cursor_t Connection::create_left_ptr_cursor() {
     return cursor;
 }
 
+xcb_cursor_t Connection::create_invisible_cursor() {
+    xcb_pixmap_t pix = xcb_generate_id(conn_);
+    xcb_create_pixmap(conn_, 1, pix, root(), 1, 1);
+
+    xcb_gcontext_t gc = xcb_generate_id(conn_);
+    uint32_t       gc_values[] = { 0 };
+    xcb_create_gc(conn_, gc, pix, XCB_GC_FOREGROUND, gc_values);
+    xcb_rectangle_t rect { 0, 0, 1, 1 };
+    xcb_poly_fill_rectangle(conn_, pix, gc, 1, &rect);
+
+    xcb_cursor_t cursor = xcb_generate_id(conn_);
+    xcb_create_cursor(conn_, cursor, pix, pix,
+                      0, 0, 0, 0, 0, 0, 0, 0);
+
+    xcb_free_gc(conn_, gc);
+    xcb_free_pixmap(conn_, pix);
+    dirty_ = true;
+    return cursor;
+}
+
 void Connection::free_cursor(xcb_cursor_t cursor) {
     xcb_free_cursor(conn_, cursor);
     dirty_ = true;

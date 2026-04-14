@@ -144,6 +144,7 @@ public:
 
     // Cursor
     xcb_cursor_t create_left_ptr_cursor();
+    xcb_cursor_t create_invisible_cursor();
     void         free_cursor(xcb_cursor_t cursor);
 
     // Flush unconditionally

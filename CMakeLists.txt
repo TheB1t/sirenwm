@@ -140,7 +140,10 @@ endif()
 # ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
-add_executable(${PROJECT_NAME} src/main.cpp)
+add_executable(${PROJECT_NAME}
+    src/main.cpp
+    src/process/child_process_registry.cpp
+)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME ${SIRENWM_BINARY_NAME}
 )

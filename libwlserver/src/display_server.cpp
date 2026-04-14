@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <poll.h>
+#include <signal.h>
 
 namespace wl::server {
 
@@ -82,6 +83,12 @@ struct MainAdminListener final : AdminListener {
     }
     void on_activate(uint32_t id, bool activated) override {
         if (xwayland.is_xwayland_surface(id)) {
+            if (auto* surf = admin.surface(id); surf && surf->wl_surface_id) {
+                if (activated)
+                    seat.send_keyboard_enter(surf->wl_surface_id);
+                else
+                    seat.send_keyboard_leave(surf->wl_surface_id);
+            }
             xwayland.activate_window(id, activated);
             return;
         }
@@ -104,6 +111,10 @@ struct MainAdminListener final : AdminListener {
 } // namespace
 
 int run_display_server(const DisplayServerOptions& options) {
+    // Xwayland can notify readiness via SIGUSR1; displayfd is authoritative for us.
+    // Ignore SIGUSR1 so the display-server process does not terminate unexpectedly.
+    signal(SIGUSR1, SIG_IGN);
+
     const int width  = options.width;
     const int height = options.height;
 
@@ -131,6 +142,12 @@ int run_display_server(const DisplayServerOptions& options) {
         return EXIT_FAILURE;
     }
 
+    seat.set_cursor_update_callback(
+        [&output](SurfaceId sid, int32_t hotspot_x, int32_t hotspot_y) {
+            output.set_cursor_surface(sid, hotspot_x, hotspot_y);
+            output.request_repaint();
+        });
+
     overlay_mgr.set_on_changed([&output]() { output.request_repaint(); });
 
     MainAdminListener listener(xdg_shell, admin, seat, output, xwayland);
@@ -139,7 +156,7 @@ int run_display_server(const DisplayServerOptions& options) {
     admin.output_added(1, "X11-1", 0, 0, width, height, 60000);
 
     std::fprintf(stdout, "WAYLAND_DISPLAY=%s\n", socket.c_str());
-    if (xwayland.valid()) {
+    if (!xwayland.display_name().empty()) {
         std::fprintf(stdout, "DISPLAY=%s\n", xwayland.display_name().c_str());
         setenv("DISPLAY", xwayland.display_name().c_str(), 1);
         std::fprintf(stderr, "sirenwm-wayland(display-server): XWayland on DISPLAY=%s\n",

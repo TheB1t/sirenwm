@@ -104,6 +104,8 @@ void WlBackend::render_frame() {
             set_surface_visible(e.window, 0);
             break;
         case BackendEffectKind::FocusWindow:
+            if (prev_focused_ != NO_WINDOW && prev_focused_ != e.window)
+                set_surface_activated(prev_focused_, 0);
             if (e.window != NO_WINDOW) {
                 set_surface_activated(e.window, 1);
                 set_surface_border(e.window, 0, 0);
@@ -120,6 +122,7 @@ void WlBackend::render_frame() {
             break;
         case BackendEffectKind::FocusRoot:
             if (prev_focused_ != NO_WINDOW) {
+                set_surface_activated(prev_focused_, 0);
                 auto prev = core.window_state(prev_focused_);
                 if (prev && prev->border_width > 0)
                     set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
@@ -245,6 +248,9 @@ void WlBackend::on_surface_destroyed(uint32_t id) {
     auto wid = static_cast<WindowId>(id);
     LOG_INFO("WlBackend: surface %u destroyed", id);
     auto& core = runtime_.core;
+    bool was_focused = false;
+    if (auto focused = core.focused_window_state())
+        was_focused = (focused->id == wid);
     bool was_visible = false;
     {
         int ws_id = core.workspace_of_window(wid);
@@ -257,6 +263,12 @@ void WlBackend::on_surface_destroyed(uint32_t id) {
 
     if (was_visible) {
         (void)core.dispatch(command::atom::ReconcileNow{});
+        if (was_focused) {
+            if (auto next = core.focused_window_state(); next && next->is_visible())
+                (void)core.dispatch(command::atom::FocusWindow{ next->id });
+            else
+                (void)core.dispatch(command::composite::FocusNextWindow{});
+        }
     }
 
     if (prev_focused_ == wid)
@@ -298,6 +310,13 @@ void WlBackend::on_key_press(uint32_t keycode, uint32_t keysym, uint32_t mods) {
 
 void WlBackend::on_button_press(uint32_t surface_id, int32_t x, int32_t y,
                                  uint32_t button, uint32_t mods, uint32_t released) {
+    if (!released && surface_id != 0) {
+        auto& core = runtime_.core;
+        auto  wid  = static_cast<WindowId>(surface_id);
+        if (auto window = core.window_state_any(wid); window && window->is_visible())
+            (void)core.dispatch(command::atom::FocusWindow{ wid });
+    }
+
     runtime_.post_event(event::ButtonEv{
         .window    = static_cast<WindowId>(surface_id),
         .root      = static_cast<WindowId>(surface_id),

@@ -86,7 +86,26 @@ void Seat::add_keyboard(wl_client* client, uint32_t id, int ver) {
 
 void Seat::add_pointer(wl_client* client, uint32_t id, int ver) {
     static const struct wl_pointer_interface ptr_vtable = {
-        .set_cursor = [](wl_client*, wl_resource*, uint32_t, wl_resource*, int32_t, int32_t) {},
+        .set_cursor = [](wl_client* client, wl_resource* r, uint32_t,
+                         wl_resource* surface, int32_t hotspot_x, int32_t hotspot_y) {
+            auto* self = static_cast<Seat*>(wl_resource_get_user_data(r));
+            if (!self || !self->cursor_update_)
+                return;
+
+            auto* pointed = self->resolve(self->pointer_surface_);
+            if (!pointed || wl_resource_get_client(pointed) != client)
+                return;
+
+            if (!surface) {
+                self->cursor_update_(SurfaceId{}, 0, 0);
+                return;
+            }
+
+            auto sid = self->compositor_.id_from_resource(surface);
+            if (!sid)
+                return;
+            self->cursor_update_(sid, hotspot_x, hotspot_y);
+        },
         .release    = [](wl_client*, wl_resource* r) { wl_resource_destroy(r); },
     };
 
@@ -139,6 +158,15 @@ wl_resource* Seat::pointer_for(wl_resource* surface) const {
 void Seat::send_keyboard_enter(SurfaceId surface) {
     auto* res = resolve(surface);
     if (!res) return;
+    if (focused_surface_ == surface) return;
+
+    auto* previous = resolve(focused_surface_);
+    if (previous) {
+        auto* old_kb = keyboard_for(previous);
+        if (old_kb)
+            wl_keyboard_send_leave(old_kb, next_serial(), previous);
+    }
+
     auto* kb = keyboard_for(res);
     if (!kb) return;
     focused_surface_ = surface;
@@ -146,14 +174,24 @@ void Seat::send_keyboard_enter(SurfaceId surface) {
     wl_array_init(&keys);
     wl_keyboard_send_enter(kb, next_serial(), res, &keys);
     wl_array_release(&keys);
+    send_current_modifiers();
 }
 
 void Seat::send_keyboard_leave(SurfaceId surface) {
     auto* res = resolve(surface);
-    if (!res) return;
+    if (!res) {
+        if (focused_surface_ == surface)
+            focused_surface_ = SurfaceId{};
+        return;
+    }
     auto* kb = keyboard_for(res);
-    if (!kb) return;
-    if (focused_surface_ == surface) focused_surface_ = SurfaceId{};
+    if (!kb) {
+        if (focused_surface_ == surface)
+            focused_surface_ = SurfaceId{};
+        return;
+    }
+    if (focused_surface_ == surface)
+        focused_surface_ = SurfaceId{};
     wl_keyboard_send_leave(kb, next_serial(), res);
 }
 
@@ -182,6 +220,16 @@ void Seat::send_modifiers(uint32_t depressed, uint32_t latched,
     wl_keyboard_send_modifiers(kb, next_serial(), depressed, latched, locked, group);
 }
 
+void Seat::send_current_modifiers() {
+    if (!xkb_state_)
+        return;
+    const uint32_t depressed = xkb_state_serialize_mods(xkb_state_, XKB_STATE_MODS_DEPRESSED);
+    const uint32_t latched   = xkb_state_serialize_mods(xkb_state_, XKB_STATE_MODS_LATCHED);
+    const uint32_t locked    = xkb_state_serialize_mods(xkb_state_, XKB_STATE_MODS_LOCKED);
+    const uint32_t group     = xkb_state_serialize_layout(xkb_state_, XKB_STATE_LAYOUT_EFFECTIVE);
+    send_modifiers(depressed, latched, locked, group);
+}
+
 void Seat::send_pointer_enter(SurfaceId surface, int32_t x, int32_t y) {
     auto* res = resolve(surface);
     if (!res) return;
@@ -197,6 +245,8 @@ void Seat::send_pointer_enter(SurfaceId surface, int32_t x, int32_t y) {
     pointer_surface_ = surface;
     wl_pointer_send_enter(ptr, next_serial(), res,
                           wl_fixed_from_int(x), wl_fixed_from_int(y));
+    if (wl_resource_get_version(ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
+        wl_pointer_send_frame(ptr);
 }
 
 void Seat::send_pointer_leave(SurfaceId surface) {
@@ -210,6 +260,10 @@ void Seat::send_pointer_leave(SurfaceId surface) {
     if (!ptr) return;
     if (pointer_surface_ == surface) pointer_surface_ = SurfaceId{};
     wl_pointer_send_leave(ptr, next_serial(), res);
+    if (wl_resource_get_version(ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
+        wl_pointer_send_frame(ptr);
+    if (cursor_update_ && pointer_surface_ == SurfaceId{})
+        cursor_update_(SurfaceId{}, 0, 0);
 }
 
 void Seat::send_pointer_motion(uint32_t time, int32_t x, int32_t y) {
@@ -221,6 +275,8 @@ void Seat::send_pointer_motion(uint32_t time, int32_t x, int32_t y) {
     auto* ptr = pointer_for(pointed);
     if (!ptr) return;
     wl_pointer_send_motion(ptr, time, wl_fixed_from_int(x), wl_fixed_from_int(y));
+    if (wl_resource_get_version(ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
+        wl_pointer_send_frame(ptr);
 }
 
 void Seat::send_pointer_button(uint32_t time, uint32_t button, bool pressed) {
@@ -234,6 +290,8 @@ void Seat::send_pointer_button(uint32_t time, uint32_t button, bool pressed) {
     wl_pointer_send_button(ptr, next_serial(), time, button,
                            pressed ? WL_POINTER_BUTTON_STATE_PRESSED
                                    : WL_POINTER_BUTTON_STATE_RELEASED);
+    if (wl_resource_get_version(ptr) >= WL_POINTER_FRAME_SINCE_VERSION)
+        wl_pointer_send_frame(ptr);
 }
 
 uint32_t Seat::resolve_keysym(uint32_t evdev_keycode) const {

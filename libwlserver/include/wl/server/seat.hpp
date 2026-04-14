@@ -5,6 +5,7 @@
 #include <wl/server/surface_id.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -30,11 +31,15 @@ public:
     void send_key(uint32_t time, uint32_t key, bool pressed);
     void send_modifiers(uint32_t mods_depressed, uint32_t mods_latched,
                         uint32_t mods_locked, uint32_t group);
+    void send_current_modifiers();
 
     void send_pointer_enter(SurfaceId surface, int32_t x, int32_t y);
     void send_pointer_leave(SurfaceId surface);
     void send_pointer_motion(uint32_t time, int32_t x, int32_t y);
     void send_pointer_button(uint32_t time, uint32_t button, bool pressed);
+    void set_cursor_update_callback(std::function<void(SurfaceId, int32_t, int32_t)> cb) {
+        cursor_update_ = std::move(cb);
+    }
 
     uint32_t resolve_keysym(uint32_t evdev_keycode) const;
     void update_xkb_state(uint32_t evdev_keycode, bool pressed);
@@ -52,6 +57,7 @@ private:
     std::vector<wl_resource*> pointers_;
     SurfaceId focused_surface_;
     SurfaceId pointer_surface_;
+    std::function<void(SurfaceId, int32_t, int32_t)> cursor_update_;
 
     xkb_context* xkb_ctx_    = nullptr;
     xkb_keymap*  xkb_keymap_ = nullptr;
