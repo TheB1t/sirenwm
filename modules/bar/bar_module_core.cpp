@@ -346,7 +346,7 @@ static bool load_bar_set_config(LuaHost& host, const ThemeConfig& theme,
 // Helpers
 // ---------------------------------------------------------------------------
 
-std::string BarModule::monitor_alias(int mon_idx) const {
+std::string BarModule::monitor_alias(MonitorId mon_idx) const {
     const auto& aliases  = core.current_settings().monitor_aliases;
     const auto& monitors = core.monitor_states();
     if (mon_idx < 0 || mon_idx >= (int)monitors.size())
@@ -390,13 +390,14 @@ void BarModule::rebuild_bars() {
         };
 
     for (int i = 0; i < (int)monitors.size(); i++) {
-        std::string      alias = monitor_alias(i);
+        MonitorId        mi    = MonitorId{ i };
+        std::string      alias = monitor_alias(mi);
         MonitorBarConfig mcfg  = bar_set_cfg_.resolve(alias);
 
         // Physical rect of this monitor: undo any currently applied insets so
         // new bars position correctly even while old ones are still in effect.
         auto [phy_pos, phy_size] = monitors[i].physical();
-        MonRect m{ i, phy_pos, phy_size, alias };
+        MonRect m{ mi, phy_pos, phy_size, alias };
 
         int     top_h    = 0;
         int     bottom_h = 0;
@@ -414,15 +415,15 @@ void BarModule::rebuild_bars() {
             BarConfig bottom_cfg = mcfg.bottom.cfg;
             if (bottom_cfg.height <= 0) bottom_cfg.height = kBarDefaultHeight;
             if (has_content(bottom_cfg)) {
-                MonRect mb{ i, { phy_pos.x(), phy_pos.y() + phy_size.y() - bottom_cfg.height },
+                MonRect mb{ mi, { phy_pos.x(), phy_pos.y() + phy_size.y() - bottom_cfg.height },
                             phy_size, alias };
                 create_bar_window(mb, bottom_cfg, false);
                 bottom_h = bottom_cfg.height;
             }
         }
 
-        (void)core.dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Top, top_h });
-        (void)core.dispatch(command::atom::ReserveMonitorArea{ i, MonitorEdge::Bottom, bottom_h });
+        (void)core.dispatch(command::atom::ReserveMonitorArea{ mi, MonitorEdge::Top, top_h });
+        (void)core.dispatch(command::atom::ReserveMonitorArea{ mi, MonitorEdge::Bottom, bottom_h });
     }
 }
 
@@ -434,16 +435,16 @@ bool BarModule::parse_setup(LuaContext& lua, int table_idx, std::string& err) {
 void BarModule::on_init() {
     store.register_setting("bar_set", bar_set_setting_);
 
-    state_provider = [this](int mon_idx) -> BarState {
+    state_provider = [this](MonitorId mon_idx) -> BarState {
             BarState    s;
             const auto& monitors = core.monitor_states();
             if (monitors.empty()) return s;
 
-            int mon_ws = (mon_idx >= 0 && mon_idx < (int)monitors.size())
+            WorkspaceId mon_ws = (mon_idx >= 0 && mon_idx < (int)monitors.size())
                      ? monitors[mon_idx].active_ws
                      : monitors[core.focused_monitor_index()].active_ws;
 
-            const int safe_mon_idx = (mon_idx >= 0 && mon_idx < (int)monitors.size())
+            const MonitorId safe_mon_idx = (mon_idx >= 0 && mon_idx < (int)monitors.size())
             ? mon_idx : core.focused_monitor_index();
 
             const auto& ws_ids = core.monitor_workspace_ids(safe_mon_idx);
@@ -610,8 +611,8 @@ void BarModule::rebuild_trays() {
     // bar windows (and therefore all previous trays attached to them). Choose one
     // top bar to own the _NET_SYSTEM_TRAY_S selection: prefer focused monitor,
     // fall back to the first top bar.
-    int focused_mon = core.focused_monitor_index();
-    int owner_mon   = -1;
+    MonitorId focused_mon = core.focused_monitor_index();
+    MonitorId owner_mon   = NO_MONITOR;
     for (auto& b : all_bars_) {
         if (!b.is_top || !b.window) continue;
         if (b.window->monitor_index() == focused_mon) {
@@ -630,20 +631,20 @@ void BarModule::rebuild_trays() {
     int created = 0;
     for (auto& b : all_bars_) {
         if (!b.is_top || !b.window) continue;
-        int  mon_idx       = b.window->monitor_index();
-        bool own_selection = (mon_idx == owner_mon);
+        MonitorId mon_idx       = b.window->monitor_index();
+        bool      own_selection = (mon_idx == owner_mon);
 
         auto tray = runtime.create_tray(*b.window, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
-            LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx);
+            LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx.get());
             continue;
         }
         LOG_INFO("Bar: tray 0x%x created for monitor %d (owner=%d)",
-            tray->window(), mon_idx, own_selection ? 1 : 0);
+            tray->window(), mon_idx.get(), own_selection ? 1 : 0);
         b.tray = std::move(tray);
         created++;
     }
-    LOG_INFO("Bar: rebuild_trays done, %d tray(s), owner_mon=%d", created, owner_mon);
+    LOG_INFO("Bar: rebuild_trays done, %d tray(s), owner_mon=%d", created, owner_mon.get());
 }
 
 void BarModule::on(const event::CustomEvent& ev) {
@@ -651,7 +652,7 @@ void BarModule::on(const event::CustomEvent& ev) {
         backend::TrayHost* t = owner_tray();
         if (t && !t->contains_icon(docked->icon))
             t->adopt_icon(docked->icon);
-        int target = monitor_for_icon(docked->icon);
+        MonitorId target = monitor_for_icon(docked->icon);
         route_icon_to_monitor(docked->icon, target);
         redraw();
         return;

@@ -92,7 +92,7 @@ class FakeRenderWindow : public backend::RenderWindow {
     public:
         explicit FakeRenderWindow(WindowId id) : id_(id) {}
         WindowId id() const override { return id_; }
-        int monitor_index() const override { return 0; }
+        MonitorId monitor_index() const override { return MonitorId{ 0 }; }
         int x() const override { return 0; }
         int y() const override { return 0; }
         int width() const override { return 1920; }

@@ -12,14 +12,14 @@
 #include <unordered_set>
 #include <unistd.h>
 
-backend::TrayHost* BarModule::tray_for_monitor(int mon_idx) {
+backend::TrayHost* BarModule::tray_for_monitor(MonitorId mon_idx) {
     for (auto& b : all_bars_)
         if (b.is_top && b.tray && b.window && b.window->monitor_index() == mon_idx)
             return b.tray.get();
     return nullptr;
 }
 
-const backend::TrayHost* BarModule::tray_for_monitor(int mon_idx) const {
+const backend::TrayHost* BarModule::tray_for_monitor(MonitorId mon_idx) const {
     for (const auto& b : all_bars_)
         if (b.is_top && b.tray && b.window && b.window->monitor_index() == mon_idx)
             return b.tray.get();
@@ -33,8 +33,8 @@ backend::TrayHost* BarModule::owner_tray() {
     return nullptr;
 }
 
-int BarModule::monitor_for_icon(WindowId icon_win) const {
-    int         fallback = -1;
+MonitorId BarModule::monitor_for_icon(WindowId icon_win) const {
+    MonitorId   fallback = NO_MONITOR;
     std::string icon_class;
     for (const auto& b : all_bars_) {
         if (b.tray && b.window && b.tray->contains_icon(icon_win)) {
@@ -51,20 +51,20 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
             }
         }
         if (fallback < 0)
-            fallback = 0;
+            fallback = MonitorId{ 0 };
     }
 
     if (icon_class.empty())
         return fallback;
 
-    const auto&                  mons = core.monitor_states();
-    std::unordered_map<int, int> ws_owner_mon;
+    const auto&                              mons = core.monitor_states();
+    std::unordered_map<WorkspaceId, MonitorId> ws_owner_mon;
     for (int mon_idx = 0; mon_idx < (int)mons.size(); mon_idx++)
-        for (WorkspaceId ws_id : core.monitor_workspace_ids(mon_idx))
-            ws_owner_mon[ws_id] = mon_idx;
+        for (WorkspaceId ws_id : core.monitor_workspace_ids(MonitorId{ mon_idx }))
+            ws_owner_mon[ws_id] = MonitorId{ mon_idx };
 
-    int best_mon   = -1;
-    int best_score = -1;
+    MonitorId best_mon   = NO_MONITOR;
+    int       best_score = -1;
     for (auto win : core.all_window_ids()) {
         auto w = core.window_state_any(win);
         if (!w) continue;
@@ -82,9 +82,9 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
             || (base_of(wi) == icon_class) || (wi == base_of(icon_class));
         if (!match) continue;
 
-        int  ws_id     = core.workspace_of_window(win);
-        auto it_owner  = ws_owner_mon.find(ws_id);
-        int  owner_mon = (it_owner != ws_owner_mon.end()) ? it_owner->second : -1;
+        WorkspaceId ws_id     = core.workspace_of_window(win);
+        auto        it_owner  = ws_owner_mon.find(ws_id);
+        MonitorId   owner_mon = (it_owner != ws_owner_mon.end()) ? it_owner->second : NO_MONITOR;
 
         // Score by visibility (100), active workspace on its monitor (10), focused monitor (1).
         int score = 1;
@@ -101,7 +101,7 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
     return (best_mon >= 0) ? best_mon : fallback;
 }
 
-void BarModule::route_icon_to_monitor(WindowId icon_win, int target_mon) {
+void BarModule::route_icon_to_monitor(WindowId icon_win, MonitorId target_mon) {
     backend::TrayHost* src = nullptr;
     for (auto& b : all_bars_) {
         if (b.tray && b.tray->contains_icon(icon_win)) {
@@ -114,7 +114,7 @@ void BarModule::route_icon_to_monitor(WindowId icon_win, int target_mon) {
     backend::TrayHost* dst = tray_for_monitor(target_mon);
     if (!dst || dst == src) return;
 
-    LOG_INFO("Bar: transfer icon 0x%x -> monitor %d", icon_win, target_mon);
+    LOG_INFO("Bar: transfer icon 0x%x -> monitor %d", icon_win, target_mon.get());
     src->transfer_icon_to(*dst, icon_win);
 }
 
@@ -124,12 +124,12 @@ void BarModule::rebalance_tray_icons() {
             any_tray = true; break;
         }
     if (!any_tray) return;
-    std::vector<std::pair<WindowId, int>> to_route;
+    std::vector<std::pair<WindowId, MonitorId>> to_route;
     for (auto& b : all_bars_) {
         if (!b.tray || !b.window) continue;
-        int mon_idx = b.window->monitor_index();
+        MonitorId mon_idx = b.window->monitor_index();
         for (auto icon_win : b.tray->icon_windows()) {
-            int target = monitor_for_icon(icon_win);
+            MonitorId target = monitor_for_icon(icon_win);
             if (target != mon_idx)
                 to_route.emplace_back(icon_win, target);
         }
@@ -293,7 +293,7 @@ void BarModule::redraw() {
 void BarModule::raise_all() {
     for (auto& b : all_bars_) {
         if (!b.window) continue;
-        int                mon_idx = b.window->monitor_index();
+        MonitorId          mon_idx = b.window->monitor_index();
         backend::TrayHost* t       = b.is_top ? tray_for_monitor(mon_idx) : nullptr;
 
         if (core.monitor_has_visible_covering_window(mon_idx)) {

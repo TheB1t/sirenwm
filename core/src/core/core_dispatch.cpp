@@ -124,7 +124,7 @@ void Core::emit_focus_changed(WindowId window) {
 }
 
 void Core::pin_fullscreen_to_monitor(swm::Window& w, WorkspaceId ws_id) {
-    int         mon_idx = wsman.monitor_of_workspace(ws_id);
+    MonitorId   mon_idx = wsman.monitor_of_workspace(ws_id);
     if (mon_idx < 0) return;
     const auto& mons = wsman.all_monitor_states();
     if (mon_idx >= (int)mons.size()) return;
@@ -656,7 +656,7 @@ FullscreenLikeDecision Core::evaluate_fullscreen_like_request(WindowId win,
         return out;
 
     int         ws_id   = wsman.workspace_of_window(win);
-    int         mon_idx = wsman.monitor_of_workspace(ws_id);
+    MonitorId   mon_idx = wsman.monitor_of_workspace(ws_id);
     const auto& mons    = wsman.all_monitor_states();
     if (mon_idx < 0 || mon_idx >= (int)mons.size())
         return out;

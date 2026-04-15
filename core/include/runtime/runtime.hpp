@@ -36,7 +36,7 @@ class Backend;
 struct TestHarness;
 
 struct ModuleWindowCreateInfo {
-    int   monitor_index = -1;     // advisory; backend places by pos
+    MonitorId monitor_index = NO_MONITOR; // advisory; backend places by pos
     Vec2i pos;                    // root-space coordinates
     Vec2i size                = { 1, 1 };
     bool  want_expose         = false;

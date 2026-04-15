@@ -26,7 +26,7 @@ struct RestartWinState {
 
 struct RestartState {
     std::unordered_map<xcb_window_t, RestartWinState> windows;
-    std::unordered_map<int, int>                      monitor_active_ws; // monitor_idx -> ws_id
+    std::unordered_map<MonitorId, WorkspaceId>        monitor_active_ws; // monitor_idx -> ws_id
     bool had_file = false;
 };
 
@@ -48,9 +48,9 @@ RestartState load_restart_state() {
     std::string token;
     while (in >> token) {
         if (token == "MON") {
-            int mon_idx = -1, ws_id = -1;
-            if (in >> mon_idx >> ws_id)
-                out.monitor_active_ws[mon_idx] = ws_id;
+            int mon_idx_raw = -1, ws_id_raw = -1;
+            if (in >> mon_idx_raw >> ws_id_raw)
+                out.monitor_active_ws[MonitorId{ mon_idx_raw }] = WorkspaceId{ ws_id_raw };
         } else if (token == "WINDOW") {
             // "WINDOW <win_id> <ws_id> <floating> [<fullscreen> [<hidden_explicitly> [<borderless>]]]"
             // Extra fields are optional so older state files still parse correctly.

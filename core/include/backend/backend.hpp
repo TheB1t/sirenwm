@@ -27,7 +27,7 @@ class GLPort;
 struct StartupSnapshot {
     std::vector<struct ExistingWindowSnapshot> windows;
     // monitor_idx -> active_ws_id from exec-restart state file; empty on first start.
-    std::unordered_map<int, int>               monitor_active_ws;
+    std::unordered_map<MonitorId, WorkspaceId> monitor_active_ws;
 };
 
 struct ExistingWindowSnapshot {
@@ -41,7 +41,7 @@ struct ExistingWindowSnapshot {
 
     // Restart restore metadata (if loaded from restart snapshot file).
     bool from_restart              = false;
-    int  restart_workspace_id      = -1;
+    WorkspaceId restart_workspace_id = NO_WORKSPACE;
     bool restart_floating          = false;
     bool restart_fullscreen        = false;
     bool restart_hidden_explicitly = false;

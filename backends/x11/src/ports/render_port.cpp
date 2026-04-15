@@ -95,7 +95,7 @@ class X11RenderWindow final : public backend::RenderWindow {
         }
 
         WindowId id() const override { return win_; }
-        int monitor_index() const override { return monitor_index_; }
+        MonitorId monitor_index() const override { return monitor_index_; }
         int x() const override { return x_; }
         int y() const override { return y_; }
         int width() const override { return w_; }
@@ -140,7 +140,7 @@ class X11RenderWindow final : public backend::RenderWindow {
 
         xcb_window_t win_           = XCB_WINDOW_NONE;
         xcb_pixmap_t buf_           = XCB_PIXMAP_NONE;
-        int          monitor_index_ = -1;
+        MonitorId    monitor_index_ = NO_MONITOR;
         int          x_             = 0;
         int          y_             = 0;
         int          w_             = 1;

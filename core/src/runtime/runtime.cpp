@@ -134,7 +134,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
         if (!runtime.invoke_hook(hook::ShouldManageWindow{ snap.window }).manage)
             continue;
 
-        int restore_ws_id = snap.from_restart ? snap.restart_workspace_id : -1;
+        WorkspaceId restore_ws_id = snap.from_restart ? snap.restart_workspace_id : NO_WORKSPACE;
         (void)core.dispatch(command::atom::EnsureWindow{
                 .window       = snap.window,
                 .workspace_id = restore_ws_id,
@@ -207,20 +207,21 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
     bool        any_switched = false;
     if (any_restart) {
         for (int i = 0; i < (int)mons.size(); i++) {
-            int  ws_id = -1;
-            auto it    = mon_ws.find(i);
+            MonitorId   mi    = MonitorId{ i };
+            WorkspaceId ws_id = NO_WORKSPACE;
+            auto        it    = mon_ws.find(mi);
             if (it != mon_ws.end() && it->second >= 0 && it->second < core.workspace_count())
                 ws_id = it->second;
             else
                 ws_id = mons[(size_t)i].active_ws;
             if (ws_id >= 0) {
-                (void)core.dispatch(command::atom::SwitchWorkspace{ ws_id, i });
+                (void)core.dispatch(command::atom::SwitchWorkspace{ ws_id, mi });
                 any_switched = true;
             }
         }
     } else {
         WorkspaceId ws_id = NO_WORKSPACE;
-        int fmon  = core.focused_monitor_index();
+        MonitorId   fmon  = core.focused_monitor_index();
         if (fmon >= 0 && fmon < (int)mons.size())
             ws_id = mons[(size_t)fmon].active_ws;
         if (ws_id >= 0) {

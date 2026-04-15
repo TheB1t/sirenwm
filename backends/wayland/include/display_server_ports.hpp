@@ -57,7 +57,7 @@ class DisplayServerRenderWindow final : public RenderWindow {
         ~DisplayServerRenderWindow() override;
 
         WindowId id() const override { return id_; }
-        int monitor_index() const override { return monitor_index_; }
+        MonitorId monitor_index() const override { return monitor_index_; }
         int x() const override { return x_; }
         int y() const override { return y_; }
         int width() const override { return w_; }
@@ -75,7 +75,7 @@ class DisplayServerRenderWindow final : public RenderWindow {
         DisplayServerBackend& backend_;
         WindowId id_;
         uint32_t overlay_id_;
-        int      monitor_index_;
+        MonitorId monitor_index_;
         int      x_, y_, w_, h_;
         cairo_surface_t* surface_ = nullptr;
         cairo_t*         cr_      = nullptr;

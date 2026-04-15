@@ -75,7 +75,7 @@ void X11Backend::apply_core_backend_effects() {
                     // the arrange pass that ran before promote cannot leak.
                     if (xw->borderless && !xw->is_self_managed()) {
                         int         ws_id   = core.workspace_of_window(e.window);
-                        int         mon_idx = core.monitor_of_workspace(ws_id);
+                        MonitorId         mon_idx = core.monitor_of_workspace(ws_id);
                         const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
                             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();

@@ -116,7 +116,7 @@ void X11Backend::on(event::WindowAssignedToWorkspace ev) {
     // on a different monitor; tiled windows are handled by arrange().
     auto w = core.window_state_any(ev.window);
     if (w && w->floating) {
-        int         mon_idx = core.monitor_of_workspace(ev.workspace_id);
+        MonitorId   mon_idx = core.monitor_of_workspace(ev.workspace_id);
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
             const auto& mon = mons[(size_t)mon_idx];
@@ -166,11 +166,11 @@ void X11Backend::clear_pointer_barriers() {
         }
     }
     barrier_window_  = NO_WINDOW;
-    barrier_mon_idx_ = -1;
+    barrier_mon_idx_ = NO_MONITOR;
     LOG_DEBUG("pointer barriers cleared");
 }
 
-void X11Backend::set_pointer_barriers(WindowId win, int mon_idx) {
+void X11Backend::set_pointer_barriers(WindowId win, MonitorId mon_idx) {
     if (barrier_window_ == win && barrier_mon_idx_ == mon_idx)
         return;
     clear_pointer_barriers();

@@ -17,7 +17,7 @@ struct RenderWindowHints {
 
 struct RenderWindowCreateInfo {
     // Monitor index from Core topology (advisory for backend placement).
-    int               monitor_index = -1;
+    MonitorId         monitor_index = NO_MONITOR;
     Vec2i             pos;                          // root-space coordinates (global screen space)
     Vec2i             size                = { 1, 1 };
     uint32_t          background_pixel    = 0;
@@ -32,7 +32,7 @@ class RenderWindow {
         virtual ~RenderWindow() = default;
 
         virtual WindowId id() const            = 0;
-        virtual int      monitor_index() const = 0;
+        virtual MonitorId monitor_index() const = 0;
         virtual int      x() const             = 0;
         virtual int      y() const             = 0;
         virtual int      width() const         = 0;

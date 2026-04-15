@@ -69,28 +69,28 @@ class BarModule : public Module {
         bar::widgets::TitleWidget title_widget;
         bar::widgets::TrayWidget  tray_widget;
 
-        std::function<BarState(int mon_idx)> state_provider;
+        std::function<BarState(MonitorId mon_idx)> state_provider;
 
         int wakeup_pipe_wr_ = -1;                       // write-end of wakeup pipe
         EventLoop::FdHandle wakeup_pipe_rd_;       // read-end, owns fd + watch
         EventLoop::FdHandle widget_timer_;         // timerfd for 1s widget tick
 
-        struct MonRect { int idx; Vec2i pos; Vec2i size; std::string alias; };
+        struct MonRect { MonitorId idx; Vec2i pos; Vec2i size; std::string alias; };
 
         // Returns the TrayHost attached to the top bar on a given monitor, or nullptr.
-        backend::TrayHost*       tray_for_monitor(int mon_idx);
-        const backend::TrayHost* tray_for_monitor(int mon_idx) const;
+        backend::TrayHost*       tray_for_monitor(MonitorId mon_idx);
+        const backend::TrayHost* tray_for_monitor(MonitorId mon_idx) const;
         // Returns the single owner tray (owns _NET_SYSTEM_TRAY_S), or nullptr.
         backend::TrayHost*       owner_tray();
 
-        int                      monitor_for_icon(WindowId icon_win) const;
+        MonitorId                monitor_for_icon(WindowId icon_win) const;
         // Move icon to the tray on the correct monitor using xcb_reparent_window.
         // Never changes selection ownership.
-        void        route_icon_to_monitor(WindowId icon_win, int mon_idx);
+        void        route_icon_to_monitor(WindowId icon_win, MonitorId mon_idx);
         void        rebalance_tray_icons();
         void        rebuild_trays();
         // Resolve alias for a monitor index using current_settings().monitor_aliases.
-        std::string monitor_alias(int mon_idx) const;
+        std::string monitor_alias(MonitorId mon_idx) const;
         // Create a single bar window and push into all_bars_.
         void        create_bar_window(const MonRect& m, const BarConfig& cfg, bool is_top);
         int         tag_at(WindowId window, int click_x) const;
