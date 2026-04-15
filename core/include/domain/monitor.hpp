@@ -5,6 +5,7 @@
 #include <memory>
 #include <utility>
 
+#include <backend/events.hpp>
 #include <support/vec.hpp>
 
 struct Workspace;
@@ -12,13 +13,13 @@ struct Workspace;
 enum class MonitorEdge : uint8_t { Top, Bottom, Left, Right };
 
 struct Monitor {
-    int         id;
+    MonitorId   id;
     std::string name;
 
     Vec2i       pos_;
     Vec2i       size_;
 
-    int         active_ws = -1;
+    WorkspaceId active_ws = NO_WORKSPACE;
 
     // Reserved areas per edge — how much space is currently claimed at each
     // side of this monitor (e.g. by bars or panels). pos_/size_ already have
@@ -29,7 +30,7 @@ struct Monitor {
     int left_inset_   = 0;
     int right_inset_  = 0;
 
-    Monitor(int id, std::string name, int x, int y, int w, int h)
+    Monitor(MonitorId id, std::string name, int x, int y, int w, int h)
         : id(id), name(std::move(name)), pos_(x, y), size_(w, h) {}
 
     // Vec2 accessors
