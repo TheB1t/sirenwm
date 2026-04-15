@@ -7,9 +7,20 @@ on:
     branches: [ master ]
 
 jobs:
+  architecture-boundaries:
+    name: Architecture boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check architecture boundaries
+        run: |
+          bash tests/ci/check_architecture_boundaries.sh
+
   build-ubuntu:
     name: Ubuntu ${{ matrix.version }}
     runs-on: ubuntu-latest
+    needs: architecture-boundaries
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +75,7 @@ jobs:
   build-debian:
     name: Debian ${{ matrix.codename }}
     runs-on: ubuntu-latest
+    needs: architecture-boundaries
     strategy:
       fail-fast: false
       matrix:
@@ -120,6 +132,7 @@ jobs:
   build-fedora:
     name: Fedora 41
     runs-on: ubuntu-latest
+    needs: architecture-boundaries
     container:
       image: fedora:41
       options: --ulimit core=-1 --privileged
@@ -168,6 +181,7 @@ jobs:
   integration:
     name: Integration tests (Xephyr)
     runs-on: ubuntu-24.04
+    needs: architecture-boundaries
     steps:
       - uses: actions/checkout@v4
 
@@ -219,6 +233,7 @@ jobs:
   build-arch:
     name: Arch Linux
     runs-on: ubuntu-latest
+    needs: architecture-boundaries
     container:
       image: archlinux:latest
       options: --ulimit core=-1 --privileged
