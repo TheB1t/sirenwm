@@ -12,6 +12,7 @@
 #include <backend/keyboard_port.hpp>
 #include <backend/monitor_port.hpp>
 #include <backend/tray_host_port.hpp>
+#include <x11/ewmh_atoms.hpp>
 #include <x11/x11_window.hpp>
 #include <x11/xconn.hpp>
 
@@ -36,46 +37,10 @@ class X11Backend final : public Backend {
 #endif
         xcb_key_symbols_t* key_syms = nullptr;
 
-        // Shared atoms for per-window operations (passed to X11Window instances).
-        X11Atoms atoms_;
-
-        // EWMH/ICCCM atoms (backend-level, not per-window)
-        xcb_window_t ewmh_wm_window                   = XCB_WINDOW_NONE;
-        xcb_atom_t   NET_SUPPORTED                    = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_NAME                      = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_STATE                     = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_STATE_FULLSCREEN          = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_STATE_HIDDEN              = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_STATE_FOCUSED             = XCB_ATOM_NONE;
-        xcb_atom_t   NET_FRAME_EXTENTS                = XCB_ATOM_NONE;
-        xcb_atom_t   NET_ACTIVE_WINDOW                = XCB_ATOM_NONE;
-        xcb_atom_t   NET_CLIENT_LIST                  = XCB_ATOM_NONE;
-        xcb_atom_t   NET_CLIENT_LIST_STACKING         = XCB_ATOM_NONE;
-        xcb_atom_t   NET_SUPPORTING_WM_CHECK          = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE               = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_DOCK          = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_DIALOG        = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_DESKTOP       = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_NOTIFICATION  = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_TOOLTIP       = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_DND           = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_DROPDOWN_MENU = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_POPUP_MENU    = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_WINDOW_TYPE_MENU          = XCB_ATOM_NONE;
-        xcb_atom_t   XEMBED_INFO                      = XCB_ATOM_NONE;
-        xcb_atom_t   NET_CLOSE_WINDOW                 = XCB_ATOM_NONE;
-        xcb_atom_t   NET_NUMBER_OF_DESKTOPS           = XCB_ATOM_NONE;
-        xcb_atom_t   NET_CURRENT_DESKTOP              = XCB_ATOM_NONE;
-        xcb_atom_t   NET_DESKTOP_NAMES                = XCB_ATOM_NONE;
-        xcb_atom_t   NET_DESKTOP_GEOMETRY             = XCB_ATOM_NONE;
-        xcb_atom_t   NET_DESKTOP_VIEWPORT             = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WORKAREA                     = XCB_ATOM_NONE;
-        xcb_atom_t   NET_WM_DESKTOP                   = XCB_ATOM_NONE;
-        xcb_atom_t   UTF8_STRING_ATOM                 = XCB_ATOM_NONE;
-        xcb_atom_t   WM_PROTOCOLS                     = XCB_ATOM_NONE;
-        xcb_atom_t   WM_DELETE_WINDOW                 = XCB_ATOM_NONE;
-        xcb_atom_t   WM_TAKE_FOCUS                    = XCB_ATOM_NONE;
-        xcb_atom_t   WM_STATE                         = XCB_ATOM_NONE;
+        // EWMH/ICCCM atoms — indexed by EwmhAtom, interned as a batch in ewmh_init().
+        // Shared by reference with every X11Window created by this backend.
+        EwmhAtomRegistry ewmh_atoms_{ kEwmhAtomNames };
+        xcb_window_t     ewmh_wm_window = XCB_WINDOW_NONE;
 
         // Border colors (derived from theme on start/reload)
         uint32_t border_focused_pixel    = 0;
