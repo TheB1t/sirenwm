@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,7 +26,7 @@ static std::vector<BackendEffect> drain(Core& core) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, MapWindowEmitsMapEffect) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // MapWindow command (not SetWindowMapped) emits the MapWindow effect.
@@ -38,7 +38,7 @@ TEST(BackendEffects, MapWindowEmitsMapEffect) {
 }
 
 TEST(BackendEffects, UnmapWindowEmitsUnmapEffect) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // UnmapWindow command emits the UnmapWindow effect.
@@ -58,7 +58,7 @@ TEST(BackendEffects, UnmapWindowEmitsUnmapEffect) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, FocusNextWindowEmitsFocusEffect) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.map_window(0x1001, 0);
@@ -71,7 +71,7 @@ TEST(BackendEffects, FocusNextWindowEmitsFocusEffect) {
 }
 
 TEST(BackendEffects, FocusPrevWindowEmitsFocusEffect) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.map_window(0x1001, 0);
@@ -88,7 +88,7 @@ TEST(BackendEffects, FocusPrevWindowEmitsFocusEffect) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, WorkspaceSwitchHidesOldWindows) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // ws 0 is active; place a normal window there
@@ -102,7 +102,7 @@ TEST(BackendEffects, WorkspaceSwitchHidesOldWindows) {
 }
 
 TEST(BackendEffects, WorkspaceSwitchShowsNewWindows) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // Put a normal window on ws 1
@@ -122,7 +122,7 @@ TEST(BackendEffects, WorkspaceSwitchShowsNewWindows) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, FocusRootWhenSwitchingToEmptyWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // ws 0 has a window; ws 1 is empty.
@@ -140,7 +140,7 @@ TEST(BackendEffects, FocusRootWhenSwitchingToEmptyWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, SetWindowGeometryEmitsUpdateEffect) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -156,7 +156,7 @@ TEST(BackendEffects, SetWindowGeometryEmitsUpdateEffect) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, MoveToInactiveWorkspaceEmitsUnmap) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // ws 0 active, move window to ws 1 (inactive)
@@ -169,7 +169,7 @@ TEST(BackendEffects, MoveToInactiveWorkspaceEmitsUnmap) {
 }
 
 TEST(BackendEffects, MoveToActiveWorkspaceEmitsMap) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // Put window on ws 1 (inactive), switch there, then move to ws 0
@@ -192,7 +192,7 @@ TEST(BackendEffects, MoveToActiveWorkspaceEmitsMap) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, FullscreenEmitsUpdate) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -213,7 +213,7 @@ TEST(BackendEffects, FullscreenEmitsUpdate) {
 // ---------------------------------------------------------------------------
 
 TEST(BackendEffects, EffectsArePerWindow) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x2001, 0);

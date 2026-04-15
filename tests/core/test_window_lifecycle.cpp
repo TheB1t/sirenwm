@@ -3,14 +3,14 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Basic lifecycle: EnsureWindow → SetWindowMetadata → SetWindowMapped
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, NewWindowIsTracked) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x1000, 0 });
@@ -18,7 +18,7 @@ TEST(WindowLifecycle, NewWindowIsTracked) {
 }
 
 TEST(WindowLifecycle, MetadataStoredCorrectly) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x2000, 0 });
@@ -37,7 +37,7 @@ TEST(WindowLifecycle, MetadataStoredCorrectly) {
 }
 
 TEST(WindowLifecycle, MappedWindowIsVisible) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x3000, 0 });
@@ -50,7 +50,7 @@ TEST(WindowLifecycle, MappedWindowIsVisible) {
 }
 
 TEST(WindowLifecycle, UnmappedWindowIsNotVisible) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x3000, 0 });
@@ -64,7 +64,7 @@ TEST(WindowLifecycle, UnmappedWindowIsNotVisible) {
 }
 
 TEST(WindowLifecycle, RemoveWindowCleansUp) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x4000, 0 });
@@ -79,7 +79,7 @@ TEST(WindowLifecycle, RemoveWindowCleansUp) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, FixedSizeHintSetsFlag) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x5000, 0 });
@@ -95,7 +95,7 @@ TEST(WindowLifecycle, FixedSizeHintSetsFlag) {
 }
 
 TEST(WindowLifecycle, NoInputFocusHintSetsFlag) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x5001, 0 });
@@ -111,7 +111,7 @@ TEST(WindowLifecycle, NoInputFocusHintSetsFlag) {
 }
 
 TEST(WindowLifecycle, StaticGravityHintSetsPreservePosition) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x5002, 0 });
@@ -131,7 +131,7 @@ TEST(WindowLifecycle, StaticGravityHintSetsPreservePosition) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, DialogTypeIsRecognized) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x6000, 0 });
@@ -147,7 +147,7 @@ TEST(WindowLifecycle, DialogTypeIsRecognized) {
 }
 
 TEST(WindowLifecycle, ModalTypeIsDialog) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x6001, 0 });
@@ -167,7 +167,7 @@ TEST(WindowLifecycle, ModalTypeIsDialog) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, CoversMonitorHintSetsSelfManaged) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x7000, 0 });
@@ -186,7 +186,7 @@ TEST(WindowLifecycle, CoversMonitorHintSetsSelfManaged) {
 }
 
 TEST(WindowLifecycle, CoversMonitorWithoutPreFullscreenIsNotSelfManaged) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::EnsureWindow{ 0x7001, 0 });
@@ -208,7 +208,7 @@ TEST(WindowLifecycle, CoversMonitorWithoutPreFullscreenIsNotSelfManaged) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, HideWindowHidesExplicitly) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x8000, 0);
@@ -226,7 +226,7 @@ TEST(WindowLifecycle, HideWindowHidesExplicitly) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, SuppressFocusOnceIsConsumed) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x9000, 0);
@@ -242,7 +242,7 @@ TEST(WindowLifecycle, SuppressFocusOnceIsConsumed) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, BorderWidthIsStored) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xA000, 0);
@@ -258,7 +258,7 @@ TEST(WindowLifecycle, BorderWidthIsStored) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, SetWindowPositionUpdatesCoords) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xB000, 0);
@@ -271,7 +271,7 @@ TEST(WindowLifecycle, SetWindowPositionUpdatesCoords) {
 }
 
 TEST(WindowLifecycle, SetWindowSizeUpdatesDimensions) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xC000, 0);
@@ -284,7 +284,7 @@ TEST(WindowLifecycle, SetWindowSizeUpdatesDimensions) {
 }
 
 TEST(WindowLifecycle, SetWindowGeometrySetsAll) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xD000, 0);
@@ -303,7 +303,7 @@ TEST(WindowLifecycle, SetWindowGeometrySetsAll) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, SetWindowBorderlessSetsFlag) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xE000, 0);
@@ -313,7 +313,7 @@ TEST(WindowLifecycle, SetWindowBorderlessSetsFlag) {
 }
 
 TEST(WindowLifecycle, SetWindowBorderlessClearsFlag) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xE001, 0);
@@ -328,7 +328,7 @@ TEST(WindowLifecycle, SetWindowBorderlessClearsFlag) {
 // ---------------------------------------------------------------------------
 
 TEST(WindowLifecycle, FullscreenSetsFlag) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xF000, 0);
@@ -338,7 +338,7 @@ TEST(WindowLifecycle, FullscreenSetsFlag) {
 }
 
 TEST(WindowLifecycle, FullscreenClearsFlagOnDisable) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0xF001, 0);

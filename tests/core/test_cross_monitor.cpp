@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,8 +29,8 @@ static bool has_domain_event(const std::vector<CoreDomainEvent>& events) {
     return false;
 }
 
-static std::unique_ptr<TestHarness> make_dual_monitor() {
-    auto h = std::make_unique<TestHarness>(std::vector<Monitor>{
+static std::unique_ptr<CoreHarness> make_dual_monitor() {
+    auto h = std::make_unique<CoreHarness>(std::vector<Monitor>{
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 2560, 1440, "secondary"),
     });
@@ -203,7 +203,7 @@ TEST(CrossMonitor, MoveBorderlessAcrossMonitorsEmitsFocusChanged) {
 // ---------------------------------------------------------------------------
 
 TEST(CrossMonitor, MoveAcrossThreeMonitors) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "left"),
         make_monitor(1, 1920, 0, 2560, 1440, "center"),
         make_monitor(2, 4480, 0, 1280,  720, "right"),

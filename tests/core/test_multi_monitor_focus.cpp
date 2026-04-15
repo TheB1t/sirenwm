@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,8 +21,8 @@ static std::vector<BackendEffect> drain(Core& core) {
     return core.take_backend_effects();
 }
 
-static std::unique_ptr<TestHarness> make_dual() {
-    auto h = std::make_unique<TestHarness>(std::vector<Monitor>{
+static std::unique_ptr<CoreHarness> make_dual() {
+    auto h = std::make_unique<CoreHarness>(std::vector<Monitor>{
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 2560, 1440, "secondary"),
     });

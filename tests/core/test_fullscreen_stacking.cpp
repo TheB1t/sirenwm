@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,7 +34,7 @@ static bool has_domain_event(const std::vector<CoreDomainEvent>& events) {
 // ---------------------------------------------------------------------------
 
 TEST(FullscreenStacking, EnterFullscreenSetsWorkspaceMode) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -47,7 +47,7 @@ TEST(FullscreenStacking, EnterFullscreenSetsWorkspaceMode) {
 }
 
 TEST(FullscreenStacking, ExitFullscreenRestoresNormalMode) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -59,7 +59,7 @@ TEST(FullscreenStacking, ExitFullscreenRestoresNormalMode) {
 }
 
 TEST(FullscreenStacking, BorderlessAlsoEntersFullscreenMode) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -76,7 +76,7 @@ TEST(FullscreenStacking, BorderlessAlsoEntersFullscreenMode) {
 // ---------------------------------------------------------------------------
 
 TEST(FullscreenStacking, FullscreenFocusedEmitsRaise) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -89,7 +89,7 @@ TEST(FullscreenStacking, FullscreenFocusedEmitsRaise) {
 }
 
 TEST(FullscreenStacking, FocusNormalWhileFullscreenExistsLowersFS) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId fs_win  = h.map_window(0x1000, 0);
@@ -112,7 +112,7 @@ TEST(FullscreenStacking, FocusNormalWhileFullscreenExistsLowersFS) {
 // ---------------------------------------------------------------------------
 
 TEST(FullscreenStacking, FullscreenPinsToMonitorGeometry) {
-    TestHarness h({ make_monitor(0, 100, 200, 1920, 1080) });
+    CoreHarness h({ make_monitor(0, 100, 200, 1920, 1080) });
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -128,7 +128,7 @@ TEST(FullscreenStacking, FullscreenPinsToMonitorGeometry) {
 }
 
 TEST(FullscreenStacking, FullscreenPreserveGeometrySavesOriginal) {
-    TestHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
+    CoreHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -153,7 +153,7 @@ TEST(FullscreenStacking, FullscreenPreserveGeometrySavesOriginal) {
 }
 
 TEST(FullscreenStacking, FullscreenRestoresGeometryForFloating) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -176,7 +176,7 @@ TEST(FullscreenStacking, FullscreenRestoresGeometryForFloating) {
 }
 
 TEST(FullscreenStacking, FullscreenZerosBorderOnEntry) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -188,7 +188,7 @@ TEST(FullscreenStacking, FullscreenZerosBorderOnEntry) {
 }
 
 TEST(FullscreenStacking, FullscreenRestoresBorderOnExit) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -210,7 +210,7 @@ TEST(FullscreenStacking, FullscreenRestoresBorderOnExit) {
 // ---------------------------------------------------------------------------
 
 TEST(FullscreenStacking, RemoveFullscreenWindowExitsMode) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -226,7 +226,7 @@ TEST(FullscreenStacking, RemoveFullscreenWindowExitsMode) {
 // ---------------------------------------------------------------------------
 
 TEST(FullscreenStacking, RaiseDocksEmittedOnEnterAndExit) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -246,7 +246,7 @@ TEST(FullscreenStacking, RaiseDocksEmittedOnEnterAndExit) {
 // ---------------------------------------------------------------------------
 
 TEST(FullscreenStacking, FullscreenCoversFullMonitorWithInset) {
-    TestHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
+    CoreHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
     h.start();
 
     h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 });

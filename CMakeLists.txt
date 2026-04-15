@@ -204,6 +204,16 @@ if(BUILD_TESTING)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
     )
 
+    # --- Runtime tests ---
+    file(GLOB SIRENWM_RUNTIME_TEST_SOURCES tests/runtime/test_*.cpp)
+    add_executable(sirenwm_runtime_tests ${SIRENWM_RUNTIME_TEST_SOURCES} tests/fake_backend.cpp)
+    target_include_directories(sirenwm_runtime_tests PRIVATE ${SIRENWM_TEST_INCLUDE_DIRS})
+    target_link_libraries(sirenwm_runtime_tests PRIVATE sirenwm_core GTest::gtest dl)
+    add_test(NAME sirenwm_runtime_tests COMMAND sirenwm_runtime_tests)
+    set_target_properties(sirenwm_runtime_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
+    )
+
     # --- Module tests ---
     file(GLOB SIRENWM_MODULE_TEST_SOURCES tests/modules/test_*.cpp)
     add_executable(sirenwm_module_tests ${SIRENWM_MODULE_TEST_SOURCES} tests/fake_backend.cpp)

@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -18,7 +18,7 @@ static void apply_topology(Core& core, std::vector<Monitor> mons) {
 // ---------------------------------------------------------------------------
 
 TEST(Hotplug, ApplyTopologyWithSameMonitor) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // Apply an identical topology — should not crash or lose windows
@@ -32,7 +32,7 @@ TEST(Hotplug, ApplyTopologyWithSameMonitor) {
 }
 
 TEST(Hotplug, WindowsPreservedAfterTopologyChange) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x2001, 0);
@@ -51,7 +51,7 @@ TEST(Hotplug, WindowsPreservedAfterTopologyChange) {
 // ---------------------------------------------------------------------------
 
 TEST(Hotplug, AddSecondMonitorIncreasesCount) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     ASSERT_EQ((int)h.core.monitor_states().size(), 1);
@@ -66,7 +66,7 @@ TEST(Hotplug, AddSecondMonitorIncreasesCount) {
 
 TEST(Hotplug, EachNewMonitorGetsActiveWorkspaceWhenStartedWithTwo) {
     // Start with two monitors — workspaces distributed at init time.
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -78,7 +78,7 @@ TEST(Hotplug, EachNewMonitorGetsActiveWorkspaceWhenStartedWithTwo) {
 }
 
 TEST(Hotplug, WindowsOnRemovedMonitorMigrated) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -102,7 +102,7 @@ TEST(Hotplug, WindowsOnRemovedMonitorMigrated) {
 // ---------------------------------------------------------------------------
 
 TEST(Hotplug, WorkspacesParkedOnDisconnect) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -120,7 +120,7 @@ TEST(Hotplug, WorkspacesParkedOnDisconnect) {
 }
 
 TEST(Hotplug, WorkspacesRestoredOnReconnect) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -149,7 +149,7 @@ TEST(Hotplug, WorkspacesRestoredOnReconnect) {
 // ---------------------------------------------------------------------------
 
 TEST(Hotplug, TopInsetAdjustsMonitorGeometry) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 });
@@ -157,7 +157,7 @@ TEST(Hotplug, TopInsetAdjustsMonitorGeometry) {
 }
 
 TEST(Hotplug, BottomInsetAdjustsMonitorGeometry) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Bottom, 24 });
@@ -165,7 +165,7 @@ TEST(Hotplug, BottomInsetAdjustsMonitorGeometry) {
 }
 
 TEST(Hotplug, InsetIsIdempotentWhenSameValue) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::ReserveMonitorArea{ -1, MonitorEdge::Top, 20 });
@@ -178,7 +178,7 @@ TEST(Hotplug, InsetIsIdempotentWhenSameValue) {
 // ---------------------------------------------------------------------------
 
 TEST(Hotplug, MoveWindowToMonitorChangesWorkspace) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -198,7 +198,7 @@ TEST(Hotplug, MoveWindowToMonitorChangesWorkspace) {
 }
 
 TEST(Hotplug, MoveWindowToSameMonitorIsNoop) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -217,7 +217,7 @@ TEST(Hotplug, MoveWindowToSameMonitorIsNoop) {
 // ---------------------------------------------------------------------------
 
 TEST(Hotplug, TopologyChangeEmitsDomainEvent) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
     h.take_core_events(); // drain any startup events
 

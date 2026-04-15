@@ -3,14 +3,14 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // SyncWindowFromConfigureNotify — client-initiated geometry changes
 // ---------------------------------------------------------------------------
 
 TEST(ConfigureNotify, UpdatesGeometryWhenNoPendingFlush) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -28,7 +28,7 @@ TEST(ConfigureNotify, UpdatesGeometryWhenNoPendingFlush) {
 }
 
 TEST(ConfigureNotify, SkipsPositionWithPendingFlush) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -51,7 +51,7 @@ TEST(ConfigureNotify, SkipsPositionWithPendingFlush) {
 }
 
 TEST(ConfigureNotify, SkipsSizeWithPendingGeometryFlush) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -73,7 +73,7 @@ TEST(ConfigureNotify, SkipsSizeWithPendingGeometryFlush) {
 }
 
 TEST(ConfigureNotify, SkipsBorderWidthWithPendingFlush) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -89,7 +89,7 @@ TEST(ConfigureNotify, SkipsBorderWidthWithPendingFlush) {
 }
 
 TEST(ConfigureNotify, AfterFlushConsumedAcceptsNew) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -110,7 +110,7 @@ TEST(ConfigureNotify, AfterFlushConsumedAcceptsNew) {
 }
 
 TEST(ConfigureNotify, NonexistentWindowReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SyncWindowFromConfigureNotify{
@@ -119,7 +119,7 @@ TEST(ConfigureNotify, NonexistentWindowReturnsFalse) {
 }
 
 TEST(ConfigureNotify, UpdatesBorderWidthWhenNotPending) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);

@@ -3,14 +3,14 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Workspace switch
 // ---------------------------------------------------------------------------
 
 TEST(Workspace, SwitchChangesActiveWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
@@ -18,7 +18,7 @@ TEST(Workspace, SwitchChangesActiveWorkspace) {
 }
 
 TEST(Workspace, MoveWindowToWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -27,7 +27,7 @@ TEST(Workspace, MoveWindowToWorkspace) {
 }
 
 TEST(Workspace, WindowHiddenAfterMoveToInactiveWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // ws 0 is active; move window to ws 1 which is not active
@@ -41,7 +41,7 @@ TEST(Workspace, WindowHiddenAfterMoveToInactiveWorkspace) {
 }
 
 TEST(Workspace, FocusWindowUpdatesState) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x1001, 0);
@@ -55,7 +55,7 @@ TEST(Workspace, FocusWindowUpdatesState) {
 }
 
 TEST(Workspace, SwitchBackRestoresWindows) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -71,7 +71,7 @@ TEST(Workspace, SwitchBackRestoresWindows) {
 // ---------------------------------------------------------------------------
 
 TEST(Monitor, FocusMonitorUpdatesFocusedIndex) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -82,7 +82,7 @@ TEST(Monitor, FocusMonitorUpdatesFocusedIndex) {
 }
 
 TEST(Monitor, EachMonitorGetsAtLeastOneWorkspace) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -100,7 +100,7 @@ TEST(Monitor, EachMonitorGetsAtLeastOneWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(Window, ToggleFloating) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -118,14 +118,13 @@ TEST(Window, ToggleFloating) {
 // ---------------------------------------------------------------------------
 
 TEST(Window, FullscreenCrossMonitorMove) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 2560, 1440, "secondary"),
     });
     CoreSettings s;
     s.workspace_defs = { { "[1]", "primary" }, { "[2]", "secondary" } };
-    h.core.apply_settings(s);
-    h.start();
+    h.start(std::move(s));
 
     WindowId win = h.map_window(0x1000, 0);
     h.core.dispatch(command::atom::SetWindowFullscreen{ win, true });
@@ -142,14 +141,13 @@ TEST(Window, FullscreenCrossMonitorMove) {
 }
 
 TEST(Window, BorderlessCrossMonitorMove) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 2560, 1440, "secondary"),
     });
     CoreSettings s;
     s.workspace_defs = { { "[1]", "primary" }, { "[2]", "secondary" } };
-    h.core.apply_settings(s);
-    h.start();
+    h.start(std::move(s));
 
     WindowId win = h.map_window(0x1000, 0);
     h.core.dispatch(command::atom::SetWindowBorderless{ win, true });
@@ -170,7 +168,7 @@ TEST(Window, BorderlessCrossMonitorMove) {
 // ---------------------------------------------------------------------------
 
 TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
     h.take_core_events(); // drain
 
@@ -189,7 +187,7 @@ TEST(Workspace, SwitchEmitsWorkspaceSwitchedEvent) {
 }
 
 TEST(Workspace, MoveWindowEmitsAssignedEvent) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -214,7 +212,7 @@ TEST(Workspace, MoveWindowEmitsAssignedEvent) {
 // ---------------------------------------------------------------------------
 
 TEST(Workspace, ZoomSwapsFocusedWithMaster) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.map_window(0x1000, 0);
@@ -232,7 +230,7 @@ TEST(Workspace, ZoomSwapsFocusedWithMaster) {
 }
 
 TEST(Workspace, ZoomOnSingleWindowReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.map_window(0x1000, 0);
@@ -245,7 +243,7 @@ TEST(Workspace, ZoomOnSingleWindowReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(Workspace, IncMasterChangesCount) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::composite::IncMaster{ 1 });
@@ -256,7 +254,7 @@ TEST(Workspace, IncMasterChangesCount) {
 }
 
 TEST(Workspace, AdjustMasterFactorChangesRatio) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     double before = h.core.cfg().master_factor;
@@ -270,7 +268,7 @@ TEST(Workspace, AdjustMasterFactorChangesRatio) {
 // ---------------------------------------------------------------------------
 
 TEST(Workspace, HideWindowMakesInvisible) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -281,7 +279,7 @@ TEST(Workspace, HideWindowMakesInvisible) {
 }
 
 TEST(Workspace, HideWindowEmitsUnmap) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);

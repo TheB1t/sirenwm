@@ -3,14 +3,14 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Reload: workspace state preserved
 // ---------------------------------------------------------------------------
 
 TEST(Reload, WindowsNotLostAfterReload) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -26,7 +26,7 @@ TEST(Reload, WindowsNotLostAfterReload) {
 }
 
 TEST(Reload, WorkspaceCountCanGrow) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     int          before = h.core.workspace_count();
@@ -41,7 +41,7 @@ TEST(Reload, WorkspaceCountCanGrow) {
 }
 
 TEST(Reload, WorkspaceCountCanShrink) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     int before = h.core.workspace_count();
@@ -55,7 +55,7 @@ TEST(Reload, WorkspaceCountCanShrink) {
 }
 
 TEST(Reload, WindowsMigratedFromRemovedWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // Map window on last workspace
@@ -74,7 +74,7 @@ TEST(Reload, WindowsMigratedFromRemovedWorkspace) {
 }
 
 TEST(Reload, ActiveWorkspaceClampedAfterShrink) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // Switch to last workspace
