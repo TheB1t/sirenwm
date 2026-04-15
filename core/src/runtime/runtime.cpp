@@ -219,7 +219,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
             }
         }
     } else {
-        int ws_id = -1;
+        WorkspaceId ws_id = NO_WORKSPACE;
         int fmon  = core.focused_monitor_index();
         if (fmon >= 0 && fmon < (int)mons.size())
             ws_id = mons[(size_t)fmon].active_ws;
@@ -862,7 +862,7 @@ void Runtime::save_restart_state() {
     for (auto id : core_.all_window_ids()) {
         if (!seen.insert(id).second)
             continue;
-        int ws_id = core_.workspace_of_window(id);
+        WorkspaceId ws_id = core_.workspace_of_window(id);
         if (ws_id < 0)
             continue;
         auto ws = core_.window_state_any(id);

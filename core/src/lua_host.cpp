@@ -459,7 +459,7 @@ static int push_window_mapped(LuaContext& lua, const void* ev_ptr, Core& core) {
         lua.set_field(-2, "class");
         lua.push_string(ws->wm_instance);
         lua.set_field(-2, "instance");
-        int ws_id = core.workspace_of_window(ev->window);
+        WorkspaceId ws_id = core.workspace_of_window(ev->window);
         lua.push_integer(ws_id >= 0 ? ws_id + 1 : 0);
         lua.set_field(-2, "workspace");
     }
@@ -529,7 +529,7 @@ static int push_window_rules(LuaContext& lua, const void* ev_ptr, Core& core) {
         lua.set_field(-2, "class");
         lua.push_string(ws->wm_instance);
         lua.set_field(-2, "instance");
-        int ws_id = core.workspace_of_window(h->window);
+        WorkspaceId ws_id = core.workspace_of_window(h->window);
         lua.push_integer(ws_id >= 0 ? ws_id + 1 : 0);
         lua.set_field(-2, "workspace");
         const char* type_str = "normal";

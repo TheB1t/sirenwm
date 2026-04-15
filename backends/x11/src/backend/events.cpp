@@ -123,7 +123,7 @@ static void apply_window_metadata(Core& core, WindowId window, WindowMetadata me
         });
 }
 
-static int monitor_for_visible_workspace(const Core& core, int ws_id) {
+static int monitor_for_visible_workspace(const Core& core, WorkspaceId ws_id) {
     if (ws_id < 0)
         return -1;
     const auto& mons = core.monitor_states();

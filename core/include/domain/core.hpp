@@ -138,8 +138,8 @@ class Core {
         template<typename E>
         void post(E ev) { event_sink_->post_event(std::move(ev)); }
 
-        void evaluate_workspace_fullscreen(int ws_id);
-        void pin_fullscreen_to_monitor(swm::Window& w, int ws_id);
+        void evaluate_workspace_fullscreen(WorkspaceId ws_id);
+        void pin_fullscreen_to_monitor(swm::Window& w, WorkspaceId ws_id);
 
     public:
         Core() = default;
@@ -272,7 +272,7 @@ class Core {
         MonitorStateRef monitor_state(int mon_idx) const {
             return wsman.monitor_state(mon_idx);
         }
-        WorkspaceStateRef workspace_state(int ws_id) const {
+        WorkspaceStateRef workspace_state(WorkspaceId ws_id) const {
             return wsman.workspace_state(ws_id);
         }
         const std::vector<WorkspaceState>& workspace_states() const {
@@ -288,12 +288,12 @@ class Core {
         const FocusState& focus_state()       const { return wsman.get_focus_state(); }
         int focused_monitor_index()           const { return wsman.get_focused_monitor(); }
         bool focus_monitor_at_point(int x, int y);
-        int active_workspace_at_point(int x, int y) const {
+        WorkspaceId active_workspace_at_point(int x, int y) const {
             // Callers pass raw physical coordinates (WM_NORMAL_HINTS.PPosition from
             // Wine/Proton, pointer root coords, etc). Hit-test against the physical
             // monitor rect so points inside the bar strip still resolve.
             int mon = wsman.monitor_at_physical_point(x, y);
-            return (mon >= 0) ? wsman.active_workspace(mon) : -1;
+            return (mon >= 0) ? wsman.active_workspace(mon) : NO_WORKSPACE;
         }
         int workspace_count()         const { return (int)workspace_states().size(); }
 
@@ -344,15 +344,15 @@ class Core {
             event_sink_ = sink ? sink : &null_event_sink();
         }
 
-        int workspace_of_window(WindowId win) const {
+        WorkspaceId workspace_of_window(WindowId win) const {
             return wsman.workspace_of_window(win);
         }
 
-        int monitor_of_workspace(int ws_id) const {
+        int monitor_of_workspace(WorkspaceId ws_id) const {
             return wsman.monitor_of_workspace(ws_id);
         }
 
-        bool is_workspace_visible(int ws_id) const {
+        bool is_workspace_visible(WorkspaceId ws_id) const {
             for (const auto& mon : monitor_states())
                 if (mon.active_ws == ws_id) return true;
             return false;

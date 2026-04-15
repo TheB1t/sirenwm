@@ -447,7 +447,7 @@ void BarModule::on_init() {
             ? mon_idx : core.focused_monitor_index();
 
             const auto& ws_ids = core.monitor_workspace_ids(safe_mon_idx);
-            for (int ws_id : ws_ids) {
+            for (WorkspaceId ws_id : ws_ids) {
                 auto ws = core.workspace_state(ws_id);
                 if (!ws)
                     continue;

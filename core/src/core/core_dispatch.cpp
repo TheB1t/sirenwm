@@ -117,13 +117,13 @@ void Core::sync_current_focus() {
 void Core::emit_focus_changed(WindowId window) {
     post(event::FocusChanged{ window });
     if (window != NO_WINDOW) {
-        int ws_id = wsman.workspace_of_window(window);
+        WorkspaceId ws_id = wsman.workspace_of_window(window);
         if (ws_id >= 0)
             evaluate_workspace_fullscreen(ws_id);
     }
 }
 
-void Core::pin_fullscreen_to_monitor(swm::Window& w, int ws_id) {
+void Core::pin_fullscreen_to_monitor(swm::Window& w, WorkspaceId ws_id) {
     int         mon_idx = wsman.monitor_of_workspace(ws_id);
     if (mon_idx < 0) return;
     const auto& mons = wsman.all_monitor_states();
@@ -138,7 +138,7 @@ void Core::pin_fullscreen_to_monitor(swm::Window& w, int ws_id) {
     }
 }
 
-void Core::evaluate_workspace_fullscreen(int ws_id) {
+void Core::evaluate_workspace_fullscreen(WorkspaceId ws_id) {
     if (ws_id < 0 || ws_id >= workspace_count()) return;
     auto& ws = wsman.workspace(ws_id);
 
@@ -624,7 +624,7 @@ bool Core::dispatch(const command::atom::SetWindowBorderless& cmd) {
         emit_backend_effect(BackendEffectKind::UpdateWindow, w->id);
     }
     {
-        int ws_id = wsman.workspace_of_window(cmd.window);
+        WorkspaceId ws_id = wsman.workspace_of_window(cmd.window);
         if (ws_id >= 0)
             evaluate_workspace_fullscreen(ws_id);
     }
@@ -754,7 +754,7 @@ bool Core::dispatch(const command::composite::SwitchWorkspaceLocalIndex& cmd) {
     int mon = wsman.get_focused_monitor();
     if (!wsman.switch_local_index(mon, cmd.local_index))
         return false;
-    int ws_id = wsman.active_workspace(mon);
+    WorkspaceId ws_id = wsman.active_workspace(mon);
     reconcile();
     if (ws_id >= 0)
         post(event::WorkspaceSwitched{ws_id});
@@ -838,7 +838,7 @@ bool Core::dispatch(const command::atom::ReconcileNow&) {
 }
 
 bool Core::dispatch(const command::atom::RemoveWindowFromAllWorkspaces& cmd) {
-    int ws_id = wsman.workspace_of_window(cmd.window);
+    WorkspaceId ws_id = wsman.workspace_of_window(cmd.window);
     wsman.remove_window_from_all(cmd.window);
     pending_window_flushes.erase(cmd.window);
     if (ws_id >= 0)

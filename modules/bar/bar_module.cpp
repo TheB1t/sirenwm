@@ -60,7 +60,7 @@ int BarModule::monitor_for_icon(WindowId icon_win) const {
     const auto&                  mons = core.monitor_states();
     std::unordered_map<int, int> ws_owner_mon;
     for (int mon_idx = 0; mon_idx < (int)mons.size(); mon_idx++)
-        for (int ws_id : core.monitor_workspace_ids(mon_idx))
+        for (WorkspaceId ws_id : core.monitor_workspace_ids(mon_idx))
             ws_owner_mon[ws_id] = mon_idx;
 
     int best_mon   = -1;

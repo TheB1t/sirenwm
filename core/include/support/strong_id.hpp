@@ -61,6 +61,16 @@ class StrongIdCastable : public StrongId<Tag, Underlying> {
         constexpr StrongIdCastable(Underlying v) : Base(v) {}
         constexpr StrongIdCastable(const Base& b) : Base(b) {}
         constexpr operator Underlying() const { return this->get(); }
+
+        constexpr StrongIdCastable& operator++() {
+            *this = StrongIdCastable{ static_cast<Underlying>(this->get() + 1) };
+            return *this;
+        }
+        constexpr StrongIdCastable operator++(int) {
+            StrongIdCastable tmp = *this;
+            ++(*this);
+            return tmp;
+        }
 };
 
 } // namespace swm
