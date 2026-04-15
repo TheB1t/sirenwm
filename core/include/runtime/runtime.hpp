@@ -37,13 +37,13 @@ struct TestHarness;
 
 struct ModuleWindowCreateInfo {
     MonitorId monitor_index = NO_MONITOR; // advisory; backend places by pos
-    Vec2i pos;                    // root-space coordinates
-    Vec2i size                = { 1, 1 };
-    bool  want_expose         = false;
-    bool  want_button_press   = false;
-    bool  want_button_release = false;
-    bool  dock                = false;  // semantic: dock/bar window
-    bool  keep_above          = false;  // semantic: keep above other windows
+    Vec2i     pos;                // root-space coordinates
+    Vec2i     size                = { 1, 1 };
+    bool      want_expose         = false;
+    bool      want_button_press   = false;
+    bool      want_button_release = false;
+    bool      dock                = false; // semantic: dock/bar window
+    bool      keep_above          = false; // semantic: keep above other windows
 };
 
 class Runtime : public IEventEmitter, public IEventSink {

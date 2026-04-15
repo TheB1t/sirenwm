@@ -98,7 +98,7 @@ class WorkspaceManager {
 
         void             sync_focus_state();
         MonitorId        monitor_index_by_name(const std::string& name) const;
-        int index_of_ws_in_pool(const std::vector<int>& pool, WorkspaceId ws_id) const;
+        int              index_of_ws_in_pool(const std::vector<int>& pool, WorkspaceId ws_id) const;
         MonitorId        monitor_of(WorkspaceId ws_id) const;
         int              local_index_of(MonitorId mon_idx, WorkspaceId ws_id) const;
         WorkspaceId      active_ws_of_monitor(MonitorId mon_idx) const;
@@ -146,7 +146,7 @@ class WorkspaceManager {
         Workspace&       current();
         const Workspace& current() const;
 
-        WorkspaceId workspace_of_window(WindowId win) const;
+        WorkspaceId      workspace_of_window(WindowId win) const;
 
         bool             switch_to(WorkspaceId ws_id,
             const std::vector<MonitorAlias>& aliases = {},
@@ -171,7 +171,7 @@ class WorkspaceManager {
         bool                               zoom_focused();
 
         bool                               switch_local_index(MonitorId mon_idx, int local_idx);
-        WorkspaceId workspace_for_local_index(MonitorId mon_idx, int local_idx) const;
+        WorkspaceId                        workspace_for_local_index(MonitorId mon_idx, int local_idx) const;
 
         const std::vector<int>& monitor_workspace_ids(MonitorId mon_idx) const {
             static const std::vector<int> empty;

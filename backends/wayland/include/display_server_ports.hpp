@@ -73,13 +73,13 @@ class DisplayServerRenderWindow final : public RenderWindow {
 
     private:
         DisplayServerBackend& backend_;
-        WindowId id_;
-        uint32_t overlay_id_;
-        MonitorId monitor_index_;
-        int      x_, y_, w_, h_;
+        WindowId         id_;
+        uint32_t         overlay_id_;
+        MonitorId        monitor_index_;
+        int              x_, y_, w_, h_;
         cairo_surface_t* surface_ = nullptr;
         cairo_t*         cr_      = nullptr;
-        bool created_             = false;
+        bool             created_ = false;
 };
 
 class DisplayServerRenderPort final : public RenderPort {

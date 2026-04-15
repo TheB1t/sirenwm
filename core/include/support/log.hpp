@@ -22,7 +22,9 @@ constexpr U log_arg(StrongId<Tag, U> id) { return id.get(); }
 template <typename Tag, typename U>
 constexpr U log_arg(StrongIdCastable<Tag, U> id) { return id.get(); }
 template <typename T>
-constexpr decltype(auto) log_arg(T&& v) { return std::forward<T>(v); }
+constexpr decltype(auto) log_arg(T&& v) {
+    return std::forward<T>(v);
+}
 
 template <typename Fmt, typename... Args>
 std::string log_sprintf(const Fmt& f, Args&&... args) {

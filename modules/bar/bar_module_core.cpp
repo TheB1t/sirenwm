@@ -634,7 +634,7 @@ void BarModule::rebuild_trays() {
         MonitorId mon_idx       = b.window->monitor_index();
         bool      own_selection = (mon_idx == owner_mon);
 
-        auto tray = runtime.create_tray(*b.window, own_selection);
+        auto      tray = runtime.create_tray(*b.window, own_selection);
         if (!tray || tray->window() == NO_WINDOW) {
             LOG_WARN("Bar: failed to create tray for monitor %d", mon_idx.get());
             continue;

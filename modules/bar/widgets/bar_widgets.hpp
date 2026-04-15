@@ -13,8 +13,8 @@
 namespace bar::widgets {
 
 struct TagHit {
-    int x0    = 0;
-    int x1    = 0;
+    int         x0    = 0;
+    int         x1    = 0;
     WorkspaceId ws_id = NO_WORKSPACE;
 };
 

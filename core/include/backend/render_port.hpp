@@ -31,12 +31,12 @@ class RenderWindow {
     public:
         virtual ~RenderWindow() = default;
 
-        virtual WindowId id() const            = 0;
+        virtual WindowId  id() const            = 0;
         virtual MonitorId monitor_index() const = 0;
-        virtual int      x() const             = 0;
-        virtual int      y() const             = 0;
-        virtual int      width() const         = 0;
-        virtual int      height() const        = 0;
+        virtual int       x() const             = 0;
+        virtual int       y() const             = 0;
+        virtual int       width() const         = 0;
+        virtual int       height() const        = 0;
 
         // Cairo-first drawing contract:
         // 1. draw through the returned context

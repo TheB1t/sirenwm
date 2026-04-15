@@ -57,7 +57,7 @@ MonitorId BarModule::monitor_for_icon(WindowId icon_win) const {
     if (icon_class.empty())
         return fallback;
 
-    const auto&                              mons = core.monitor_states();
+    const auto&                                mons = core.monitor_states();
     std::unordered_map<WorkspaceId, MonitorId> ws_owner_mon;
     for (int mon_idx = 0; mon_idx < (int)mons.size(); mon_idx++)
         for (WorkspaceId ws_id : core.monitor_workspace_ids(MonitorId{ mon_idx }))
