@@ -84,8 +84,8 @@ class X11Backend final : public Backend {
         // PointerBarrier is unsigned long (Xlib); avoid pulling Xlib.h into this header.
         unsigned long barriers_[4]    = { 0, 0, 0, 0 };
         WindowId      barrier_window_ = NO_WINDOW;
-        int barrier_mon_idx_          = -1;
-        void set_pointer_barriers(WindowId win, int mon_idx);
+        MonitorId barrier_mon_idx_    = NO_MONITOR;
+        void set_pointer_barriers(WindowId win, MonitorId mon_idx);
         void clear_pointer_barriers();
 
         // EWMH internals

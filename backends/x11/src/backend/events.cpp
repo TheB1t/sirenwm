@@ -285,7 +285,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     // Core classified this window as needing borderless treatment at map time.
     if (mapped_window && mapped_window->promote_to_borderless &&
         !mapped_window->borderless && !mapped_window->floating) {
-        int         mon_idx = core.monitor_of_workspace(ws_id);
+        MonitorId         mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
@@ -313,7 +313,7 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
     } else if (mapped_window && mapped_window->borderless &&
         !mapped_window->self_managed) {
         // Re-map of an already-borderless window: repin geometry to prevent drift.
-        int         mon_idx = core.monitor_of_workspace(ws_id);
+        MonitorId         mon_idx = core.monitor_of_workspace(ws_id);
         const auto& mons    = core.monitor_states();
         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
@@ -587,7 +587,7 @@ void X11Backend::handle_property_notify(xcb_property_notify_event_t* ev) {
                         runtime.post_event(event::RaiseDocks{});
                         (void)core.dispatch(command::atom::ReconcileNow{});
                     } else {
-                        int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
+                        MonitorId         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
                         const auto& mons    = core.monitor_states();
                         if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
                             auto [phy_pos, phy_size] = mons[(size_t)mon_idx].physical();
@@ -799,7 +799,7 @@ void X11Backend::handle_configure_request(xcb_configure_request_event_t* ev) {
         // Fixed-size windows: clamp position to keep them on their monitor.
         // Skip for static_gravity/borderless — client may intentionally position off-edge.
         if (!borderless_fs && window->size_locked && !window->preserve_position) {
-            int         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
+            MonitorId         mon_idx = core.monitor_of_workspace(core.workspace_of_window(ev->window));
             const auto& mons    = core.monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size()) {
                 const auto& mon   = mons[(size_t)mon_idx];

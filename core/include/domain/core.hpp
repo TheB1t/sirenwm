@@ -197,7 +197,7 @@ class Core {
         void mark_runtime_started(bool started) { runtime_started = started; }
         // Per-monitor reserved area at the given edge; max across monitors
         // when no index is given.
-        int monitor_inset(MonitorEdge edge, int mon_idx = -1) const {
+        int monitor_inset(MonitorEdge edge, MonitorId mon_idx = NO_MONITOR) const {
             const auto& mons = wsman.all_monitor_states();
             if (mon_idx >= 0 && mon_idx < (int)mons.size())
                 return mons[mon_idx].inset(edge);
@@ -269,7 +269,7 @@ class Core {
         const std::vector<MonitorState>& monitor_states() const {
             return wsman.all_monitor_states();
         }
-        MonitorStateRef monitor_state(int mon_idx) const {
+        MonitorStateRef monitor_state(MonitorId mon_idx) const {
             return wsman.monitor_state(mon_idx);
         }
         WorkspaceStateRef workspace_state(WorkspaceId ws_id) const {
@@ -279,20 +279,20 @@ class Core {
             return wsman.all_workspace_states();
         }
 
-        const std::vector<int>& monitor_workspace_ids(int mon_idx) const {
+        const std::vector<int>& monitor_workspace_ids(MonitorId mon_idx) const {
             return wsman.monitor_workspace_ids(mon_idx);
         }
-        int active_workspace_on_monitor(int mon_idx) const {
+        WorkspaceId active_workspace_on_monitor(MonitorId mon_idx) const {
             return wsman.active_workspace(mon_idx);
         }
         const FocusState& focus_state()       const { return wsman.get_focus_state(); }
-        int focused_monitor_index()           const { return wsman.get_focused_monitor(); }
+        MonitorId focused_monitor_index()     const { return wsman.get_focused_monitor(); }
         bool focus_monitor_at_point(int x, int y);
         WorkspaceId active_workspace_at_point(int x, int y) const {
             // Callers pass raw physical coordinates (WM_NORMAL_HINTS.PPosition from
             // Wine/Proton, pointer root coords, etc). Hit-test against the physical
             // monitor rect so points inside the bar strip still resolve.
-            int mon = wsman.monitor_at_physical_point(x, y);
+            MonitorId mon = wsman.monitor_at_physical_point(x, y);
             return (mon >= 0) ? wsman.active_workspace(mon) : NO_WORKSPACE;
         }
         int workspace_count()         const { return (int)workspace_states().size(); }
@@ -300,8 +300,8 @@ class Core {
         std::vector<WindowId> all_window_ids() const;
 
         WindowRef focused_window_state() const {
-            int      mon = wsman.get_focused_monitor();
-            int      ws  = wsman.active_workspace(mon);
+            MonitorId   mon = wsman.get_focused_monitor();
+            WorkspaceId ws  = wsman.active_workspace(mon);
             WindowId w   = wsman.last_focused_window(mon, ws);
             if (w == NO_WINDOW) {
                 // Fall back to workspace cursor (covers fresh windows not yet recorded).
@@ -348,7 +348,7 @@ class Core {
             return wsman.workspace_of_window(win);
         }
 
-        int monitor_of_workspace(WorkspaceId ws_id) const {
+        MonitorId monitor_of_workspace(WorkspaceId ws_id) const {
             return wsman.monitor_of_workspace(ws_id);
         }
 
@@ -358,7 +358,7 @@ class Core {
             return false;
         }
 
-        bool monitor_has_visible_covering_window(int mon_idx) const {
+        bool monitor_has_visible_covering_window(MonitorId mon_idx) const {
             auto mon = monitor_state(mon_idx);
             if (!mon)
                 return false;
