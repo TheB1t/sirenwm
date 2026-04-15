@@ -1,0 +1,90 @@
+name: Build and test
+description: Configure, build, run tests, and upload core dumps on failure.
+
+inputs:
+  cc:
+    description: C compiler
+    required: false
+    default: gcc
+  cxx:
+    description: C++ compiler
+    required: false
+    default: g++
+  backend:
+    description: Value passed to -DSIRENWM_BACKEND (empty to omit)
+    required: false
+    default: ""
+  ccache-key:
+    description: ccache cache key
+    required: true
+  integration-cmd:
+    description: Optional shell command to run after unit tests (e.g. bash tests/integration/run_tests_wayland.sh). Wrap with `timeout` if a limit is needed.
+    required: false
+    default: ""
+  artifact-name:
+    description: Name for the coredumps artifact
+    required: true
+  extra-artifact-paths:
+    description: Extra newline-separated paths to include in the coredumps artifact
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      with:
+        key: ${{ inputs.ccache-key }}
+        max-size: 500M
+
+    - name: Build
+      shell: bash
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_C_COMPILER=${{ inputs.cc }} \
+          -DCMAKE_CXX_COMPILER=${{ inputs.cxx }} \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          ${{ inputs.backend && format('-DSIRENWM_BACKEND={0}', inputs.backend) || '' }}
+        cmake --build build -j$(nproc)
+
+    - name: Build tests
+      shell: bash
+      run: |
+        cmake -S . -B build-test \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_C_COMPILER=${{ inputs.cc }} \
+          -DCMAKE_CXX_COMPILER=${{ inputs.cxx }} \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DBUILD_TESTING=ON \
+          ${{ inputs.backend && format('-DSIRENWM_BACKEND={0}', inputs.backend) || '' }}
+        cmake --build build-test -j$(nproc)
+
+    - name: Run tests
+      shell: bash
+      run: |
+        echo '/tmp/cores/core.%e.%p' > /proc/sys/kernel/core_pattern || \
+          echo '/tmp/cores/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
+        mkdir -p /tmp/cores
+        ulimit -c unlimited
+        ctest --test-dir build-test --output-on-failure
+
+    - name: Integration
+      if: inputs.integration-cmd != ''
+      shell: bash
+      run: ${{ inputs.integration-cmd }}
+
+    - name: Upload core dumps
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          /tmp/cores/
+          output/
+          ${{ inputs.extra-artifact-paths }}
+        if-no-files-found: ignore
+        retention-days: 7

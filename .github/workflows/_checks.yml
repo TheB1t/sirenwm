@@ -1,0 +1,46 @@
+name: Static checks
+
+on:
+  workflow_call:
+
+jobs:
+  architecture-boundaries:
+    name: Architecture boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check architecture boundaries
+        run: |
+          bash tests/ci/check_architecture_boundaries.sh
+
+  format-check:
+    name: Format (uncrustify)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install git and uncrustify
+        run: |
+          pacman -Sy --noconfirm
+          pacman -S --noconfirm git uncrustify
+
+      - uses: actions/checkout@v4
+
+      - name: Run uncrustify --check
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mapfile -t files < <(git ls-files \
+            'core/**/*.cpp' 'core/**/*.hpp' \
+            'modules/**/*.cpp' 'modules/**/*.hpp' \
+            'backends/**/*.cpp' 'backends/**/*.hpp' \
+            'libipc/**/*.cpp' 'libipc/**/*.hpp' \
+            'libwlserver/**/*.cpp' 'libwlserver/**/*.hpp' \
+            'libxcb/**/*.cpp' 'libxcb/**/*.hpp' \
+            'src/**/*.cpp' 'src/**/*.hpp' \
+            'tests/**/*.cpp' 'tests/**/*.hpp')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No files matched"
+            exit 1
+          fi
+          printf '%s\n' "${files[@]}" | xargs uncrustify -c .uncrustify.cfg --check
