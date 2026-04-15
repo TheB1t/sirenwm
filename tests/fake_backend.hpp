@@ -109,11 +109,11 @@ class FakeRenderWindow : public backend::RenderWindow {
 // ---------------------------------------------------------------------------
 
 class FakeRenderPort : public backend::RenderPort {
-    WindowId next_id_ = 0x1000;
+    uint32_t next_id_ = 0x1000;
     public:
         std::unique_ptr<backend::RenderWindow>
         create_window(const backend::RenderWindowCreateInfo&) override {
-            return std::make_unique<FakeRenderWindow>(next_id_++);
+            return std::make_unique<FakeRenderWindow>(WindowId{next_id_++});
         }
         uint32_t black_pixel() const override { return 0; }
 };

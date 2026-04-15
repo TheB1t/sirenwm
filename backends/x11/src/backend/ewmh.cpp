@@ -85,11 +85,14 @@ void X11Backend::focus_window(WindowId win) {
 
 void X11Backend::ewmh_update_client_list() {
     auto wins = core.all_window_ids();
-    xconn.set_property(root_window, ewmh_atoms_[EwmhAtom::NetClientList], wins.data(), (int)wins.size());
+    static_assert(sizeof(WindowId) == sizeof(xcb_window_t),
+        "WindowId must be layout-compatible with xcb_window_t for bulk property writes");
+    auto* raw = reinterpret_cast<const xcb_window_t*>(wins.data());
+    xconn.set_property(root_window, ewmh_atoms_[EwmhAtom::NetClientList], raw, (int)wins.size());
     // _NET_CLIENT_LIST_STACKING: EWMH requires bottom-to-top z-order.
     // We don't track stacking order, so mirror _NET_CLIENT_LIST (oldest first).
     // Compliant compositors handle this gracefully.
-    xconn.set_property(root_window, ewmh_atoms_[EwmhAtom::NetClientListStacking], wins.data(), (int)wins.size());
+    xconn.set_property(root_window, ewmh_atoms_[EwmhAtom::NetClientListStacking], raw, (int)wins.size());
 }
 
 bool X11Backend::ewmh_has_fullscreen_state(WindowId win) {
