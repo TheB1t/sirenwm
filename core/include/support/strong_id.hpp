@@ -53,14 +53,16 @@ class StrongId {
 // hatch isn't required.
 template <typename Tag, typename Underlying>
 class StrongIdCastable : public StrongId<Tag, Underlying> {
-        using Base = StrongId<Tag, Underlying>;
+    using Base = StrongId<Tag, Underlying>;
 
     public:
         using Base::Base;
         constexpr StrongIdCastable() = default;
         constexpr StrongIdCastable(Underlying v) : Base(v) {}
         constexpr StrongIdCastable(const Base& b) : Base(b) {}
-        constexpr operator Underlying() const { return this->get(); }
+        constexpr operator Underlying() const {
+            return this->get();
+        }
 
         constexpr StrongIdCastable& operator++() {
             *this = StrongIdCastable{ static_cast<Underlying>(this->get() + 1) };
@@ -89,4 +91,3 @@ struct hash<swm::StrongIdCastable<Tag, U>> {
     }
 };
 } // namespace std
-

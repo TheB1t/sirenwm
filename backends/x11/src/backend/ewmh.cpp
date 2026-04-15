@@ -354,7 +354,7 @@ void X11Backend::update_focus(event::FocusChanged ev) {
     auto w = (ev.window != NO_WINDOW) ? core.window_state_any(ev.window) : nullptr;
     if (w && w->borderless) {
         WorkspaceId ws_id   = core.workspace_of_window(ev.window);
-        MonitorId mon_idx = core.monitor_of_workspace(ws_id);
+        MonitorId   mon_idx = core.monitor_of_workspace(ws_id);
         if (mon_idx >= 0)
             set_pointer_barriers(ev.window, mon_idx);
     } else if (barrier_window_ != NO_WINDOW) {

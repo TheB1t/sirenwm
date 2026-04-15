@@ -302,7 +302,7 @@ class Core {
         WindowRef focused_window_state() const {
             MonitorId   mon = wsman.get_focused_monitor();
             WorkspaceId ws  = wsman.active_workspace(mon);
-            WindowId w   = wsman.last_focused_window(mon, ws);
+            WindowId    w   = wsman.last_focused_window(mon, ws);
             if (w == NO_WINDOW) {
                 // Fall back to workspace cursor (covers fresh windows not yet recorded).
                 w = wsman.get_focus_state().window;

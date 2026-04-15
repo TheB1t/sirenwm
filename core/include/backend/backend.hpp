@@ -40,12 +40,12 @@ struct ExistingWindowSnapshot {
     bool default_manage = true;
 
     // Restart restore metadata (if loaded from restart snapshot file).
-    bool from_restart              = false;
-    WorkspaceId restart_workspace_id = NO_WORKSPACE;
-    bool restart_floating          = false;
-    bool restart_fullscreen        = false;
-    bool restart_hidden_explicitly = false;
-    bool restart_borderless        = false;
+    bool        from_restart              = false;
+    WorkspaceId restart_workspace_id      = NO_WORKSPACE;
+    bool        restart_floating          = false;
+    bool        restart_fullscreen        = false;
+    bool        restart_hidden_explicitly = false;
+    bool        restart_borderless        = false;
 
     // Actual X geometry at scan time — used to seed WindowState so floating
     // windows have correct coordinates before the first ConfigureNotify arrives.
