@@ -19,8 +19,7 @@ Makefile
 wlroots/
 
 # Core dumps
-core
-core.*
+/core.*
 
 # Generated desktop files
 *.desktop
