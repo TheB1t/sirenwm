@@ -1,6 +1,13 @@
 #pragma once
-// Test harness — assembles Runtime + FakeBackend
+// Runtime-level test harness — assembles Runtime + FakeBackend
 // without touching X11 or reading files from disk.
+//
+// Use this for:
+//   - module tests
+//   - runtime hook tests
+//   - slices that specifically need Runtime lifecycle behavior
+//
+// Do not use this for pure Core invariants; those belong on core_harness.hpp.
 //
 // Usage:
 //   TestHarness h;                          // single 1920x1080 monitor

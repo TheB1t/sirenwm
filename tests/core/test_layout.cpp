@@ -4,14 +4,14 @@
 #include <domain/core.hpp>
 #include <domain/layout.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // SetLayout
 // ---------------------------------------------------------------------------
 
 TEST(Layout, SetLayoutTileSucceeds) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetLayout{ "tile" });
@@ -19,7 +19,7 @@ TEST(Layout, SetLayoutTileSucceeds) {
 }
 
 TEST(Layout, SetLayoutMonocleSucceeds) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetLayout{ "monocle" });
@@ -27,7 +27,7 @@ TEST(Layout, SetLayoutMonocleSucceeds) {
 }
 
 TEST(Layout, SetLayoutUnknownReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetLayout{ "nonexistent" });
@@ -39,7 +39,7 @@ TEST(Layout, SetLayoutUnknownReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(Layout, SetMasterFactorStored) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::SetMasterFactor{ 0.65f });
@@ -47,7 +47,7 @@ TEST(Layout, SetMasterFactorStored) {
 }
 
 TEST(Layout, SetMasterFactorClampedLow) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::SetMasterFactor{ 0.0f });
@@ -55,7 +55,7 @@ TEST(Layout, SetMasterFactorClampedLow) {
 }
 
 TEST(Layout, SetMasterFactorClampedHigh) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::SetMasterFactor{ 1.0f });
@@ -67,7 +67,7 @@ TEST(Layout, SetMasterFactorClampedHigh) {
 // ---------------------------------------------------------------------------
 
 TEST(Layout, AdjustMasterFactorDelta) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::SetMasterFactor{ 0.5f });
@@ -78,7 +78,7 @@ TEST(Layout, AdjustMasterFactorDelta) {
 }
 
 TEST(Layout, AdjustMasterFactorClampedAtBoundary) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::atom::SetMasterFactor{ 0.85f });
@@ -91,7 +91,7 @@ TEST(Layout, AdjustMasterFactorClampedAtBoundary) {
 // ---------------------------------------------------------------------------
 
 TEST(Layout, IncMasterIncrements) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     int before = h.core.cfg().nmaster;
@@ -100,7 +100,7 @@ TEST(Layout, IncMasterIncrements) {
 }
 
 TEST(Layout, IncMasterDecrements) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.core.dispatch(command::composite::IncMaster{ 2 }); // nmaster = 3
@@ -110,7 +110,7 @@ TEST(Layout, IncMasterDecrements) {
 }
 
 TEST(Layout, IncMasterNeverBelowOne) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // Try to drive nmaster below 1
@@ -123,7 +123,7 @@ TEST(Layout, IncMasterNeverBelowOne) {
 // ---------------------------------------------------------------------------
 
 TEST(Layout, ZoomWithNoWindowsIsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::composite::Zoom{});
@@ -132,7 +132,7 @@ TEST(Layout, ZoomWithNoWindowsIsFalse) {
 }
 
 TEST(Layout, ZoomWithSingleWindowReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x1001, 0);
@@ -144,7 +144,7 @@ TEST(Layout, ZoomWithSingleWindowReturnsFalse) {
 }
 
 TEST(Layout, ZoomMovesNonMasterToFront) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x2001, 0);
@@ -174,7 +174,7 @@ TEST(Layout, ZoomMovesNonMasterToFront) {
 // ---------------------------------------------------------------------------
 
 TEST(Layout, SwitchLocalIndexChangesWorkspace) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0, 0, 1920, 1080, "primary"),
     });
     h.start();
@@ -193,7 +193,7 @@ TEST(Layout, SwitchLocalIndexChangesWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(Layout, ReconcileNowIsIdempotent) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     h.map_window(0x9001, 0);

@@ -3,14 +3,14 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // apply_size_hints — clamp and increment grid snapping
 // ---------------------------------------------------------------------------
 
 TEST(SizeHints, ClampToMinMax) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -37,7 +37,7 @@ TEST(SizeHints, ClampToMinMax) {
 }
 
 TEST(SizeHints, IncrementSnapping) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -57,7 +57,7 @@ TEST(SizeHints, IncrementSnapping) {
 }
 
 TEST(SizeHints, IncrementSnappingWithMinSize) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -78,7 +78,7 @@ TEST(SizeHints, IncrementSnappingWithMinSize) {
 }
 
 TEST(SizeHints, TiledWindowIgnoresSizeHints) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -98,7 +98,7 @@ TEST(SizeHints, TiledWindowIgnoresSizeHints) {
 }
 
 TEST(SizeHints, SetWindowGeometryAppliesHintsForFloating) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -123,7 +123,7 @@ TEST(SizeHints, SetWindowGeometryAppliesHintsForFloating) {
 // ---------------------------------------------------------------------------
 
 TEST(SizeHints, TransientRoutesToParentWorkspace) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0, 0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -148,7 +148,7 @@ TEST(SizeHints, TransientRoutesToParentWorkspace) {
 }
 
 TEST(SizeHints, TransientSuppressesFocusOnce) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId                         parent = h.map_window(0x1000, 0);
@@ -168,7 +168,7 @@ TEST(SizeHints, TransientSuppressesFocusOnce) {
 // ---------------------------------------------------------------------------
 
 TEST(SizeHints, DialogAutoFloats) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId                         win = h.map_window(0x1000, 0);
@@ -183,7 +183,7 @@ TEST(SizeHints, DialogAutoFloats) {
 }
 
 TEST(SizeHints, UtilityAutoFloats) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId                         win = h.map_window(0x1000, 0);
@@ -198,7 +198,7 @@ TEST(SizeHints, UtilityAutoFloats) {
 }
 
 TEST(SizeHints, FixedSizeNonBorderlessAutoFloats) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId                         win = h.map_window(0x1000, 0);
@@ -213,7 +213,7 @@ TEST(SizeHints, FixedSizeNonBorderlessAutoFloats) {
 }
 
 TEST(SizeHints, SplashAutoFloats) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId                         win = h.map_window(0x1000, 0);

@@ -3,7 +3,7 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,7 +34,7 @@ static bool has_domain_event(const std::vector<CoreDomainEvent>& events) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, MoveFocusedWindowToWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -46,7 +46,7 @@ TEST(EdgeCases, MoveFocusedWindowToWorkspace) {
 }
 
 TEST(EdgeCases, MoveFocusedWindowNoFocusReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // No windows at all — nothing focused
@@ -59,7 +59,7 @@ TEST(EdgeCases, MoveFocusedWindowNoFocusReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, AssignWindowWorkspaceBasic) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -81,7 +81,7 @@ TEST(EdgeCases, AssignWindowWorkspaceBasic) {
 }
 
 TEST(EdgeCases, AssignWindowWorkspaceNonexistent) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::AssignWindowWorkspace{ 0xDEAD, 1 });
@@ -93,7 +93,7 @@ TEST(EdgeCases, AssignWindowWorkspaceNonexistent) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, SetWindowHiddenByWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -112,7 +112,7 @@ TEST(EdgeCases, SetWindowHiddenByWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, DoubleMapDoesNotDuplicate) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -127,7 +127,7 @@ TEST(EdgeCases, DoubleMapDoesNotDuplicate) {
 }
 
 TEST(EdgeCases, DoubleUnmapDoesNotDuplicate) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -147,7 +147,7 @@ TEST(EdgeCases, DoubleUnmapDoesNotDuplicate) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, FullscreenDisableOnNonFullscreenIsNoop) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -165,7 +165,7 @@ TEST(EdgeCases, FullscreenDisableOnNonFullscreenIsNoop) {
 }
 
 TEST(EdgeCases, FullscreenDoubleEnableDoesNotLoseOriginalGeometry) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -185,7 +185,7 @@ TEST(EdgeCases, FullscreenDoubleEnableDoesNotLoseOriginalGeometry) {
 }
 
 TEST(EdgeCases, FullscreenNonexistentWindowReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetWindowFullscreen{ 0xDEAD, true });
@@ -197,7 +197,7 @@ TEST(EdgeCases, FullscreenNonexistentWindowReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, BorderlessZerosBorderOnNonSelfManaged) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -213,7 +213,7 @@ TEST(EdgeCases, BorderlessZerosBorderOnNonSelfManaged) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, EnsureWindowCreatesNew) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = 0xABCD;
@@ -223,7 +223,7 @@ TEST(EdgeCases, EnsureWindowCreatesNew) {
 }
 
 TEST(EdgeCases, EnsureWindowMovesExisting) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -234,7 +234,7 @@ TEST(EdgeCases, EnsureWindowMovesExisting) {
 }
 
 TEST(EdgeCases, EnsureWindowNoWindowReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::EnsureWindow{ NO_WINDOW, 0 });
@@ -246,7 +246,7 @@ TEST(EdgeCases, EnsureWindowNoWindowReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, RemoveWindowCleansUp) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -257,7 +257,7 @@ TEST(EdgeCases, RemoveWindowCleansUp) {
 }
 
 TEST(EdgeCases, RemoveWindowTwiceIsSafe) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -272,7 +272,7 @@ TEST(EdgeCases, RemoveWindowTwiceIsSafe) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, FocusMonitorInvalidReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::FocusMonitor{ 99 });
@@ -280,7 +280,7 @@ TEST(EdgeCases, FocusMonitorInvalidReturnsFalse) {
 }
 
 TEST(EdgeCases, FocusMonitorEmitsWarpPointer) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -294,7 +294,7 @@ TEST(EdgeCases, FocusMonitorEmitsWarpPointer) {
 }
 
 TEST(EdgeCases, FocusMonitorRestoresLastFocusedWindow) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -323,7 +323,7 @@ TEST(EdgeCases, FocusMonitorRestoresLastFocusedWindow) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, SetFloatingNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetWindowFloating{ 0xDEAD, true });
@@ -331,7 +331,7 @@ TEST(EdgeCases, SetFloatingNonexistentReturnsFalse) {
 }
 
 TEST(EdgeCases, ToggleFloatingNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::composite::ToggleWindowFloating{ 0xDEAD });
@@ -343,7 +343,7 @@ TEST(EdgeCases, ToggleFloatingNonexistentReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, SetPositionNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetWindowPosition{ 0xDEAD, {0, 0} });
@@ -351,7 +351,7 @@ TEST(EdgeCases, SetPositionNonexistentReturnsFalse) {
 }
 
 TEST(EdgeCases, SetSizeNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetWindowSize{ 0xDEAD, {100, 100} });
@@ -359,7 +359,7 @@ TEST(EdgeCases, SetSizeNonexistentReturnsFalse) {
 }
 
 TEST(EdgeCases, SetGeometryNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetWindowGeometry{ 0xDEAD, {0, 0}, {100, 100} });
@@ -367,7 +367,7 @@ TEST(EdgeCases, SetGeometryNonexistentReturnsFalse) {
 }
 
 TEST(EdgeCases, SetBorderWidthNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     bool ok = h.core.dispatch(command::atom::SetWindowBorderWidth{ 0xDEAD, 5 });
@@ -379,7 +379,7 @@ TEST(EdgeCases, SetBorderWidthNonexistentReturnsFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, SwitchToSameWorkspaceDoesNotCrash) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -397,7 +397,7 @@ TEST(EdgeCases, SwitchToSameWorkspaceDoesNotCrash) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, MoveWindowToSameWorkspace) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x1000, 0);
@@ -411,7 +411,7 @@ TEST(EdgeCases, MoveWindowToSameWorkspace) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, MultipleWindowsTrackedCorrectly) {
-    TestHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
+    CoreHarness h({ make_monitor(0, 0, 0, 1920, 1080) });
     h.start();
 
     WindowId w1 = h.map_window(0x1000, 0);
@@ -432,7 +432,7 @@ TEST(EdgeCases, MultipleWindowsTrackedCorrectly) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, MapOnInvisibleWorkspaceNoMapEffect) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     // ws 0 is active; create window on ws 1 (not visible)
@@ -451,7 +451,7 @@ TEST(EdgeCases, MapOnInvisibleWorkspaceNoMapEffect) {
 // ---------------------------------------------------------------------------
 
 TEST(EdgeCases, SetMetadataNonexistentReturnsFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     command::atom::SetWindowMetadata meta;

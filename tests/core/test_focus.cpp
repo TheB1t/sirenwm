@@ -3,14 +3,21 @@
 #include <backend/commands.hpp>
 #include <domain/core.hpp>
 
-#include "test_harness.hpp"
+#include "core_harness.hpp"
+
+static std::optional<WindowId> first_focus_effect(const std::vector<BackendEffect>& effects) {
+    for (const auto& effect : effects)
+        if (effect.kind == BackendEffectKind::FocusWindow)
+            return effect.window;
+    return std::nullopt;
+}
 
 // ---------------------------------------------------------------------------
 // Basic focus
 // ---------------------------------------------------------------------------
 
 TEST(Focus, FocusWindowSetsState) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x1001, 0);
@@ -24,18 +31,16 @@ TEST(Focus, FocusWindowSetsState) {
 }
 
 TEST(Focus, FocusWindowOnNonExistentIsNoop) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x1001, 0);
     h.core.dispatch(command::atom::FocusWindow{ a });
+    h.core.take_backend_effects();
 
-    // Focus a window that doesn't exist — state should not change
-    h.core.dispatch(command::atom::FocusWindow{ 0xDEAD });
-    // We can't guarantee the state didn't flicker, but it must be valid
-    // (existing window or NO_WINDOW)
-    WindowId w = h.core.focus_state().window;
-    EXPECT_TRUE(w == a || w == NO_WINDOW);
+    EXPECT_FALSE(h.core.dispatch(command::atom::FocusWindow{ 0xDEAD }));
+    EXPECT_EQ(h.core.focus_state().window, a);
+    EXPECT_FALSE(first_focus_effect(h.core.take_backend_effects()).has_value());
 }
 
 // ---------------------------------------------------------------------------
@@ -43,36 +48,26 @@ TEST(Focus, FocusWindowOnNonExistentIsNoop) {
 // ---------------------------------------------------------------------------
 
 TEST(Focus, FocusNextCyclesThroughWindows) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x2001, 0);
     WindowId b = h.map_window(0x2002, 0);
     WindowId c = h.map_window(0x2003, 0);
 
-    // FocusNextWindow emits a FocusWindow backend effect pointing to the new window.
     h.core.dispatch(command::atom::FocusWindow{ a });
     h.core.take_backend_effects(); // drain
     h.core.dispatch(command::composite::FocusNextWindow{});
 
-    auto     fx = h.core.take_backend_effects();
-    // There must be a FocusWindow effect for some window that is not a
-    bool     found_focus = false;
-    WindowId focused_win = NO_WINDOW;
-    for (const auto& e : fx) {
-        if (e.kind == BackendEffectKind::FocusWindow) {
-            found_focus = true;
-            focused_win = e.window;
-            break;
-        }
-    }
-    EXPECT_TRUE(found_focus);
-    EXPECT_TRUE(focused_win == b || focused_win == c);
-    (void)a;
+    auto focused_win = first_focus_effect(h.core.take_backend_effects());
+    ASSERT_TRUE(focused_win.has_value());
+    EXPECT_EQ(*focused_win, b);
+    EXPECT_EQ(h.core.focus_state().window, b);
+    (void)c;
 }
 
 TEST(Focus, FocusPrevCyclesThroughWindows) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x3001, 0);
@@ -83,57 +78,50 @@ TEST(Focus, FocusPrevCyclesThroughWindows) {
     h.core.take_backend_effects();
     h.core.dispatch(command::composite::FocusPrevWindow{});
 
-    auto     fx          = h.core.take_backend_effects();
-    bool     found_focus = false;
-    WindowId focused_win = NO_WINDOW;
-    for (const auto& e : fx) {
-        if (e.kind == BackendEffectKind::FocusWindow) {
-            found_focus = true;
-            focused_win = e.window;
-            break;
-        }
-    }
-    EXPECT_TRUE(found_focus);
-    EXPECT_TRUE(focused_win == b || focused_win == c);
-    (void)a;
+    auto focused_win = first_focus_effect(h.core.take_backend_effects());
+    ASSERT_TRUE(focused_win.has_value());
+    EXPECT_EQ(*focused_win, c);
+    EXPECT_EQ(h.core.focus_state().window, c);
+    (void)b;
 }
 
 TEST(Focus, FocusNextWrapsAround) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x4001, 0);
     WindowId b = h.map_window(0x4002, 0);
 
-    // FocusNext twice in a 2-window workspace should result in focus effects.
     h.core.dispatch(command::atom::FocusWindow{ a });
-    h.core.dispatch(command::composite::FocusNextWindow{});
-    h.core.dispatch(command::composite::FocusNextWindow{});
+    h.core.take_backend_effects();
 
-    // After two steps, a FocusWindow effect must have been emitted each time.
-    auto fx        = h.core.take_backend_effects();
-    bool any_focus = false;
-    for (const auto& e : fx) {
-        if (e.kind == BackendEffectKind::FocusWindow)
-            any_focus = true;
-    }
-    EXPECT_TRUE(any_focus);
-    (void)b;
+    h.core.dispatch(command::composite::FocusNextWindow{});
+    auto first = first_focus_effect(h.core.take_backend_effects());
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(*first, b);
+    EXPECT_EQ(h.core.focus_state().window, b);
+
+    h.core.dispatch(command::composite::FocusNextWindow{});
+    auto second = first_focus_effect(h.core.take_backend_effects());
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(*second, a);
+    EXPECT_EQ(h.core.focus_state().window, a);
 }
 
 TEST(Focus, FocusNextOnSingleWindowStaysFocused) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x5001, 0);
     h.core.dispatch(command::atom::FocusWindow{ a });
-    // With one window FocusNextWindow still returns true and
-    // emits a FocusWindow effect for the same window.
     h.core.take_backend_effects();
-    h.core.dispatch(command::composite::FocusNextWindow{});
-    // Must not crash; effect may or may not be emitted for same window.
-    // Just verify the window still exists.
-    EXPECT_NE(h.core.window_state_any(a), nullptr);
+
+    EXPECT_TRUE(h.core.dispatch(command::composite::FocusNextWindow{}));
+
+    auto focused = first_focus_effect(h.core.take_backend_effects());
+    ASSERT_TRUE(focused.has_value());
+    EXPECT_EQ(*focused, a);
+    EXPECT_EQ(h.core.focus_state().window, a);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,26 +129,27 @@ TEST(Focus, FocusNextOnSingleWindowStaysFocused) {
 // ---------------------------------------------------------------------------
 
 TEST(Focus, FocusRestoredAfterWorkspaceSwitch) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
-    // ws 0: two windows, focus b
     WindowId a = h.map_window(0x6001, 0);
     WindowId b = h.map_window(0x6002, 0);
     h.core.dispatch(command::atom::FocusWindow{ b });
+    h.core.take_backend_effects();
 
-    // Switch to ws 1
     h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
-    // Switch back to ws 0
+    h.core.take_backend_effects();
     h.core.dispatch(command::atom::SwitchWorkspace{ 0, std::nullopt });
 
-    // focus_state for ws 0 should restore to b (or a valid window)
-    WindowId w = h.core.focus_state().window;
-    EXPECT_TRUE(w == a || w == b);
+    auto focused = first_focus_effect(h.core.take_backend_effects());
+    ASSERT_TRUE(focused.has_value());
+    EXPECT_EQ(*focused, b);
+    EXPECT_EQ(h.core.focus_state().window, b);
+    (void)a;
 }
 
 TEST(Focus, FocusFollowsActiveMonitorAfterSwitch) {
-    TestHarness h({
+    CoreHarness h({
         make_monitor(0, 0,    0, 1920, 1080, "primary"),
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
@@ -178,7 +167,7 @@ TEST(Focus, FocusFollowsActiveMonitorAfterSwitch) {
 // ---------------------------------------------------------------------------
 
 TEST(Focus, SuppressFocusOncePreventsFocusOnFirstCall) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x7001, 0);
@@ -189,7 +178,7 @@ TEST(Focus, SuppressFocusOncePreventsFocusOnFirstCall) {
 }
 
 TEST(Focus, SuppressFocusOnceConsumedOnce) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x7002, 0);
@@ -201,7 +190,7 @@ TEST(Focus, SuppressFocusOnceConsumedOnce) {
 }
 
 TEST(Focus, SuppressFocusOnceDefaultFalse) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x7003, 0);
@@ -214,7 +203,7 @@ TEST(Focus, SuppressFocusOnceDefaultFalse) {
 // ---------------------------------------------------------------------------
 
 TEST(Focus, FocusFallbackAfterWindowRemoval) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId a = h.map_window(0x8001, 0);
@@ -222,12 +211,9 @@ TEST(Focus, FocusFallbackAfterWindowRemoval) {
     h.core.dispatch(command::atom::FocusWindow{ b });
 
     h.core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ b });
-    // After b is gone, focus may fall back to a or to NO_WINDOW
-    // (core doesn't auto-pick focus without a backend driving it, but
-    //  the state must be consistent — b must no longer be tracked)
     EXPECT_EQ(h.core.window_state_any(b), nullptr);
-    // a still exists
     EXPECT_NE(h.core.window_state_any(a), nullptr);
+    EXPECT_EQ(h.core.focus_state().window, a);
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +221,7 @@ TEST(Focus, FocusFallbackAfterWindowRemoval) {
 // ---------------------------------------------------------------------------
 
 TEST(Focus, ToggleFocusedWindowFloating) {
-    TestHarness h;
+    CoreHarness h;
     h.start();
 
     WindowId win = h.map_window(0x9001, 0);
