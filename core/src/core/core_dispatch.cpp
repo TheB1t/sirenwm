@@ -338,13 +338,13 @@ bool Core::dispatch(const command::atom::FocusWindow& cmd) {
 
 bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {
     // Capture target monitor before switch_to so we know if it's the focused one.
-    int target_mon = cmd.monitor_index.has_value() ? *cmd.monitor_index
-                   : wsman.monitor_of_workspace(cmd.workspace_id);
+    MonitorId target_mon = cmd.monitor_index.has_value() ? *cmd.monitor_index
+                         : wsman.monitor_of_workspace(cmd.workspace_id);
     if (target_mon < 0)
         target_mon = wsman.get_focused_monitor();
 
     bool switched = wsman.switch_to(cmd.workspace_id, settings.monitor_aliases,
-            cmd.monitor_index.has_value() ? *cmd.monitor_index : -1,
+            cmd.monitor_index.has_value() ? *cmd.monitor_index : NO_MONITOR,
             settings.monitor_compose);
     if (!switched)
         return false;

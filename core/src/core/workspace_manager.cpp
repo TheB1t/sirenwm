@@ -196,11 +196,11 @@ void Workspace::focus_prev() {
 // WorkspaceManager — private helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-int WorkspaceManager::monitor_index_by_name(const std::string& name) const {
+MonitorId WorkspaceManager::monitor_index_by_name(const std::string& name) const {
     for (int i = 0; i < (int)monitors.size(); i++)
         if (monitors[i].name == name)
-            return i;
-    return -1;
+            return MonitorId{ i };
+    return NO_MONITOR;
 }
 
 int WorkspaceManager::index_of_ws_in_pool(const std::vector<int>& pool, WorkspaceId ws_id) const {
@@ -210,47 +210,47 @@ int WorkspaceManager::index_of_ws_in_pool(const std::vector<int>& pool, Workspac
     return -1;
 }
 
-int WorkspaceManager::monitor_of(WorkspaceId ws_id) const {
+MonitorId WorkspaceManager::monitor_of(WorkspaceId ws_id) const {
     if (!is_ws_valid(ws_id) || ws_id >= (int)ws_owner.size())
-        return -1;
-    if (is_mon_valid(ws_owner[ws_id]))
-        return ws_owner[ws_id];
-    return -1;
+        return NO_MONITOR;
+    if (is_mon_valid(MonitorId{ ws_owner[ws_id] }))
+        return MonitorId{ ws_owner[ws_id] };
+    return NO_MONITOR;
 }
 
-int WorkspaceManager::local_index_of(int mon_idx, WorkspaceId ws_id) const {
+int WorkspaceManager::local_index_of(MonitorId mon_idx, WorkspaceId ws_id) const {
     if (mon_idx < 0 || mon_idx >= (int)monitor_pools.size())
         return -1;
     return index_of_ws_in_pool(monitor_pools[mon_idx], ws_id);
 }
 
-WorkspaceId WorkspaceManager::active_ws_of_monitor(int mon_idx) const {
+WorkspaceId WorkspaceManager::active_ws_of_monitor(MonitorId mon_idx) const {
     if (mon_idx < 0 || mon_idx >= (int)monitor_pools.size())
-        return -1;
+        return NO_WORKSPACE;
     const auto& pool = monitor_pools[mon_idx];
     if (pool.empty())
-        return -1;
+        return NO_WORKSPACE;
     int idx = (mon_idx < (int)monitor_active_local.size())
         ? monitor_active_local[mon_idx]
         : -1;
     if (idx < 0 || idx >= (int)pool.size())
-        return pool.front();
-    return pool[idx];
+        return WorkspaceId{ pool.front() };
+    return WorkspaceId{ pool[idx] };
 }
 
-int WorkspaceManager::primary_monitor_index(const std::vector<MonitorAlias>& aliases,
+MonitorId WorkspaceManager::primary_monitor_index(const std::vector<MonitorAlias>& aliases,
     const MonitorCompose& compose) const {
     if (!compose.primary.empty()) {
-        int mon = resolve_alias_monitor(compose.primary, aliases);
+        MonitorId mon = resolve_alias_monitor(compose.primary, aliases);
         if (mon >= 0)
             return mon;
     }
-    return monitors.empty() ? -1 : 0;
+    return monitors.empty() ? NO_MONITOR : MonitorId{ 0 };
 }
 
 void WorkspaceManager::sync_monitors_active_ws() {
     for (int i = 0; i < (int)monitors.size(); i++)
-        monitors[i].active_ws = active_ws_of_monitor(i);
+        monitors[i].active_ws = active_ws_of_monitor(MonitorId{ i });
 }
 
 void WorkspaceManager::ensure_monitor_focus_size() {
@@ -272,23 +272,23 @@ void WorkspaceManager::sync_focus_state() {
 
 void WorkspaceManager::select_valid_focused_monitor() {
     if (monitors.empty()) {
-        focused_monitor_ = 0;
+        focused_monitor_ = MonitorId{ 0 };
         return;
     }
     if (!is_mon_valid(focused_monitor_))
-        focused_monitor_ = 0;
+        focused_monitor_ = MonitorId{ 0 };
     if (active_ws_of_monitor(focused_monitor_) >= 0)
         return;
     for (int i = 0; i < (int)monitors.size(); i++) {
-        if (active_ws_of_monitor(i) >= 0) {
-            focused_monitor_ = i;
+        if (active_ws_of_monitor(MonitorId{ i }) >= 0) {
+            focused_monitor_ = MonitorId{ i };
             return;
         }
     }
-    focused_monitor_ = 0;
+    focused_monitor_ = MonitorId{ 0 };
 }
 
-WindowId WorkspaceManager::last_focused_window(int mon_idx, WorkspaceId ws_id) const {
+WindowId WorkspaceManager::last_focused_window(MonitorId mon_idx, WorkspaceId ws_id) const {
     if (mon_idx < 0 || mon_idx >= (int)monitor_focus_.size())
         return NO_WINDOW;
     auto it = monitor_focus_[mon_idx].last_window_per_ws.find(ws_id);
@@ -302,18 +302,18 @@ WindowId WorkspaceManager::last_focused_window(int mon_idx, WorkspaceId ws_id) c
     return win;
 }
 
-void WorkspaceManager::set_focused_monitor(int mon_idx) {
+void WorkspaceManager::set_focused_monitor(MonitorId mon_idx) {
     if (!is_mon_valid(mon_idx))
         return;
     focused_monitor_ = mon_idx;
     sync_focus_state();
 }
 
-int WorkspaceManager::resolve_alias_monitor(const std::string& alias,
+MonitorId WorkspaceManager::resolve_alias_monitor(const std::string& alias,
     const std::vector<MonitorAlias>& aliases) const {
     for (auto& a : aliases) {
         if (a.alias == alias) {
-            int mon = monitor_index_by_name(a.output);
+            MonitorId mon = monitor_index_by_name(a.output);
             return mon;
         }
     }
@@ -683,7 +683,7 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
     sync_focus_state();
 }
 
-void WorkspaceManager::adjust_monitor_inset(int mon_idx, MonitorEdge edge, int delta) {
+void WorkspaceManager::adjust_monitor_inset(MonitorId mon_idx, MonitorEdge edge, int delta) {
     if (mon_idx < 0 || mon_idx >= (int)monitors.size() || delta == 0)
         return;
     auto& mon = monitors[mon_idx];
@@ -715,7 +715,7 @@ Workspace& WorkspaceManager::current() {
     WorkspaceId ws_id = active_ws_of_monitor(focused_monitor_);
     if (!is_ws_valid(ws_id)) {
         for (int i = 0; i < (int)monitors.size(); i++) {
-            ws_id = active_ws_of_monitor(i);
+            ws_id = active_ws_of_monitor(MonitorId{ i });
             if (is_ws_valid(ws_id))
                 return workspaces[ws_id];
         }
@@ -730,7 +730,7 @@ const Workspace& WorkspaceManager::current() const {
     WorkspaceId ws_id = active_ws_of_monitor(focused_monitor_);
     if (!is_ws_valid(ws_id)) {
         for (int i = 0; i < (int)monitors.size(); i++) {
-            ws_id = active_ws_of_monitor(i);
+            ws_id = active_ws_of_monitor(MonitorId{ i });
             if (is_ws_valid(ws_id))
                 return workspaces[ws_id];
         }
@@ -741,12 +741,12 @@ const Workspace& WorkspaceManager::current() const {
 
 WorkspaceId WorkspaceManager::workspace_of_window(WindowId win) const {
     if (win == NO_WINDOW)
-        return -1;
+        return NO_WORKSPACE;
     auto it = window_workspace.find(win);
     if (it == window_workspace.end())
-        return -1;
+        return NO_WORKSPACE;
     if (!is_ws_valid(it->second))
-        return -1;
+        return NO_WORKSPACE;
     return it->second;
 }
 
@@ -803,12 +803,12 @@ bool WorkspaceManager::indexes_consistent() const {
 
 bool WorkspaceManager::switch_to(WorkspaceId ws_id,
     const std::vector<MonitorAlias>& aliases,
-    int monitor_hint,
+    MonitorId monitor_hint,
     const MonitorCompose& compose) {
     if (!is_ws_valid(ws_id) || monitors.empty())
         return false;
 
-    int target_mon = monitor_of(ws_id);
+    MonitorId target_mon = monitor_of(ws_id);
     if (target_mon < 0) {
         if (is_mon_valid(monitor_hint)) {
             target_mon = monitor_hint;
@@ -819,7 +819,7 @@ bool WorkspaceManager::switch_to(WorkspaceId ws_id,
             if (!is_mon_valid(target_mon))
                 target_mon = primary_monitor_index(aliases, compose);
             if (!is_mon_valid(target_mon))
-                target_mon = is_mon_valid(focused_monitor_) ? focused_monitor_ : 0;
+                target_mon = is_mon_valid(focused_monitor_) ? focused_monitor_ : MonitorId{ 0 };
         }
         ws_owner[ws_id] = target_mon;
     }
@@ -1015,7 +1015,7 @@ std::shared_ptr<swm::Window> WorkspaceManager::focus_prev() {
     return current().focused();
 }
 
-bool WorkspaceManager::switch_local_index(int mon_idx, int local_idx) {
+bool WorkspaceManager::switch_local_index(MonitorId mon_idx, int local_idx) {
     if (mon_idx < 0 || mon_idx >= (int)monitor_pools.size())
         return false;
     auto& pool = monitor_pools[mon_idx];
@@ -1027,36 +1027,36 @@ bool WorkspaceManager::switch_local_index(int mon_idx, int local_idx) {
     return true;
 }
 
-WorkspaceId WorkspaceManager::workspace_for_local_index(int mon_idx, int local_idx) const {
+WorkspaceId WorkspaceManager::workspace_for_local_index(MonitorId mon_idx, int local_idx) const {
     if (mon_idx < 0 || mon_idx >= (int)monitor_pools.size())
-        return -1;
+        return NO_WORKSPACE;
     const auto& pool = monitor_pools[mon_idx];
     if (local_idx < 0 || local_idx >= (int)pool.size())
-        return -1;
-    return pool[local_idx];
+        return NO_WORKSPACE;
+    return WorkspaceId{ pool[local_idx] };
 }
 
-int WorkspaceManager::monitor_at_point(int x, int y) const {
+MonitorId WorkspaceManager::monitor_at_point(int x, int y) const {
     for (int i = 0; i < (int)monitors.size(); i++) {
         const auto& m = monitors[i];
         if (m.contains({ x, y }))
-            return i;
+            return MonitorId{ i };
     }
-    return -1;
+    return NO_MONITOR;
 }
 
-int WorkspaceManager::monitor_at_physical_point(int x, int y) const {
+MonitorId WorkspaceManager::monitor_at_physical_point(int x, int y) const {
     for (int i = 0; i < (int)monitors.size(); i++) {
         if (monitors[i].physical_contains({ x, y }))
-            return i;
+            return MonitorId{ i };
     }
-    return -1;
+    return NO_MONITOR;
 }
 
 bool WorkspaceManager::focus_monitor_at_point(int x, int y) {
     // Backends supply root (physical) coordinates — hit-test against physical rect
     // so clicks inside the top/bottom bar strip still pick the underlying monitor.
-    int mon = monitor_at_physical_point(x, y);
+    MonitorId mon = monitor_at_physical_point(x, y);
     if (mon < 0)
         return false;
     bool changed = (mon != focused_monitor_);
@@ -1065,13 +1065,13 @@ bool WorkspaceManager::focus_monitor_at_point(int x, int y) {
     return changed;
 }
 
-Workspace& WorkspaceManager::workspace(int id) {
+Workspace& WorkspaceManager::workspace(WorkspaceId id) {
     if (workspaces.empty() || id < 0 || id >= (int)workspaces.size())
         return fallback_workspace();
     return workspaces[id];
 }
 
-const Workspace& WorkspaceManager::workspace(int id) const {
+const Workspace& WorkspaceManager::workspace(WorkspaceId id) const {
     if (workspaces.empty() || id < 0 || id >= (int)workspaces.size())
         return fallback_workspace();
     return workspaces[id];

@@ -30,6 +30,14 @@ struct WorkspaceTag;
 using WorkspaceId = swm::StrongIdCastable<WorkspaceTag, int>;
 inline constexpr WorkspaceId NO_WORKSPACE{ -1 };
 
+struct MonitorTag;
+// MonitorId is a castable StrongId: used pervasively as an array index
+// (0..monitors.size()-1) with -1 as the "disconnected/invalid" sentinel.
+// Implicit int conversion keeps arithmetic and indexing natural while
+// preventing confusion with WorkspaceId / WindowId at compile time.
+using MonitorId = swm::StrongIdCastable<MonitorTag, int>;
+inline constexpr MonitorId NO_MONITOR{ -1 };
+
 namespace event {
 
 struct WindowMapped { WindowId window; };

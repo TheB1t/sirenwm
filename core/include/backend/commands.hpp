@@ -55,13 +55,13 @@ struct FocusWindow {
 };
 
 struct SwitchWorkspace {
-    int                workspace_id = -1;
-    std::optional<int> monitor_index; // nullopt => resolve by policy
+    WorkspaceId              workspace_id = NO_WORKSPACE;
+    std::optional<MonitorId> monitor_index; // nullopt => resolve by policy
 };
 
 struct MoveWindowToWorkspace {
-    WindowId window       = NO_WINDOW;
-    int      workspace_id = -1;
+    WindowId    window       = NO_WINDOW;
+    WorkspaceId workspace_id = NO_WORKSPACE;
 };
 
 struct MapWindow {
@@ -79,13 +79,13 @@ struct SetWindowFullscreen {
 };
 
 struct EnsureWindow {
-    WindowId window       = NO_WINDOW;
-    int      workspace_id = -1;
+    WindowId    window       = NO_WINDOW;
+    WorkspaceId workspace_id = NO_WORKSPACE;
 };
 
 struct AssignWindowWorkspace {
-    WindowId window       = NO_WINDOW;
-    int      workspace_id = -1;
+    WindowId    window       = NO_WINDOW;
+    WorkspaceId workspace_id = NO_WORKSPACE;
 };
 
 struct SetWindowMetadata {
@@ -136,7 +136,7 @@ struct ApplyMonitorTopology {
 // docks). The core subtracts the reservation from the usable workspace
 // area and keeps the original physical rect recoverable via Monitor::physical().
 struct ReserveMonitorArea {
-    int         monitor_idx = -1; // -1 = apply to every monitor
+    MonitorId   monitor_idx = NO_MONITOR; // NO_MONITOR = apply to every monitor
     MonitorEdge edge        = MonitorEdge::Top;
     int         px          = 0;
 };
@@ -150,12 +150,12 @@ struct SetMasterFactor {
 };
 
 struct FocusMonitor {
-    int monitor_index = -1;
+    MonitorId monitor_index = NO_MONITOR;
 };
 
 struct MoveWindowToMonitor {
-    WindowId window        = NO_WINDOW;
-    int      monitor_index = -1;
+    WindowId  window        = NO_WINDOW;
+    MonitorId monitor_index = NO_MONITOR;
 };
 
 struct ReconcileNow {};
