@@ -18,10 +18,6 @@ inline lua_State* as_state(void* p) {
     return static_cast<lua_State*>(p);
 }
 
-inline lua_State* as_state(const void* p) {
-    return static_cast<lua_State*>(const_cast<void*>(p));
-}
-
 class LuaStackGuard {
     lua_State* L_   = nullptr;
     int        top_ = 0;
