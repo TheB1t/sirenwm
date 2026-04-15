@@ -15,7 +15,7 @@ namespace bar::widgets {
 struct TagHit {
     int x0    = 0;
     int x1    = 0;
-    int ws_id = -1;
+    WorkspaceId ws_id = NO_WORKSPACE;
 };
 
 class PaintContext {

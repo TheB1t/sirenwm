@@ -205,7 +205,7 @@ struct ToggleWindowFloating {
 };
 
 struct MoveFocusedWindowToWorkspace {
-    int workspace_id = -1;
+    WorkspaceId workspace_id = NO_WORKSPACE;
 };
 
 struct FocusNextWindow {};

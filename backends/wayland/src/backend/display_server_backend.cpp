@@ -258,7 +258,7 @@ void DisplayServerBackend::on(const swm::ipc::SurfaceDestroyed& msg) {
         was_focused = (focused->id == wid);
     bool was_visible = false;
     {
-        const int ws_id = core.workspace_of_window(wid);
+        const WorkspaceId ws_id = core.workspace_of_window(wid);
         was_visible = (ws_id >= 0) && core.is_workspace_visible(ws_id);
     }
 

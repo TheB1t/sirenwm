@@ -22,6 +22,14 @@ struct WindowTag;
 using WindowId = swm::StrongIdCastable<WindowTag, uint32_t>;
 inline constexpr WindowId NO_WINDOW{ 0 };
 
+struct WorkspaceTag;
+// WorkspaceId is a castable StrongId: used pervasively as an array index
+// (0..workspaces.size()-1) with -1 as the "unassigned/invalid" sentinel.
+// Implicit int conversion keeps arithmetic and indexing natural while
+// preventing confusion with MonitorId / WindowId at compile time.
+using WorkspaceId = swm::StrongIdCastable<WorkspaceTag, int>;
+inline constexpr WorkspaceId NO_WORKSPACE{ -1 };
+
 namespace event {
 
 struct WindowMapped { WindowId window; };
@@ -29,7 +37,7 @@ struct WindowMapped { WindowId window; };
 // withdrawn=false → window is hidden by workspace switch (WM_STATE = IconicState)
 struct WindowUnmapped { WindowId window; bool withdrawn = false; };
 struct FocusChanged { WindowId window; };        // NO_WINDOW = focus cleared
-struct WorkspaceSwitched { int workspace_id; };
+struct WorkspaceSwitched { WorkspaceId workspace_id; };
 struct ExposeWindow { WindowId window; };
 struct RaiseDocks {};
 struct DisplayTopologyChanged {};
@@ -75,7 +83,7 @@ struct PropertyNotify { WindowId window; uint32_t atom; };
 // Emitted when an unmanaged XEMBED window reparents itself to any window.
 // bar module uses this to trigger tray rebalancing after a client docks.
 // Emitted after a window has been placed on a workspace (rules, move, or initial mapping).
-struct WindowAssignedToWorkspace { WindowId window; int workspace_id; };
+struct WindowAssignedToWorkspace { WindowId window; WorkspaceId workspace_id; };
 
 // Lifecycle events — previously ad-hoc string-based emit_to_lua() calls,
 // now proper type-safe structs dispatched through IEventReceiver.

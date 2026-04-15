@@ -28,7 +28,7 @@ bool should_apply_fullscreen_now(Core& core, WindowId win) {
     auto w = core.window_state_any(win);
     if (!w) return false;
     if (w->hidden_by_workspace) return false;
-    int ws_id = core.workspace_of_window(win);
+    WorkspaceId ws_id = core.workspace_of_window(win);
     if (ws_id >= 0 && !core.is_workspace_visible(ws_id)) return false;
     return true;
 }
@@ -353,7 +353,7 @@ void X11Backend::update_focus(event::FocusChanged ev) {
     // Sync pointer barriers: barriers follow focus. Single source of truth.
     auto w = (ev.window != NO_WINDOW) ? core.window_state_any(ev.window) : nullptr;
     if (w && w->borderless) {
-        int ws_id   = core.workspace_of_window(ev.window);
+        WorkspaceId ws_id   = core.workspace_of_window(ev.window);
         int mon_idx = core.monitor_of_workspace(ws_id);
         if (mon_idx >= 0)
             set_pointer_barriers(ev.window, mon_idx);
@@ -442,7 +442,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
         if (!window->is_visible())
             return true;
 
-        int ws_id = core.workspace_of_window(ev.window);
+        WorkspaceId ws_id = core.workspace_of_window(ev.window);
         // Do not force workspace jumps on external focus requests.
         if (ws_id >= 0 && !core.is_workspace_visible(ws_id))
             return true;
@@ -453,7 +453,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
     }
 
     if (ev.type == ewmh_atoms_[EwmhAtom::NetCurrentDesktop]) {
-        int ws_id = (int)ev.data[0];
+        WorkspaceId ws_id = (int)ev.data[0];
         if (ws_id < 0 || ws_id >= core.workspace_count())
             return true;
         (void)core.dispatch(command::atom::SwitchWorkspace{ ws_id, std::nullopt });
@@ -461,7 +461,7 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
     }
 
     if (ev.type == ewmh_atoms_[EwmhAtom::NetWmDesktop]) {
-        int ws_id = (int)ev.data[0];
+        WorkspaceId ws_id = (int)ev.data[0];
         if (ws_id < 0 || ws_id >= core.workspace_count())
             return true;
         auto w = core.window_state_any(ev.window);
