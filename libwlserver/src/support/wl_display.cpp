@@ -15,7 +15,7 @@ Display::~Display() {
 
 Display::Display(Display&& other) noexcept
     : display_(other.display_)
-    , socket_name_(std::move(other.socket_name_)) {
+      , socket_name_(std::move(other.socket_name_)) {
     other.display_ = nullptr;
 }
 
@@ -23,8 +23,8 @@ Display& Display::operator=(Display&& other) noexcept {
     if (this != &other) {
         if (display_)
             wl_display_destroy(display_);
-        display_     = other.display_;
-        socket_name_ = std::move(other.socket_name_);
+        display_       = other.display_;
+        socket_name_   = std::move(other.socket_name_);
         other.display_ = nullptr;
     }
     return *this;

@@ -15,7 +15,7 @@ bool make_sockaddr(const std::string& path, sockaddr_un& addr, socklen_t& addr_l
     if (path.empty() || path.size() >= sizeof(addr.sun_path))
         return false;
 
-    addr = {};
+    addr            = {};
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
     addr_len = static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + path.size() + 1);

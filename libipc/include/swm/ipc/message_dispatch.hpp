@@ -23,26 +23,26 @@ namespace detail {
 template <typename Handler, typename Payload>
 concept HandlesWithFdBool =
     requires(Handler&& handler, const Payload& payload, int fd) {
-        { std::forward<Handler>(handler).on(payload, fd) } -> std::convertible_to<bool>;
-    };
+    { std::forward<Handler>(handler).on(payload, fd) }->std::convertible_to<bool>;
+};
 
 template <typename Handler, typename Payload>
 concept HandlesWithFdVoid =
     requires(Handler&& handler, const Payload& payload, int fd) {
-        { std::forward<Handler>(handler).on(payload, fd) } -> std::same_as<void>;
-    };
+    { std::forward<Handler>(handler).on(payload, fd) }->std::same_as<void>;
+};
 
 template <typename Handler, typename Payload>
 concept HandlesBool =
     requires(Handler&& handler, const Payload& payload) {
-        { std::forward<Handler>(handler).on(payload) } -> std::convertible_to<bool>;
-    };
+    { std::forward<Handler>(handler).on(payload) }->std::convertible_to<bool>;
+};
 
 template <typename Handler, typename Payload>
 concept HandlesVoid =
     requires(Handler&& handler, const Payload& payload) {
-        { std::forward<Handler>(handler).on(payload) } -> std::same_as<void>;
-    };
+    { std::forward<Handler>(handler).on(payload) }->std::same_as<void>;
+};
 
 template <typename Handler, typename Payload>
 bool invoke_handler(Handler&& handler, const Payload& payload, int received_fd) {
@@ -78,8 +78,8 @@ bool dispatch_backend_message(const MessageHeader& header, const void* payload_b
     SWM_IPC_BACKEND_MESSAGES(SWM_IPC_DISPATCH_CASE)
 
 #undef SWM_IPC_DISPATCH_CASE
-    default:
-        return false;
+        default:
+            return false;
     }
 }
 

@@ -20,7 +20,7 @@ void DisplayServerKeyboardPort::apply(const std::vector<std::string>& layouts, c
 
 void DisplayServerKeyboardPort::restore() {
     layouts_ = {"us"};
-    group_ = 0;
+    group_   = 0;
 }
 
 uint32_t DisplayServerKeyboardPort::get_group() const {

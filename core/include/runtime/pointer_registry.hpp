@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 template<typename T>
 class PointerRegistry {
-        std::vector<T*> items_;
+    std::vector<T*> items_;
 
     public:
         void add(T* item) {

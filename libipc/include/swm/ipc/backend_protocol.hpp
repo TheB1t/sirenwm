@@ -8,13 +8,13 @@
 
 namespace swm::ipc {
 
-inline constexpr uint32_t kBackendProtocolMagic   = 0x53495043; // "SIPC"
-inline constexpr uint16_t kBackendProtocolVersion = 1;
+inline constexpr uint32_t    kBackendProtocolMagic   = 0x53495043; // "SIPC"
+inline constexpr uint16_t    kBackendProtocolVersion = 1;
 
-inline constexpr std::size_t kMaxOutputNameBytes    = 64;
-inline constexpr std::size_t kMaxSurfaceAppIdBytes  = 96;
-inline constexpr std::size_t kMaxSurfaceTitleBytes  = 160;
-inline constexpr std::size_t kMaxKeyIntercepts      = 64;
+inline constexpr std::size_t kMaxOutputNameBytes   = 64;
+inline constexpr std::size_t kMaxSurfaceAppIdBytes = 96;
+inline constexpr std::size_t kMaxSurfaceTitleBytes = 160;
+inline constexpr std::size_t kMaxKeyIntercepts     = 64;
 
 template <std::size_t N>
 struct FixedString {
@@ -102,7 +102,7 @@ struct SnapshotEnd {
 };
 
 struct OutputAdded {
-    uint32_t                         id      = 0;
+    uint32_t                         id = 0;
     FixedString<kMaxOutputNameBytes> name;
     int32_t                          x       = 0;
     int32_t                          y       = 0;
@@ -116,10 +116,10 @@ struct OutputRemoved {
 };
 
 struct SurfaceCreated {
-    uint32_t                          id    = 0;
+    uint32_t                           id = 0;
     FixedString<kMaxSurfaceAppIdBytes> app_id;
     FixedString<kMaxSurfaceTitleBytes> title;
-    uint32_t                          pid   = 0;
+    uint32_t                           pid = 0;
 };
 
 struct SurfaceMapped {
@@ -221,7 +221,7 @@ struct KeyIntercept {
 };
 
 struct SetKeyboardIntercepts {
-    uint32_t                                      count = 0;
+    uint32_t                                    count = 0;
     std::array<KeyIntercept, kMaxKeyIntercepts> intercepts {};
 };
 

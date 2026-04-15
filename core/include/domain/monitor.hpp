@@ -66,8 +66,8 @@ struct Monitor {
         int left  = std::max(0, left_inset_);
         int right = std::max(0, right_inset_);
         return { { pos_.x() - left, pos_.y() - top },
-                 { std::max(1, size_.x() + left + right),
-                   std::max(1, size_.y() + top + bot) } };
+            { std::max(1, size_.x() + left + right),
+              std::max(1, size_.y() + top + bot) } };
     }
 
     bool physical_contains(Vec2i p) const {

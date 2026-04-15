@@ -121,11 +121,11 @@ int run_display_server(const DisplayServerOptions& options) {
     // Ignore SIGUSR1 so the display-server process does not terminate unexpectedly.
     signal(SIGUSR1, SIG_IGN);
 
-    const int width  = options.width;
-    const int height = options.height;
+    const int                 width  = options.width;
+    const int                 height = options.height;
 
-    wl::Display display;
-    const auto& socket = display.add_socket_auto();
+    wl::Display               display;
+    const auto&               socket = display.add_socket_auto();
 
     wl::server::Shm           shm(display);
     wl::server::Compositor    compositor(display, shm);
@@ -134,17 +134,17 @@ int run_display_server(const DisplayServerOptions& options) {
     wl::server::Output        wl_output(display, width, height, 60000);
 
     OverlayManager            overlay_mgr;
-    DisplayState               display_state(overlay_mgr);
+    DisplayState              display_state(overlay_mgr);
     wl::server::XdgShell      xdg_shell(display, compositor);
     wl::server::XdgDecoration xdg_decoration(display);
     xdg_shell.set_event_handler(&display_state);
     DisplayStateSurfaceSink   xwm_sink(display_state);
 
-    XWayland xwayland(display, compositor, xwm_sink, width, height);
-    const auto control_socket = swm::ipc::backend_socket_path(socket);
-    BackendControlServer control_server(control_socket, display_state);
+    XWayland                  xwayland(display, compositor, xwm_sink, width, height);
+    const auto                control_socket = swm::ipc::backend_socket_path(socket);
+    BackendControlServer      control_server(control_socket, display_state);
 
-    OutputX11 output(width, height);
+    OutputX11                 output(width, height);
     if (!output.valid() || !control_server.valid()) {
         std::fprintf(stderr, "sirenwm-wayland(display-server): failed to create X11 output\n");
         return EXIT_FAILURE;
@@ -156,7 +156,9 @@ int run_display_server(const DisplayServerOptions& options) {
             output.request_repaint();
         });
 
-    overlay_mgr.set_on_changed([&output]() { output.request_repaint(); });
+    overlay_mgr.set_on_changed([&output]() {
+            output.request_repaint();
+        });
 
     DisplayServerListener listener(xdg_shell, display_state, seat, output, xwayland);
     display_state.set_command_handler(&listener);
@@ -185,15 +187,15 @@ int run_display_server(const DisplayServerOptions& options) {
         display.flush_clients();
 
         std::array<struct pollfd, 5> fds {};
-        int           nfds = 3;
-        fds[0].fd          = wl_loop.fd();
-        fds[0].events      = POLLIN;
-        fds[1].fd          = output.fd();
-        fds[1].events      = POLLIN;
-        fds[2].fd          = control_server.listener_fd();
-        fds[2].events      = POLLIN;
+        int                          nfds = 3;
+        fds[0].fd     = wl_loop.fd();
+        fds[0].events = POLLIN;
+        fds[1].fd     = output.fd();
+        fds[1].events = POLLIN;
+        fds[2].fd     = control_server.listener_fd();
+        fds[2].events = POLLIN;
 
-        int xcb_fd = xwayland.xcb_fd();
+        int xcb_fd            = xwayland.xcb_fd();
         int control_client_fd = control_server.client_fd();
         if (control_client_fd >= 0) {
             fds[nfds].fd     = control_client_fd;

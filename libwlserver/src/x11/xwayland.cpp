@@ -32,8 +32,10 @@ static int create_lockfile(int display) {
     if (fd < 0) return -1;
 
     char buf[16];
-    int len = snprintf(buf, sizeof(buf), "%10d\n", getpid());
-    if (write(fd, buf, len) != len) { close(fd); unlink(path); return -1; }
+    int  len = snprintf(buf, sizeof(buf), "%10d\n", getpid());
+    if (write(fd, buf, len) != len) {
+        close(fd); unlink(path); return -1;
+    }
     close(fd);
     return 0;
 }
@@ -41,7 +43,7 @@ static int create_lockfile(int display) {
 static int open_socket(const char* path) {
     struct sockaddr_un addr = {};
     addr.sun_family = AF_UNIX;
-    const size_t path_len = std::strlen(path);
+    const size_t       path_len = std::strlen(path);
     if (path_len >= sizeof(addr.sun_path))
         return -1;
     std::memcpy(addr.sun_path, path, path_len + 1);
@@ -82,7 +84,7 @@ bool XWayland::open_display_sockets() {
             continue;
         }
 
-        display_num_ = i;
+        display_num_  = i;
         display_name_ = ":" + std::to_string(i);
         return true;
     }
@@ -105,9 +107,9 @@ static bool xwayland_available() {
 }
 
 XWayland::XWayland(wl::Display& display, wl::server::Compositor& compositor,
-                   XwmSurfaceSink& sink, int output_width, int output_height)
+    XwmSurfaceSink& sink, int output_width, int output_height)
     : display_(display), compositor_(compositor), sink_(sink)
-    , output_width_(output_width), output_height_(output_height) {
+      , output_width_(output_width), output_height_(output_height) {
     if (!xwayland_available()) {
         fprintf(stderr, "xwayland: Xwayland binary not found, X11 app support disabled\n");
         return;
@@ -165,8 +167,8 @@ bool XWayland::launch() {
 
     auto* wl_loop = wl_display_get_event_loop(display_.raw());
     ready_source_ = wl_event_loop_add_fd(wl_loop, notify_fd[0],
-                                          WL_EVENT_READABLE,
-                                          &XWayland::ready_callback, this);
+            WL_EVENT_READABLE,
+            &XWayland::ready_callback, this);
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -195,19 +197,19 @@ bool XWayland::launch() {
         signal(SIGUSR1, SIG_IGN);
 
         execlp("Xwayland", "Xwayland",
-               display_name_.c_str(),
-               "-rootless",
-               "-terminate",
-               "-listenfd", x_fd_str,
-               "-displayfd", notify_str,
-               "-wm", wm_fd_str,
-               nullptr);
+            display_name_.c_str(),
+            "-rootless",
+            "-terminate",
+            "-listenfd", x_fd_str,
+            "-displayfd", notify_str,
+            "-wm", wm_fd_str,
+            nullptr);
 
         fprintf(stderr, "xwayland: exec failed: %s\n", strerror(errno));
         _exit(1);
     }
 
-    xwl_pid_ = pid;
+    xwl_pid_                    = pid;
     close(wl_fd_[1]); wl_fd_[1] = -1;
     close(wm_fd_[1]); wm_fd_[1] = -1;
     close(notify_fd[1]);
@@ -216,10 +218,10 @@ bool XWayland::launch() {
 }
 
 int XWayland::ready_callback(int fd, uint32_t, void* data) {
-    auto* self = static_cast<XWayland*>(data);
+    auto*   self = static_cast<XWayland*>(data);
 
-    char buf[64] = {};
-    ssize_t n = read(fd, buf, sizeof(buf) - 1);
+    char    buf[64] = {};
+    ssize_t n       = read(fd, buf, sizeof(buf) - 1);
 
     close(fd);
     wl_event_source_remove(self->ready_source_);
@@ -245,7 +247,9 @@ void XWayland::cleanup_dead_child() {
         xwl_pid_ = -1;
     }
     for (int i = 0; i < 2; i++) {
-        if (wm_fd_[i] >= 0) { close(wm_fd_[i]); wm_fd_[i] = -1; }
+        if (wm_fd_[i] >= 0) {
+            close(wm_fd_[i]); wm_fd_[i] = -1;
+        }
     }
     unlink_display_sockets();
 }
@@ -272,7 +276,7 @@ void XWayland::dispatch() {
 }
 
 void XWayland::configure_window(uint32_t surface_id, int32_t x, int32_t y,
-                                 int32_t w, int32_t h) {
+    int32_t w, int32_t h) {
     if (xwm_) xwm_->configure(surface_id, x, y, w, h);
 }
 

@@ -15,14 +15,14 @@ void DisplayState::set_event_handler(swm::ipc::BackendEventHandler* handler) {
 
 uint32_t DisplayState::add_surface(const std::string& app_id, const std::string& title,
     uint32_t pid, uint32_t toplevel_id) {
-    uint32_t id = next_surface_id_++;
+    uint32_t       id = next_surface_id_++;
     DisplaySurface surface;
-    surface.id = id;
+    surface.id          = id;
     surface.toplevel_id = toplevel_id;
-    surface.app_id = app_id;
-    surface.title = title;
-    surface.pid = pid;
-    auto [it, _] = surfaces_.emplace(id, std::move(surface));
+    surface.app_id      = app_id;
+    surface.title       = title;
+    surface.pid         = pid;
+    auto [it, _]        = surfaces_.emplace(id, std::move(surface));
     swm::ipc::SurfaceCreated msg {};
     msg.id = it->second.id;
     msg.app_id.assign(it->second.app_id.c_str());
@@ -55,7 +55,7 @@ void DisplayState::surface_mapped(uint32_t id) {
     auto it = surfaces_.find(id);
     if (it == surfaces_.end())
         return;
-    it->second.mapped = true;
+    it->second.mapped                        = true;
     emit_event(swm::ipc::SurfaceMapped { .id = id });
 }
 
@@ -63,7 +63,7 @@ void DisplayState::surface_unmapped(uint32_t id) {
     auto it = surfaces_.find(id);
     if (it == surfaces_.end())
         return;
-    it->second.mapped = false;
+    it->second.mapped                          = false;
     emit_event(swm::ipc::SurfaceUnmapped { .id = id });
 }
 
@@ -101,11 +101,11 @@ void DisplayState::surface_committed(uint32_t id, int32_t width, int32_t height)
     auto it = surfaces_.find(id);
     if (it == surfaces_.end())
         return;
-    it->second.width = width;
+    it->second.width  = width;
     it->second.height = height;
     emit_event(swm::ipc::SurfaceCommitted {
-        .id = id,
-        .width = width,
+        .id     = id,
+        .width  = width,
         .height = height,
     });
 }
@@ -116,10 +116,10 @@ void DisplayState::output_added(uint32_t id, const std::string& name,
     swm::ipc::OutputAdded msg {};
     msg.id = id;
     msg.name.assign(name.c_str());
-    msg.x = x;
-    msg.y = y;
-    msg.width = w;
-    msg.height = h;
+    msg.x       = x;
+    msg.y       = y;
+    msg.width   = w;
+    msg.height  = h;
     msg.refresh = refresh;
     emit_event(msg);
 }
@@ -132,8 +132,8 @@ void DisplayState::output_removed(uint32_t id) {
 void DisplayState::key_press(uint32_t keycode, uint32_t keysym, uint32_t mods) {
     emit_event(swm::ipc::Key {
         .keycode = keycode,
-        .keysym = keysym,
-        .mods = mods,
+        .keysym  = keysym,
+        .mods    = mods,
         .pressed = 1,
     });
 }
@@ -142,20 +142,20 @@ void DisplayState::button_press(uint32_t surface_id, int32_t root_x, int32_t roo
     uint32_t button, uint32_t mods, bool released) {
     emit_event(swm::ipc::Button {
         .surface_id = surface_id,
-        .x = root_x,
-        .y = root_y,
-        .button = button,
-        .mods = mods,
-        .released = released ? 1u : 0u,
+        .x          = root_x,
+        .y          = root_y,
+        .button     = button,
+        .mods       = mods,
+        .released   = released ? 1u : 0u,
     });
 }
 
 void DisplayState::pointer_motion(uint32_t surface_id, int32_t root_x, int32_t root_y, uint32_t mods) {
     emit_event(swm::ipc::PointerMotion {
         .surface_id = surface_id,
-        .x = root_x,
-        .y = root_y,
-        .mods = mods,
+        .x          = root_x,
+        .y          = root_y,
+        .mods       = mods,
     });
 }
 
@@ -199,7 +199,7 @@ std::vector<DisplayState::OutputInfo> DisplayState::snapshot_outputs() const {
 }
 
 uint32_t DisplayState::surface_at(int32_t x, int32_t y) const {
-    uint32_t best_id = 0;
+    uint32_t best_id       = 0;
     uint32_t best_stacking = 0;
     for (const auto& [id, surface] : surfaces_) {
         if (!surface.mapped || !surface.visible)
@@ -208,7 +208,7 @@ uint32_t DisplayState::surface_at(int32_t x, int32_t y) const {
         if (x >= surface.x - bw && x < surface.x + surface.width + bw &&
             y >= surface.y - bw && y < surface.y + surface.height + bw) {
             if (best_id == 0 || surface.stacking >= best_stacking) {
-                best_id = id;
+                best_id       = id;
                 best_stacking = surface.stacking;
             }
         }
@@ -231,10 +231,10 @@ std::vector<const DisplaySurface*> DisplayState::visible_surfaces_by_stacking() 
 void DisplayState::overlay_button(uint32_t overlay_id, int32_t x, int32_t y, uint32_t button, bool released) {
     emit_event(swm::ipc::OverlayButton {
         .overlay_id = overlay_id,
-        .x = x,
-        .y = y,
-        .button = button,
-        .released = released ? 1u : 0u,
+        .x          = x,
+        .y          = y,
+        .button     = button,
+        .released   = released ? 1u : 0u,
     });
 }
 
@@ -242,23 +242,23 @@ void DisplayState::configure_surface(uint32_t id, int32_t x, int32_t y, int32_t 
     auto it = surfaces_.find(id);
     if (it == surfaces_.end())
         return;
-    it->second.x = x;
-    it->second.y = y;
-    it->second.width = w;
+    it->second.x      = x;
+    it->second.y      = y;
+    it->second.width  = w;
     it->second.height = h;
     dispatch_command(swm::ipc::ConfigureSurface {
         .surface_id = id,
-        .x = x,
-        .y = y,
-        .width = w,
-        .height = h,
+        .x          = x,
+        .y          = y,
+        .width      = w,
+        .height     = h,
     });
 }
 
 void DisplayState::set_surface_activated(uint32_t id, bool activated) {
     dispatch_command(swm::ipc::SetSurfaceActivated {
         .surface_id = id,
-        .activated = activated ? 1u : 0u,
+        .activated  = activated ? 1u : 0u,
     });
 }
 
@@ -268,7 +268,7 @@ void DisplayState::set_surface_visible(uint32_t id, bool visible) {
         it->second.visible = visible;
     dispatch_command(swm::ipc::SetSurfaceVisible {
         .surface_id = id,
-        .visible = visible ? 1u : 0u,
+        .visible    = visible ? 1u : 0u,
     });
 }
 
@@ -278,7 +278,7 @@ void DisplayState::set_surface_stacking(uint32_t id, uint32_t mode) {
         it->second.stacking = mode;
     dispatch_command(swm::ipc::SetSurfaceStacking {
         .surface_id = id,
-        .raised = mode,
+        .raised     = mode,
     });
 }
 
@@ -310,8 +310,8 @@ void DisplayState::set_surface_border(uint32_t id, uint32_t width, uint32_t colo
     }
     dispatch_command(swm::ipc::SetSurfaceBorder {
         .surface_id = id,
-        .width = width,
-        .color = color,
+        .width      = width,
+        .color      = color,
     });
 }
 

@@ -49,7 +49,7 @@ constexpr uint32_t fnv1a(const char* s, uint32_t h = 2166136261u) {
 // time otherwise.
 template<class T>
 concept Message = requires {
-    { T::kTag } -> std::convertible_to<uint32_t>;
+    { T::kTag }->std::convertible_to<uint32_t>;
 }
 && std::is_trivially_copyable_v<T>
 && (sizeof(T)  <= 32)

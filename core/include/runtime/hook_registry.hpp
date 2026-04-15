@@ -26,7 +26,7 @@ class IHookReceiver {
 };
 
 class HookRegistry {
-        PointerRegistry<IHookReceiver> receivers_;
+    PointerRegistry<IHookReceiver> receivers_;
 
     public:
         void add(IHookReceiver* r)    { receivers_.add(r); }
