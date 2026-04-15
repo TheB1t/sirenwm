@@ -12,10 +12,15 @@
 #include <string>
 
 #include <support/message.hpp>
+#include <support/strong_id.hpp>
 #include <support/vec.hpp>
 
-using WindowId = uint32_t;
-static constexpr WindowId NO_WINDOW = 0;
+struct WindowTag;
+// Uses StrongIdCastable because xcb_window_t is threaded through hundreds of
+// backend call sites; cross-tag mixing with MonitorId/WorkspaceId remains
+// rejected at compile time.
+using WindowId = swm::StrongIdCastable<WindowTag, uint32_t>;
+inline constexpr WindowId NO_WINDOW{ 0 };
 
 namespace event {
 

@@ -7,6 +7,28 @@
 #include <memory>
 #include <string>
 #include <stdexcept>
+#include <type_traits>
+
+#include <support/strong_id.hpp>
+
+// Promote StrongId/StrongIdCastable to their underlying integer so fmt's
+// printf-style path sees a plain arithmetic type. fmt's has_formatter check
+// under printf_context rejects any class without an explicit formatter (and
+// providing one hits native_formatter pitfalls across fmt 9/11/12), so the
+// cleanest fix is to unwrap at the log call boundary.
+namespace swm::log_detail {
+template <typename Tag, typename U>
+constexpr U log_arg(StrongId<Tag, U> id) { return id.get(); }
+template <typename Tag, typename U>
+constexpr U log_arg(StrongIdCastable<Tag, U> id) { return id.get(); }
+template <typename T>
+constexpr decltype(auto) log_arg(T&& v) { return std::forward<T>(v); }
+
+template <typename Fmt, typename... Args>
+std::string log_sprintf(const Fmt& f, Args&&... args) {
+    return ::fmt::sprintf(f, log_arg(std::forward<Args>(args))...);
+}
+} // namespace swm::log_detail
 
 // Global logger instance — avoids spdlog::get() registry lookup on every call.
 // Defined inline so all TUs share the same pointer (C++17 inline variables).
@@ -41,7 +63,7 @@ inline void log_init(const std::string& log_path = "runtime.log",
 // Printf-style logging macros — format strings use %s/%d/etc.
 // fmt::sprintf handles the formatting so existing call sites need no changes.
 
-#define _LOG_FMT(f_, ...)      ::fmt::sprintf(f_, ##__VA_ARGS__)
+#define _LOG_FMT(f_, ...)      ::swm::log_detail::log_sprintf(f_, ##__VA_ARGS__)
 
 #define LOG_DEBUG(format, ...) g_logger->debug(_LOG_FMT(format, ##__VA_ARGS__))
 #define LOG_INFO(format, ...)  g_logger->info(_LOG_FMT(format, ##__VA_ARGS__))
