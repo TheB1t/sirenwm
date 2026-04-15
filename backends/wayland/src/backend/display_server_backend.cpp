@@ -29,8 +29,8 @@ bool poll_readable(int fd, int timeout_ms) {
         return false;
 
     pollfd pfd {
-        .fd = fd,
-        .events = POLLIN,
+        .fd      = fd,
+        .events  = POLLIN,
         .revents = 0,
     };
     const int rc = ::poll(&pfd, 1, timeout_ms);
@@ -39,7 +39,7 @@ bool poll_readable(int fd, int timeout_ms) {
 
 uint32_t parse_hex_color(const std::string& s) {
     if (s.size() == 7 && s[0] == '#') {
-        char* end = nullptr;
+        char*          end = nullptr;
         const uint32_t rgb = static_cast<uint32_t>(std::strtoul(s.c_str() + 1, &end, 16));
         if (end == s.c_str() + 7)
             return 0xFF000000 | rgb;
@@ -51,10 +51,10 @@ uint32_t parse_hex_color(const std::string& s) {
 
 DisplayServerBackend::DisplayServerBackend(Core&, Runtime& runtime)
     : input_(*this)
-    , monitor_(*this)
-    , render_(*this)
-    , keyboard_()
-    , runtime_(runtime) {
+      , monitor_(*this)
+      , render_(*this)
+      , keyboard_()
+      , runtime_(runtime) {
     const auto control_socket = swm::ipc::backend_socket_path_from_env();
     if (control_socket.empty())
         throw std::runtime_error("display_server_backend: SIRENWM_IPC_SOCKET/WAYLAND_DISPLAY is not set");
@@ -65,7 +65,7 @@ DisplayServerBackend::DisplayServerBackend(Core&, Runtime& runtime)
 
     send_control(swm::ipc::Hello {
         .peer_role = swm::ipc::BackendPeerRole::WmController,
-        .flags = 0,
+        .flags     = 0,
     });
     send_control(swm::ipc::SnapshotRequest {});
     bootstrap_snapshot();
@@ -94,8 +94,8 @@ void DisplayServerBackend::bootstrap_snapshot() {
             throw std::runtime_error("display_server_backend: timed out waiting for control snapshot");
 
         std::array<std::byte, 2048> buffer {};
-        int received_fd = -1;
-        const auto rc = control_.receive_bytes(buffer.data(), buffer.size(), &received_fd);
+        int                         received_fd = -1;
+        const auto                  rc          = control_.receive_bytes(buffer.data(), buffer.size(), &received_fd);
         if (rc < 0) {
             if (received_fd >= 0)
                 ::close(received_fd);
@@ -114,7 +114,7 @@ void DisplayServerBackend::bootstrap_snapshot() {
 
         swm::ipc::MessageHeader header {};
         std::memcpy(&header, buffer.data(), sizeof(header));
-        const auto expected_size = sizeof(header) + header.size;
+        const auto              expected_size = sizeof(header) + header.size;
         if (header.magic != swm::ipc::kBackendProtocolMagic ||
             header.version != swm::ipc::kBackendProtocolVersion ||
             static_cast<std::size_t>(rc) != expected_size) {
@@ -141,8 +141,8 @@ void DisplayServerBackend::pump_events(std::size_t max_events_per_tick) {
     std::size_t processed = 0;
     do {
         std::array<std::byte, 2048> buffer {};
-        int received_fd = -1;
-        const auto rc = control_.receive_bytes(buffer.data(), buffer.size(), &received_fd);
+        int                         received_fd = -1;
+        const auto                  rc          = control_.receive_bytes(buffer.data(), buffer.size(), &received_fd);
         if (rc < 0) {
             if (received_fd >= 0)
                 ::close(received_fd);
@@ -161,7 +161,7 @@ void DisplayServerBackend::pump_events(std::size_t max_events_per_tick) {
 
         swm::ipc::MessageHeader header {};
         std::memcpy(&header, buffer.data(), sizeof(header));
-        const auto expected_size = sizeof(header) + header.size;
+        const auto              expected_size = sizeof(header) + header.size;
         if (header.magic != swm::ipc::kBackendProtocolMagic ||
             header.version != swm::ipc::kBackendProtocolVersion ||
             static_cast<std::size_t>(rc) != expected_size) {
@@ -181,8 +181,8 @@ void DisplayServerBackend::pump_events(std::size_t max_events_per_tick) {
 
         ++processed;
     } while (control_ &&
-             (max_events_per_tick == 0 || processed < max_events_per_tick) &&
-             poll_readable(control_.fd(), 0));
+        (max_events_per_tick == 0 || processed < max_events_per_tick) &&
+        poll_readable(control_.fd(), 0));
 }
 
 bool DisplayServerBackend::dispatch_control_message(const swm::ipc::MessageHeader& header,
@@ -240,7 +240,7 @@ void DisplayServerBackend::on(const swm::ipc::SurfaceUnmapped& msg) {
 
 void DisplayServerBackend::on(const swm::ipc::SurfaceDestroyed& msg) {
     const auto wid = static_cast<WindowId>(msg.id);
-    auto it = surfaces_.find(msg.id);
+    auto       it  = surfaces_.find(msg.id);
     if (it == surfaces_.end())
         return;
 
@@ -252,8 +252,8 @@ void DisplayServerBackend::on(const swm::ipc::SurfaceDestroyed& msg) {
     }
 
     LOG_INFO("DisplayServerBackend: surface %u destroyed", msg.id);
-    auto& core = runtime_.core;
-    bool was_focused = false;
+    auto& core        = runtime_.core;
+    bool  was_focused = false;
     if (auto focused = core.focused_window_state())
         was_focused = (focused->id == wid);
     bool was_visible = false;
@@ -286,7 +286,7 @@ void DisplayServerBackend::on(const swm::ipc::SurfaceCommitted& msg) {
     auto it = surfaces_.find(msg.id);
     if (it == surfaces_.end())
         return;
-    it->second.width = msg.width;
+    it->second.width  = msg.width;
     it->second.height = msg.height;
 
     if (started_ && it->second.mapped && !it->second.managed && msg.width > 0 && msg.height > 0)
@@ -324,21 +324,21 @@ void DisplayServerBackend::on(const swm::ipc::Button& msg) {
         return;
 
     if (!msg.released && msg.surface_id != 0) {
-        auto& core = runtime_.core;
-        const auto wid = static_cast<WindowId>(msg.surface_id);
+        auto&      core = runtime_.core;
+        const auto wid  = static_cast<WindowId>(msg.surface_id);
         if (auto window = core.window_state_any(wid); window && window->is_visible())
             (void)core.dispatch(command::atom::FocusWindow { wid });
     }
 
     runtime_.post_event(event::ButtonEv {
-        .window = static_cast<WindowId>(msg.surface_id),
-        .root = static_cast<WindowId>(msg.surface_id),
-        .root_pos = { static_cast<int16_t>(msg.x), static_cast<int16_t>(msg.y) },
+        .window    = static_cast<WindowId>(msg.surface_id),
+        .root      = static_cast<WindowId>(msg.surface_id),
+        .root_pos  = { static_cast<int16_t>(msg.x), static_cast<int16_t>(msg.y) },
         .event_pos = { static_cast<int16_t>(msg.x), static_cast<int16_t>(msg.y) },
-        .time = 0,
-        .button = static_cast<uint8_t>(msg.button - 0x110 + 1),
-        .state = static_cast<uint16_t>(msg.mods),
-        .release = msg.released != 0,
+        .time      = 0,
+        .button    = static_cast<uint8_t>(msg.button - 0x110 + 1),
+        .state     = static_cast<uint16_t>(msg.mods),
+        .release   = msg.released != 0,
     });
 }
 
@@ -357,9 +357,9 @@ void DisplayServerBackend::on(const swm::ipc::PointerEnter& msg) {
     if (!started_)
         return;
 
-    auto& core = runtime_.core;
-    const auto wid = static_cast<WindowId>(msg.surface_id);
-    auto window = core.window_state_any(wid);
+    auto&      core   = runtime_.core;
+    const auto wid    = static_cast<WindowId>(msg.surface_id);
+    auto       window = core.window_state_any(wid);
     if (!window || !window->is_visible())
         return;
 
@@ -377,94 +377,94 @@ void DisplayServerBackend::on(const swm::ipc::OverlayButton& msg) {
         return;
 
     runtime_.post_event(event::ButtonEv {
-        .window = static_cast<WindowId>(msg.overlay_id),
-        .root = static_cast<WindowId>(msg.overlay_id),
-        .root_pos = { static_cast<int16_t>(msg.x), static_cast<int16_t>(msg.y) },
+        .window    = static_cast<WindowId>(msg.overlay_id),
+        .root      = static_cast<WindowId>(msg.overlay_id),
+        .root_pos  = { static_cast<int16_t>(msg.x), static_cast<int16_t>(msg.y) },
         .event_pos = { static_cast<int16_t>(msg.x), static_cast<int16_t>(msg.y) },
-        .time = 0,
-        .button = static_cast<uint8_t>(msg.button - 0x110 + 1),
-        .state = 0,
-        .release = msg.released != 0,
+        .time      = 0,
+        .button    = static_cast<uint8_t>(msg.button - 0x110 + 1),
+        .state     = 0,
+        .release   = msg.released != 0,
     });
 }
 
 void DisplayServerBackend::render_frame() {
-    auto& core = runtime_.core;
-    auto effects = core.take_backend_effects();
+    auto& core    = runtime_.core;
+    auto  effects = core.take_backend_effects();
 
     for (const auto& effect : effects) {
         switch (effect.kind) {
-        case BackendEffectKind::MapWindow: {
-            auto ws = core.window_state(effect.window);
-            if (!ws)
-                break;
-            configure_surface(effect.window,
-                ws->pos().x(), ws->pos().y(),
-                ws->size().x(), ws->size().y());
-            set_surface_visible(effect.window, 1);
-            if (ws->border_width > 0)
-                set_surface_border(effect.window, ws->border_width, unfocused_border_);
-            if (auto flush = core.take_window_flush(effect.window))
-                (void)flush;
-            break;
-        }
-        case BackendEffectKind::UnmapWindow:
-            set_surface_visible(effect.window, 0);
-            break;
-        case BackendEffectKind::FocusWindow:
-            if (prev_focused_ != NO_WINDOW && prev_focused_ != effect.window)
-                set_surface_activated(prev_focused_, 0);
-            if (effect.window != NO_WINDOW) {
-                set_surface_activated(effect.window, 1);
-                set_surface_border(effect.window, 0, 0);
+            case BackendEffectKind::MapWindow: {
                 auto ws = core.window_state(effect.window);
-                if (ws && ws->border_width > 0)
-                    set_surface_border(effect.window, ws->border_width, focused_border_);
-            }
-            if (prev_focused_ != NO_WINDOW && prev_focused_ != effect.window) {
-                auto prev = core.window_state(prev_focused_);
-                if (prev && prev->border_width > 0)
-                    set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
-            }
-            prev_focused_ = effect.window;
-            break;
-        case BackendEffectKind::FocusRoot:
-            if (prev_focused_ != NO_WINDOW) {
-                set_surface_activated(prev_focused_, 0);
-                auto prev = core.window_state(prev_focused_);
-                if (prev && prev->border_width > 0)
-                    set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
-                prev_focused_ = NO_WINDOW;
-            }
-            break;
-        case BackendEffectKind::UpdateWindow: {
-            if (effect.window == NO_WINDOW)
+                if (!ws)
+                    break;
+                configure_surface(effect.window,
+                    ws->pos().x(), ws->pos().y(),
+                    ws->size().x(), ws->size().y());
+                set_surface_visible(effect.window, 1);
+                if (ws->border_width > 0)
+                    set_surface_border(effect.window, ws->border_width, unfocused_border_);
+                if (auto flush = core.take_window_flush(effect.window))
+                    (void)flush;
                 break;
-            if (auto flush = core.take_window_flush(effect.window)) {
-                auto ws = core.window_state(effect.window);
-                if (ws) {
-                    configure_surface(effect.window,
-                        ws->pos().x(), ws->pos().y(),
-                        ws->size().x(), ws->size().y());
-                    const uint32_t color = (effect.window == prev_focused_)
-                        ? focused_border_ : unfocused_border_;
-                    set_surface_border(effect.window, ws->border_width, color);
+            }
+            case BackendEffectKind::UnmapWindow:
+                set_surface_visible(effect.window, 0);
+                break;
+            case BackendEffectKind::FocusWindow:
+                if (prev_focused_ != NO_WINDOW && prev_focused_ != effect.window)
+                    set_surface_activated(prev_focused_, 0);
+                if (effect.window != NO_WINDOW) {
+                    set_surface_activated(effect.window, 1);
+                    set_surface_border(effect.window, 0, 0);
+                    auto ws = core.window_state(effect.window);
+                    if (ws && ws->border_width > 0)
+                        set_surface_border(effect.window, ws->border_width, focused_border_);
                 }
+                if (prev_focused_ != NO_WINDOW && prev_focused_ != effect.window) {
+                    auto prev = core.window_state(prev_focused_);
+                    if (prev && prev->border_width > 0)
+                        set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
+                }
+                prev_focused_ = effect.window;
+                break;
+            case BackendEffectKind::FocusRoot:
+                if (prev_focused_ != NO_WINDOW) {
+                    set_surface_activated(prev_focused_, 0);
+                    auto prev = core.window_state(prev_focused_);
+                    if (prev && prev->border_width > 0)
+                        set_surface_border(prev_focused_, prev->border_width, unfocused_border_);
+                    prev_focused_ = NO_WINDOW;
+                }
+                break;
+            case BackendEffectKind::UpdateWindow: {
+                if (effect.window == NO_WINDOW)
+                    break;
+                if (auto flush = core.take_window_flush(effect.window)) {
+                    auto ws = core.window_state(effect.window);
+                    if (ws) {
+                        configure_surface(effect.window,
+                            ws->pos().x(), ws->pos().y(),
+                            ws->size().x(), ws->size().y());
+                        const uint32_t color = (effect.window == prev_focused_)
+                        ? focused_border_ : unfocused_border_;
+                        set_surface_border(effect.window, ws->border_width, color);
+                    }
+                }
+                break;
             }
-            break;
-        }
-        case BackendEffectKind::RaiseWindow:
-            set_surface_stacking(effect.window, 1);
-            break;
-        case BackendEffectKind::LowerWindow:
-            set_surface_stacking(effect.window, 0);
-            break;
-        case BackendEffectKind::CloseWindow:
-            close_surface(effect.window);
-            break;
-        case BackendEffectKind::WarpPointer:
-            warp_pointer(effect.pos.x(), effect.pos.y());
-            break;
+            case BackendEffectKind::RaiseWindow:
+                set_surface_stacking(effect.window, 1);
+                break;
+            case BackendEffectKind::LowerWindow:
+                set_surface_stacking(effect.window, 0);
+                break;
+            case BackendEffectKind::CloseWindow:
+                close_surface(effect.window);
+                break;
+            case BackendEffectKind::WarpPointer:
+                warp_pointer(effect.pos.x(), effect.pos.y());
+                break;
         }
     }
 
@@ -491,12 +491,12 @@ void DisplayServerBackend::on_start(Core&) {
 }
 
 void DisplayServerBackend::reload_border_colors() {
-    auto& theme = runtime_.core.current_settings().theme;
-    const auto& focused = theme.border_focused.empty() ? theme.accent : theme.border_focused;
+    auto&       theme     = runtime_.core.current_settings().theme;
+    const auto& focused   = theme.border_focused.empty() ? theme.accent : theme.border_focused;
     const auto& unfocused = theme.border_unfocused.empty()
         ? (theme.alt_bg.empty() ? theme.bg : theme.alt_bg)
         : theme.border_unfocused;
-    focused_border_ = parse_hex_color(focused);
+    focused_border_   = parse_hex_color(focused);
     unfocused_border_ = parse_hex_color(unfocused);
 }
 
@@ -507,31 +507,31 @@ backend::BackendPorts DisplayServerBackend::ports() {
 void DisplayServerBackend::configure_surface(WindowId id, int32_t x, int32_t y, int32_t w, int32_t h) {
     send_control(swm::ipc::ConfigureSurface {
         .surface_id = static_cast<uint32_t>(id),
-        .x = x,
-        .y = y,
-        .width = w,
-        .height = h,
+        .x          = x,
+        .y          = y,
+        .width      = w,
+        .height     = h,
     });
 }
 
 void DisplayServerBackend::set_surface_activated(WindowId id, uint32_t activated) {
     send_control(swm::ipc::SetSurfaceActivated {
         .surface_id = static_cast<uint32_t>(id),
-        .activated = activated,
+        .activated  = activated,
     });
 }
 
 void DisplayServerBackend::set_surface_visible(WindowId id, uint32_t visible) {
     send_control(swm::ipc::SetSurfaceVisible {
         .surface_id = static_cast<uint32_t>(id),
-        .visible = visible,
+        .visible    = visible,
     });
 }
 
 void DisplayServerBackend::set_surface_stacking(WindowId id, uint32_t stacking) {
     send_control(swm::ipc::SetSurfaceStacking {
         .surface_id = static_cast<uint32_t>(id),
-        .raised = stacking,
+        .raised     = stacking,
     });
 }
 
@@ -543,7 +543,7 @@ void DisplayServerBackend::close_surface(WindowId id) {
 
 void DisplayServerBackend::set_keyboard_intercepts(const void* data, std::size_t size_bytes) {
     swm::ipc::SetKeyboardIntercepts msg {};
-    const auto count = std::min<std::size_t>(
+    const auto                      count = std::min<std::size_t>(
         size_bytes / sizeof(backend::KeyIntercept),
         msg.intercepts.size());
     msg.count = static_cast<uint32_t>(count);
@@ -567,18 +567,18 @@ void DisplayServerBackend::ungrab_pointer() {
 void DisplayServerBackend::set_surface_border(WindowId id, uint32_t width, uint32_t color) {
     send_control(swm::ipc::SetSurfaceBorder {
         .surface_id = static_cast<uint32_t>(id),
-        .width = width,
-        .color = color,
+        .width      = width,
+        .color      = color,
     });
 }
 
 void DisplayServerBackend::create_overlay(uint32_t overlay_id, int32_t x, int32_t y, int32_t w, int32_t h) {
     send_control(swm::ipc::CreateOverlay {
         .overlay_id = overlay_id,
-        .x = x,
-        .y = y,
-        .width = w,
-        .height = h,
+        .x          = x,
+        .y          = y,
+        .width      = w,
+        .height     = h,
     });
 }
 
@@ -586,7 +586,7 @@ void DisplayServerBackend::update_overlay(uint32_t overlay_id, int fd, uint32_t 
     try {
         send_control(swm::ipc::UpdateOverlay {
             .overlay_id = overlay_id,
-            .bytes = bytes,
+            .bytes      = bytes,
         }, fd);
     } catch (...) {
         if (fd >= 0)
@@ -609,25 +609,25 @@ void DisplayServerBackend::manage_surface(DisplayServerSurfaceInfo& surface) {
     surface.managed = true;
     LOG_INFO("DisplayServerBackend: surface %u mapped", surface.id);
 
-    auto& core = runtime_.core;
-    const auto wid = static_cast<WindowId>(surface.id);
+    auto&      core = runtime_.core;
+    const auto wid  = static_cast<WindowId>(surface.id);
 
     core.dispatch(command::atom::EnsureWindow { .window = wid });
 
     core.dispatch(command::atom::SetWindowMetadata {
-        .window = wid,
+        .window      = wid,
         .wm_instance = surface.app_id,
-        .wm_class = surface.app_id,
-        .title = surface.title,
-        .pid = surface.pid,
-        .type = WindowType::Normal,
-        .hints = {},
+        .wm_class    = surface.app_id,
+        .title       = surface.title,
+        .pid         = surface.pid,
+        .type        = WindowType::Normal,
+        .hints       = {},
     });
 
     core.dispatch(command::atom::SetWindowGeometry {
         .window = wid,
-        .pos = { surface.x, surface.y },
-        .size = { surface.width, surface.height },
+        .pos    = { surface.x, surface.y },
+        .size   = { surface.width, surface.height },
     });
 
     runtime_.invoke_hook(hook::WindowRules { wid });

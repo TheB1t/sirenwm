@@ -31,7 +31,7 @@ OutputX11::OutputX11(int width, int height)
     }
 
     window_ = generate_id();
-    uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+    uint32_t mask     = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
     uint32_t values[] = {
         screen_->black_pixel,
         XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY |
@@ -42,12 +42,12 @@ OutputX11::OutputX11(int width, int height)
     };
 
     create_window(window_, screen_->root,
-                  0, 0, static_cast<uint16_t>(width_), static_cast<uint16_t>(height_),
-                  XCB_WINDOW_CLASS_INPUT_OUTPUT, screen_->root_visual, mask, values);
+        0, 0, static_cast<uint16_t>(width_), static_cast<uint16_t>(height_),
+        XCB_WINDOW_CLASS_INPUT_OUTPUT, screen_->root_visual, mask, values);
 
     const char* title = "sirenwm-wayland-display-server";
     change_property(window_, XCB_ATOM_WM_NAME, XCB_ATOM_STRING,
-                    8, static_cast<uint32_t>(strlen(title)), title);
+        8, static_cast<uint32_t>(strlen(title)), title);
 
     setup_wm_delete();
 
@@ -60,7 +60,7 @@ OutputX11::OutputX11(int width, int height)
     flush();
 
     cairo_surface_ = cairo_xcb_surface_create(conn_, window_, visual_,
-                                               width_, height_);
+            width_, height_);
     create_back_buffer();
 }
 
@@ -79,7 +79,7 @@ OutputX11::~OutputX11() {
 }
 
 void OutputX11::set_cursor_surface(wl::server::SurfaceId sid,
-                                    int32_t hotspot_x, int32_t hotspot_y) {
+    int32_t hotspot_x, int32_t hotspot_y) {
     cursor_surface_   = sid;
     cursor_hotspot_x_ = hotspot_x;
     cursor_hotspot_y_ = hotspot_y;
@@ -98,14 +98,14 @@ void OutputX11::create_back_buffer() {
 
     back_pixmap_ = generate_id();
     xcb_create_pixmap(conn_, screen_->root_depth, back_pixmap_,
-                      window_, static_cast<uint16_t>(width_),
-                      static_cast<uint16_t>(height_));
+        window_, static_cast<uint16_t>(width_),
+        static_cast<uint16_t>(height_));
     back_surface_ = cairo_xcb_surface_create(conn_, back_pixmap_, visual_,
-                                              width_, height_);
+            width_, height_);
 }
 
 void OutputX11::setup_wm_delete() {
-    auto atoms = xcb::intern_batch(conn_, {"WM_PROTOCOLS", "WM_DELETE_WINDOW"});
+    auto atoms     = xcb::intern_batch(conn_, {"WM_PROTOCOLS", "WM_DELETE_WINDOW"});
     auto protocols = atoms["WM_PROTOCOLS"];
     wm_delete_window_ = atoms["WM_DELETE_WINDOW"];
     if (protocols != XCB_ATOM_NONE && wm_delete_window_ != XCB_ATOM_NONE) {
@@ -129,7 +129,7 @@ void OutputX11::handle_configure_notify(xcb_configure_notify_event_t* ev) {
 
 void OutputX11::handle_key_press(xcb_key_press_event_t* ev, DisplayState& state, wl::server::Seat& seat) {
     uint32_t evdev_key = ev->detail - 8;
-    uint32_t keysym = seat.resolve_keysym(evdev_key);
+    uint32_t keysym    = seat.resolve_keysym(evdev_key);
     seat.update_xkb_state(evdev_key, true);
     if (state.is_intercepted(keysym, ev->state)) {
         intercepted_keys_.insert(evdev_key);
@@ -151,10 +151,10 @@ void OutputX11::handle_key_release(xcb_key_release_event_t* ev, wl::server::Seat
 void OutputX11::handle_button_press(xcb_button_press_event_t* ev, DisplayState& state, wl::server::Seat& seat) {
     const int32_t px = ev->root_x;
     const int32_t py = ev->root_y;
-    pointer_x_ = px;
-    pointer_y_ = py;
+    pointer_x_     = px;
+    pointer_y_     = py;
     pointer_valid_ = true;
-    auto* ov = state.overlay_manager().overlay_at(px, py);
+    auto*    ov     = state.overlay_manager().overlay_at(px, py);
     uint32_t button = 0x110 + ev->detail - 1;
     if (ov) {
         state.overlay_button(ov->id, px - ov->x, py - ov->y, button, false);
@@ -169,8 +169,8 @@ void OutputX11::handle_button_press(xcb_button_press_event_t* ev, DisplayState& 
         if (surface) {
             auto* surf = state.surface(sid);
             seat.send_pointer_enter(surface,
-                                    surf ? px - surf->x : 0,
-                                    surf ? py - surf->y : 0);
+                surf ? px - surf->x : 0,
+                surf ? py - surf->y : 0);
         }
     }
     state.button_press(sid, px, py, button, ev->state, false);
@@ -181,10 +181,10 @@ void OutputX11::handle_button_press(xcb_button_press_event_t* ev, DisplayState& 
 void OutputX11::handle_button_release(xcb_button_release_event_t* ev, DisplayState& state, wl::server::Seat& seat) {
     const int32_t px = ev->root_x;
     const int32_t py = ev->root_y;
-    pointer_x_ = px;
-    pointer_y_ = py;
+    pointer_x_     = px;
+    pointer_y_     = py;
     pointer_valid_ = true;
-    auto* ov = state.overlay_manager().overlay_at(px, py);
+    auto*    ov     = state.overlay_manager().overlay_at(px, py);
     uint32_t button = 0x110 + ev->detail - 1;
     if (ov) {
         state.overlay_button(ov->id, px - ov->x, py - ov->y, button, true);
@@ -198,11 +198,11 @@ void OutputX11::handle_button_release(xcb_button_release_event_t* ev, DisplaySta
 }
 
 void OutputX11::handle_motion_notify(xcb_motion_notify_event_t* ev,
-                                      DisplayState& state, wl::server::Seat& seat, wl::server::XdgShell&) {
+    DisplayState& state, wl::server::Seat& seat, wl::server::XdgShell&) {
     const int32_t px = ev->root_x;
     const int32_t py = ev->root_y;
-    pointer_x_ = px;
-    pointer_y_ = py;
+    pointer_x_     = px;
+    pointer_y_     = py;
     pointer_valid_ = true;
     const bool has_sw_cursor = static_cast<bool>(cursor_surface_);
     if (pointer_grabbed_) {
@@ -228,8 +228,8 @@ void OutputX11::handle_motion_notify(xcb_motion_notify_event_t* ev,
             if (surface) {
                 auto* surf = state.surface(sid);
                 seat.send_pointer_enter(surface,
-                                        surf ? px - surf->x : 0,
-                                        surf ? py - surf->y : 0);
+                    surf ? px - surf->x : 0,
+                    surf ? py - surf->y : 0);
             }
         }
     }
@@ -238,8 +238,8 @@ void OutputX11::handle_motion_notify(xcb_motion_notify_event_t* ev,
     auto* surf = state.surface(sid);
     if (surf)
         seat.send_pointer_motion(ev->time,
-                                 px - surf->x,
-                                 py - surf->y);
+            px - surf->x,
+            py - surf->y);
     if (has_sw_cursor)
         repaint_needed_ = true;
 }
@@ -249,35 +249,35 @@ bool OutputX11::pump_events(DisplayState& state, wl::server::Seat& seat, wl::ser
     while ((ev = poll_event())) {
         uint8_t type = ev->response_type & ~0x80;
         switch (type) {
-        case XCB_CLIENT_MESSAGE:
-            if (!handle_client_message(reinterpret_cast<xcb_client_message_event_t*>(ev))) {
-                free(ev);
-                return false;
-            }
-            break;
-        case XCB_CONFIGURE_NOTIFY:
-            handle_configure_notify(reinterpret_cast<xcb_configure_notify_event_t*>(ev));
-            break;
-        case XCB_KEY_PRESS:
-            handle_key_press(reinterpret_cast<xcb_key_press_event_t*>(ev), state, seat);
-            break;
-        case XCB_KEY_RELEASE:
-            handle_key_release(reinterpret_cast<xcb_key_release_event_t*>(ev), seat);
-            break;
-        case XCB_BUTTON_PRESS:
-            handle_button_press(reinterpret_cast<xcb_button_press_event_t*>(ev), state, seat);
-            break;
-        case XCB_BUTTON_RELEASE:
-            handle_button_release(reinterpret_cast<xcb_button_release_event_t*>(ev), state, seat);
-            break;
-        case XCB_MOTION_NOTIFY:
-            handle_motion_notify(reinterpret_cast<xcb_motion_notify_event_t*>(ev), state, seat, xdg_shell);
-            break;
-        case XCB_EXPOSE:
-            repaint_needed_ = true;
-            break;
-        default:
-            break;
+            case XCB_CLIENT_MESSAGE:
+                if (!handle_client_message(reinterpret_cast<xcb_client_message_event_t*>(ev))) {
+                    free(ev);
+                    return false;
+                }
+                break;
+            case XCB_CONFIGURE_NOTIFY:
+                handle_configure_notify(reinterpret_cast<xcb_configure_notify_event_t*>(ev));
+                break;
+            case XCB_KEY_PRESS:
+                handle_key_press(reinterpret_cast<xcb_key_press_event_t*>(ev), state, seat);
+                break;
+            case XCB_KEY_RELEASE:
+                handle_key_release(reinterpret_cast<xcb_key_release_event_t*>(ev), seat);
+                break;
+            case XCB_BUTTON_PRESS:
+                handle_button_press(reinterpret_cast<xcb_button_press_event_t*>(ev), state, seat);
+                break;
+            case XCB_BUTTON_RELEASE:
+                handle_button_release(reinterpret_cast<xcb_button_release_event_t*>(ev), state, seat);
+                break;
+            case XCB_MOTION_NOTIFY:
+                handle_motion_notify(reinterpret_cast<xcb_motion_notify_event_t*>(ev), state, seat, xdg_shell);
+                break;
+            case XCB_EXPOSE:
+                repaint_needed_ = true;
+                break;
+            default:
+                break;
         }
         free(ev);
     }
@@ -312,15 +312,15 @@ void OutputX11::repaint(wl::server::Compositor& compositor, wl::server::XdgShell
         int draw_h = surf->height > 0 ? surf->height : bv.height;
 
         if (surf->border_width > 0) {
-            uint32_t c = surf->border_color;
-            double a = ((c >> 24) & 0xFF) / 255.0;
-            double r = ((c >> 16) & 0xFF) / 255.0;
-            double g = ((c >>  8) & 0xFF) / 255.0;
-            double b = ((c      ) & 0xFF) / 255.0;
-            int bw = static_cast<int>(surf->border_width);
+            uint32_t c  = surf->border_color;
+            double   a  = ((c >> 24) & 0xFF) / 255.0;
+            double   r  = ((c >> 16) & 0xFF) / 255.0;
+            double   g  = ((c >>  8) & 0xFF) / 255.0;
+            double   b  = ((c      ) & 0xFF) / 255.0;
+            int      bw = static_cast<int>(surf->border_width);
             cairo_set_source_rgba(cr, r, g, b, a);
             cairo_rectangle(cr, surf->x - bw, surf->y - bw,
-                            draw_w + 2 * bw, draw_h + 2 * bw);
+                draw_w + 2 * bw, draw_h + 2 * bw);
             cairo_fill(cr);
         }
 
@@ -349,8 +349,8 @@ void OutputX11::repaint(wl::server::Compositor& compositor, wl::server::XdgShell
                 static_cast<unsigned char*>(bv.data),
                 fmt, bv.width, bv.height, bv.stride);
             cairo_set_source_surface(cr, img,
-                                     pointer_x_ - cursor_hotspot_x_,
-                                     pointer_y_ - cursor_hotspot_y_);
+                pointer_x_ - cursor_hotspot_x_,
+                pointer_y_ - cursor_hotspot_y_);
             cairo_paint(cr);
             cairo_surface_destroy(img);
         }

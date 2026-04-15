@@ -78,11 +78,11 @@ class Runtime : public IEventEmitter, public IEventSink {
         // Direct references to mutable runtime subsystems.
         // Prefer field access over trivial getter wrappers.
         ModuleRegistry& module_registry = module_registry_;
-        Core&           core            = core_;
-        LuaHost&        lua             = lua_host_;
-        RuntimeStore&   store           = store_;
-        CoreConfig&     core_config     = core_config_;
-        EventLoop&      event_loop      = event_loop_;
+        Core&         core              = core_;
+        LuaHost&      lua               = lua_host_;
+        RuntimeStore& store             = store_;
+        CoreConfig&   core_config       = core_config_;
+        EventLoop&    event_loop        = event_loop_;
 
     private:
         RuntimeState state_ = RuntimeState::Idle;
@@ -233,9 +233,9 @@ class Runtime : public IEventEmitter, public IEventSink {
         void verify_module_window_registry_consistency(const char* where) const;
         void report_live_module_windows(const char* phase) const;
 
-        EventQueue                             event_queue_;
-        PointerRegistry<IEventReceiver>        extra_receivers_;
-        HookRegistry                           hook_registry_;
+        EventQueue event_queue_;
+        PointerRegistry<IEventReceiver> extra_receivers_;
+        HookRegistry hook_registry_;
 
         // Single drain chokepoint. Called once per tick between epoll wait
         // and render_frame, and synchronously after one-shot state transitions

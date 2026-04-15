@@ -4,7 +4,7 @@ namespace wl {
 
 EventLoop::EventLoop(wl_event_loop* loop, bool owned) noexcept
     : loop_(loop)
-    , owned_(owned) {}
+      , owned_(owned) {}
 
 EventLoop::~EventLoop() {
     if (owned_ && loop_)
@@ -13,7 +13,7 @@ EventLoop::~EventLoop() {
 
 EventLoop::EventLoop(EventLoop&& other) noexcept
     : loop_(other.loop_)
-    , owned_(other.owned_) {
+      , owned_(other.owned_) {
     other.loop_  = nullptr;
     other.owned_ = false;
 }
@@ -22,8 +22,8 @@ EventLoop& EventLoop::operator=(EventLoop&& other) noexcept {
     if (this != &other) {
         if (owned_ && loop_)
             wl_event_loop_destroy(loop_);
-        loop_  = other.loop_;
-        owned_ = other.owned_;
+        loop_        = other.loop_;
+        owned_       = other.owned_;
         other.loop_  = nullptr;
         other.owned_ = false;
     }

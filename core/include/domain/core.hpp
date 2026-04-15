@@ -107,7 +107,7 @@ class Core {
         // RAII guard — sets active_lua_sink_ for the duration of a Lua layout call
         // and clears it on destruction, even if an exception is thrown.
         struct LuaSinkGuard {
-            Core*                  core_;
+            Core* core_;
             explicit LuaSinkGuard(Core* c, layout::PlacementSink* sink)
                 : core_(c) { core_->active_lua_sink_ = sink; }
             ~LuaSinkGuard() { core_->active_lua_sink_ = nullptr; }
@@ -118,7 +118,7 @@ class Core {
         WorkspaceManager wsman;
         std::vector<BackendEffect> pending_backend_effects;
         std::unordered_map<WindowId, WindowFlush> pending_window_flushes;
-        IEventSink* event_sink_ = &null_event_sink();
+        IEventSink*  event_sink_ = &null_event_sink();
         CoreSettings settings;
 
         std::string config_path;
@@ -138,8 +138,8 @@ class Core {
         template<typename E>
         void post(E ev) { event_sink_->post_event(std::move(ev)); }
 
-        void         evaluate_workspace_fullscreen(int ws_id);
-        void         pin_fullscreen_to_monitor(swm::Window& w, int ws_id);
+        void evaluate_workspace_fullscreen(int ws_id);
+        void pin_fullscreen_to_monitor(swm::Window& w, int ws_id);
 
     public:
         Core() = default;
@@ -378,7 +378,6 @@ class Core {
 
         FullscreenLikeDecision evaluate_fullscreen_like_request(WindowId win,
             Vec2i requested_size, bool has_size) const;
-
 
         bool consume_window_suppress_focus_once(WindowId win);
 

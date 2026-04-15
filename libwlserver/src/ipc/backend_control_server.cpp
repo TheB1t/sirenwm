@@ -20,8 +20,8 @@ bool poll_readable(int fd, int timeout_ms) {
         return false;
 
     pollfd pfd {
-        .fd = fd,
-        .events = POLLIN,
+        .fd      = fd,
+        .events  = POLLIN,
         .revents = 0,
     };
     const int rc = ::poll(&pfd, 1, timeout_ms);
@@ -32,8 +32,8 @@ bool poll_readable(int fd, int timeout_ms) {
 
 BackendControlServer::BackendControlServer(const std::string& socket_path, DisplayState& state)
     : listener_(swm::ipc::Channel::listen_seqpacket(socket_path))
-    , socket_path_(socket_path)
-    , state_(state) {
+      , socket_path_(socket_path)
+      , state_(state) {
     if (listener_)
         listener_.set_nonblocking(true);
     state_.set_event_handler(this);
@@ -96,8 +96,8 @@ bool BackendControlServer::dispatch_one_message() {
         return false;
 
     std::array<std::byte, 2048> buffer {};
-    int received_fd = -1;
-    const auto rc = client_.receive_bytes(buffer.data(), buffer.size(), &received_fd);
+    int                         received_fd = -1;
+    const auto                  rc          = client_.receive_bytes(buffer.data(), buffer.size(), &received_fd);
     if (rc < 0) {
         if (received_fd >= 0)
             ::close(received_fd);
@@ -164,10 +164,10 @@ bool BackendControlServer::send_snapshot() {
         swm::ipc::OutputAdded msg {};
         msg.id = output.id;
         msg.name.assign(output.name.c_str());
-        msg.x = output.x;
-        msg.y = output.y;
-        msg.width = output.w;
-        msg.height = output.h;
+        msg.x       = output.x;
+        msg.y       = output.y;
+        msg.width   = output.w;
+        msg.height  = output.h;
         msg.refresh = output.refresh;
         if (!send_event(msg))
             return false;
@@ -193,10 +193,10 @@ bool BackendControlServer::send_snapshot() {
             return false;
         if (surface.width > 0 || surface.height > 0)
             (void)send_event(swm::ipc::SurfaceCommitted {
-                .id = surface.id,
-                .width = surface.width,
-                .height = surface.height,
-            });
+                    .id     = surface.id,
+                    .width  = surface.width,
+                    .height = surface.height,
+                });
         if (!client_)
             return false;
     }
@@ -216,9 +216,9 @@ bool BackendControlServer::on(const swm::ipc::Hello& msg) {
     if (msg.peer_role != swm::ipc::BackendPeerRole::WmController)
         return false;
     return send_event(swm::ipc::Hello {
-        .peer_role = swm::ipc::BackendPeerRole::DisplayServerHost,
-        .flags = 0,
-    });
+            .peer_role = swm::ipc::BackendPeerRole::DisplayServerHost,
+            .flags     = 0,
+        });
 }
 
 bool BackendControlServer::on(const swm::ipc::SnapshotRequest&) {
