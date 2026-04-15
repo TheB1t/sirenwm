@@ -1,6 +1,7 @@
 #pragma once
 
 #include <domain/window.hpp>
+#include <x11/ewmh_atoms.hpp>
 #include <x11/xconn.hpp>
 #include <xcb/xcb.h>
 #include <optional>
@@ -10,31 +11,17 @@
 
 class X11Backend;
 
-// EWMH/ICCCM atoms shared across all X11Windows, owned by X11Backend.
-struct X11Atoms {
-    xcb_atom_t NET_WM_STATE            = XCB_ATOM_NONE;
-    xcb_atom_t NET_WM_STATE_FULLSCREEN = XCB_ATOM_NONE;
-    xcb_atom_t NET_WM_STATE_HIDDEN     = XCB_ATOM_NONE;
-    xcb_atom_t NET_WM_STATE_FOCUSED    = XCB_ATOM_NONE;
-    xcb_atom_t NET_FRAME_EXTENTS       = XCB_ATOM_NONE;
-    xcb_atom_t NET_WM_DESKTOP          = XCB_ATOM_NONE;
-    xcb_atom_t WM_STATE                = XCB_ATOM_NONE;
-    xcb_atom_t WM_PROTOCOLS            = XCB_ATOM_NONE;
-    xcb_atom_t WM_DELETE_WINDOW        = XCB_ATOM_NONE;
-    xcb_atom_t WM_TAKE_FOCUS           = XCB_ATOM_NONE;
-};
-
 // X11-specific window. Created by X11Backend::create_window().
 // All X11 operations on a managed window go through this object.
 // If the object doesn't exist, the window is dead — no X requests are issued.
 struct X11Window : public swm::Window {
-    XConnection&    xconn;
-    const X11Atoms& atoms;
+    XConnection&            xconn;
+    const EwmhAtomRegistry& atoms;
 
     // Pending WM-initiated unmaps counter.
     int pending_wm_unmaps = 0;
 
-    X11Window(XConnection& xconn, const X11Atoms& atoms)
+    X11Window(XConnection& xconn, const EwmhAtomRegistry& atoms)
         : xconn(xconn), atoms(atoms) {}
 
     // --- Per-window X11 operations ---
@@ -44,52 +31,52 @@ struct X11Window : public swm::Window {
     }
 
     void set_wm_state_normal() {
-        if (atoms.WM_STATE != XCB_ATOM_NONE) {
+        if (atoms[EwmhAtom::WmState] != XCB_ATOM_NONE) {
             uint32_t data[2] = { 1 /* NormalState */, XCB_WINDOW_NONE };
-            xconn.change_property(id, atoms.WM_STATE, atoms.WM_STATE, 32, 2, data);
+            xconn.change_property(id, atoms[EwmhAtom::WmState], atoms[EwmhAtom::WmState], 32, 2, data);
         }
     }
 
     void set_wm_state(uint32_t state) {
-        if (atoms.WM_STATE != XCB_ATOM_NONE) {
+        if (atoms[EwmhAtom::WmState] != XCB_ATOM_NONE) {
             uint32_t data[2] = { state, XCB_WINDOW_NONE };
-            xconn.change_property(id, atoms.WM_STATE, atoms.WM_STATE, 32, 2, data);
+            xconn.change_property(id, atoms[EwmhAtom::WmState], atoms[EwmhAtom::WmState], 32, 2, data);
         }
     }
 
     void set_wm_state_atom(xcb_atom_t atom, bool enabled) {
-        auto states = xconn.get_atom_list_property(id, atoms.NET_WM_STATE);
+        auto states = xconn.get_atom_list_property(id, atoms[EwmhAtom::NetWmState]);
         states.erase(std::remove(states.begin(), states.end(), atom), states.end());
         if (enabled)
             states.push_back(atom);
         const xcb_atom_t* data = states.empty() ? nullptr : states.data();
-        xconn.set_property(id, atoms.NET_WM_STATE, XCB_ATOM_ATOM, data, (int)states.size());
+        xconn.set_property(id, atoms[EwmhAtom::NetWmState], XCB_ATOM_ATOM, data, (int)states.size());
     }
 
     void set_fullscreen_state(bool enabled) {
-        set_wm_state_atom(atoms.NET_WM_STATE_FULLSCREEN, enabled);
+        set_wm_state_atom(atoms[EwmhAtom::NetWmStateFullscreen], enabled);
     }
 
     bool has_fullscreen_state() {
-        auto states = xconn.get_atom_list_property(id, atoms.NET_WM_STATE);
-        return std::find(states.begin(), states.end(), atoms.NET_WM_STATE_FULLSCREEN) != states.end();
+        auto states = xconn.get_atom_list_property(id, atoms[EwmhAtom::NetWmState]);
+        return std::find(states.begin(), states.end(), atoms[EwmhAtom::NetWmStateFullscreen]) != states.end();
     }
 
     void set_frame_extents(uint32_t bw) {
-        if (atoms.NET_FRAME_EXTENTS != XCB_ATOM_NONE) {
+        if (atoms[EwmhAtom::NetFrameExtents] != XCB_ATOM_NONE) {
             uint32_t extents[4] = { bw, bw, bw, bw };
-            xconn.set_property(id, atoms.NET_FRAME_EXTENTS, XCB_ATOM_CARDINAL, extents, 4);
+            xconn.set_property(id, atoms[EwmhAtom::NetFrameExtents], XCB_ATOM_CARDINAL, extents, 4);
         }
     }
 
     void set_desktop(uint32_t ws) {
-        if (atoms.NET_WM_DESKTOP != XCB_ATOM_NONE)
-            xconn.set_property(id, atoms.NET_WM_DESKTOP, XCB_ATOM_CARDINAL, ws);
+        if (atoms[EwmhAtom::NetWmDesktop] != XCB_ATOM_NONE)
+            xconn.set_property(id, atoms[EwmhAtom::NetWmDesktop], XCB_ATOM_CARDINAL, ws);
     }
 
     bool supports_delete() {
-        for (auto atom : xconn.get_atom_list_property(id, atoms.WM_PROTOCOLS))
-            if (atom == atoms.WM_DELETE_WINDOW) return true;
+        for (auto atom : xconn.get_atom_list_property(id, atoms[EwmhAtom::WmProtocols]))
+            if (atom == atoms[EwmhAtom::WmDeleteWindow]) return true;
         return false;
     }
 
@@ -98,24 +85,24 @@ struct X11Window : public swm::Window {
         ev.response_type  = XCB_CLIENT_MESSAGE;
         ev.window         = id;
         ev.format         = 32;
-        ev.type           = atoms.WM_PROTOCOLS;
-        ev.data.data32[0] = atoms.WM_DELETE_WINDOW;
+        ev.type           = atoms[EwmhAtom::WmProtocols];
+        ev.data.data32[0] = atoms[EwmhAtom::WmDeleteWindow];
         ev.data.data32[1] = XCB_CURRENT_TIME;
         xconn.send_event(id, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
     }
 
     void send_take_focus(xcb_timestamp_t timestamp) {
-        if (atoms.WM_TAKE_FOCUS == XCB_ATOM_NONE)
+        if (atoms[EwmhAtom::WmTakeFocus] == XCB_ATOM_NONE)
             return;
-        for (auto atom : xconn.get_atom_list_property(id, atoms.WM_PROTOCOLS)) {
-            if (atom != atoms.WM_TAKE_FOCUS)
+        for (auto atom : xconn.get_atom_list_property(id, atoms[EwmhAtom::WmProtocols])) {
+            if (atom != atoms[EwmhAtom::WmTakeFocus])
                 continue;
             xcb_client_message_event_t ev = {};
             ev.response_type  = XCB_CLIENT_MESSAGE;
             ev.window         = id;
             ev.format         = 32;
-            ev.type           = atoms.WM_PROTOCOLS;
-            ev.data.data32[0] = atoms.WM_TAKE_FOCUS;
+            ev.type           = atoms[EwmhAtom::WmProtocols];
+            ev.data.data32[0] = atoms[EwmhAtom::WmTakeFocus];
             ev.data.data32[1] = timestamp;
             xconn.send_event(id, XCB_EVENT_MASK_NO_EVENT, (char*)&ev);
             break;

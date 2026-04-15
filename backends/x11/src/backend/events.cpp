@@ -210,12 +210,10 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         }
         // Pre-manage: no X11Window exists yet, query X properties directly.
         {
-            auto states = xconn.get_atom_list_property(ev->window, NET_WM_STATE);
-            if (std::find(states.begin(), states.end(), NET_WM_STATE_FULLSCREEN) != states.end()) {
+            auto states = xconn.get_atom_list_property(ev->window, ewmh_atoms_[EwmhAtom::NetWmState]);
+            if (std::find(states.begin(), states.end(), ewmh_atoms_[EwmhAtom::NetWmStateFullscreen]) != states.end()) {
                 meta.pre_fullscreen_state = true;
-                xcb_atom_t xembed_atom = xconn.intern_atom_reply(
-                    xconn.intern_atom_async("_XEMBED_INFO", sizeof("_XEMBED_INFO") - 1));
-                meta.is_xembed = xconn.has_property_32(ev->window, xembed_atom, 2);
+                meta.is_xembed            = xconn.has_property_32(ev->window, ewmh_atoms_[EwmhAtom::XembedInfo], 2);
             }
         }
 

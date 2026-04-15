@@ -219,7 +219,7 @@ backend::BackendPorts X11Backend::ports() {
 }
 
 std::shared_ptr<swm::Window> X11Backend::create_window(WindowId id) {
-    auto w = std::make_shared<X11Window>(xconn, atoms_);
+    auto w = std::make_shared<X11Window>(xconn, ewmh_atoms_);
     w->id = id;
     return w;
 }
