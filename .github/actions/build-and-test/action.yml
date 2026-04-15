@@ -28,6 +28,14 @@ inputs:
     description: Extra newline-separated paths to include in the coredumps artifact
     required: false
     default: ""
+  skip-main-build:
+    description: Skip the main (non-test) build (useful for sanitizer jobs)
+    required: false
+    default: "false"
+  ctest-env:
+    description: Environment variables prepended to the ctest invocation (e.g. ASAN_OPTIONS=... UBSAN_OPTIONS=...)
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -39,6 +47,7 @@ runs:
         max-size: 500M
 
     - name: Build
+      if: inputs.skip-main-build != 'true'
       shell: bash
       run: |
         cmake -S . -B build \
@@ -70,7 +79,7 @@ runs:
           echo '/tmp/cores/core.%e.%p' | sudo tee /proc/sys/kernel/core_pattern
         mkdir -p /tmp/cores
         ulimit -c unlimited
-        ctest --test-dir build-test --output-on-failure
+        env ${{ inputs.ctest-env }} ctest --test-dir build-test --output-on-failure
 
     - name: Integration
       if: inputs.integration-cmd != ''
