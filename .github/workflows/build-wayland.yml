@@ -7,26 +7,23 @@ on:
     branches: [ master ]
 
 jobs:
-  architecture-boundaries:
-    name: Architecture boundaries
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check architecture boundaries
-        run: |
-          bash tests/ci/check_architecture_boundaries.sh
+  checks:
+    uses: ./.github/workflows/_checks.yml
 
   build-wayland:
-    name: Wayland backend (${{ matrix.distro }})
+    name: Wayland / ${{ matrix.label }}
     runs-on: ubuntu-latest
-    needs: architecture-boundaries
+    needs: checks
     strategy:
       fail-fast: false
       matrix:
         include:
           - distro: debian:trixie
+            label: Debian trixie
+            slug: debian-trixie
           - distro: archlinux:latest
+            label: Arch Linux
+            slug: arch
     container:
       image: ${{ matrix.distro }}
       options: --ulimit core=-1 --privileged
@@ -42,7 +39,7 @@ jobs:
           WLROOTS_PKG=$(apt-cache search '^libwlroots' | awk '{print $1}' | grep '\-dev$' | head -1)
           echo "Using wlroots package: $WLROOTS_PKG"
           apt-get install -y --no-install-recommends \
-            cmake make pkg-config gcc g++ git ca-certificates \
+            cmake make pkg-config gcc g++ git ca-certificates ccache \
             binutils \
             liblua5.4-dev libspdlog-dev \
             libcairo2-dev libpango1.0-dev \
@@ -68,7 +65,7 @@ jobs:
           echo "--- wlroots packages available ---"
           pacman -Ss wlroots || true
           pacman -S --noconfirm \
-            cmake make pkgconf gcc git binutils python \
+            cmake make pkgconf gcc git binutils python ccache \
             lua spdlog \
             cairo pango fontconfig freetype2 libpng \
             ttf-dejavu \
@@ -80,41 +77,10 @@ jobs:
             libx11 libxfixes \
             xorg-server-xvfb xorg-xdpyinfo wayland-utils weston
 
-      - name: Build
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_C_COMPILER=gcc \
-            -DCMAKE_CXX_COMPILER=g++ \
-            -DSIRENWM_BACKEND=wayland
-          cmake --build build -j$(nproc)
-
-      - name: Build tests
-        run: |
-          cmake -S . -B build-test \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_C_COMPILER=gcc \
-            -DCMAKE_CXX_COMPILER=g++ \
-            -DSIRENWM_BACKEND=wayland \
-            -DBUILD_TESTING=ON
-          cmake --build build-test -j$(nproc)
-
-      - name: Run tests
-        run: |
-          ctest --test-dir build-test --output-on-failure
-
-      - name: Integration tests (Wayland nested in Xvfb)
-        run: |
-          bash tests/integration/run_tests_wayland.sh
-        timeout-minutes: 2
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: ./.github/actions/build-and-test
         with:
-          name: wayland-build-${{ strategy.job-index }}
-          path: |
-            output/
-            /tmp/sirenwm-wl-itest/
-          if-no-files-found: ignore
-          retention-days: 7
+          backend: wayland
+          ccache-key: wayland-${{ matrix.slug }}
+          artifact-name: coredumps-wayland-${{ matrix.slug }}
+          integration-cmd: timeout 120 bash tests/integration/run_tests_wayland.sh
+          extra-artifact-paths: /tmp/sirenwm-wl-itest/

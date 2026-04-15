@@ -1,6 +1,7 @@
 build/
 build*/
 !.github/
+!.github/**
 output/
 .cache/
 .vscode/
@@ -23,3 +24,6 @@ wlroots/
 
 # Generated desktop files
 *.desktop
+
+# Local planning docs
+ROADMAP.md
