@@ -41,12 +41,8 @@ struct Workspace {
     std::shared_ptr<swm::Window>       focused();
     std::shared_ptr<const swm::Window> focused() const;
 
-    // Finds a suitable focused window and advances the internal cursor.
-    // Use when you actually want to update which window is "current".
-    std::shared_ptr<swm::Window> advance_focus();
-
-    void                         focus_next();
-    void                         focus_prev();
+    void                               focus_next();
+    void                               focus_prev();
 };
 
 using WorkspaceState = Workspace;
@@ -55,11 +51,6 @@ struct FocusState {
     MonitorId   monitor = MonitorId{ 0 };
     WorkspaceId ws_id   = NO_WORKSPACE;
     WindowId    window  = NO_WINDOW;
-};
-
-// Per-monitor focus: remembers the last focused window per workspace.
-struct MonitorFocusState {
-    std::unordered_map<WorkspaceId, WindowId> last_window_per_ws;
 };
 
 class WorkspaceManager {
@@ -81,12 +72,7 @@ class WorkspaceManager {
         std::unordered_map<WindowId, std::shared_ptr<swm::Window>> window_index;
         std::unordered_map<WindowId, WorkspaceId> window_workspace;
 
-        FocusState focus_; // cache — always derived from focused_monitor_ + monitor_focus_
-
         MonitorId focused_monitor_{ 0 };
-        std::vector<MonitorFocusState> monitor_focus_;
-
-        void ensure_monitor_focus_size();
 
         inline bool is_ws_valid(WorkspaceId id) const {
             return id >= 0 && id < (int)workspaces.size();
@@ -96,7 +82,6 @@ class WorkspaceManager {
             return id >= 0 && id < (int)monitors.size();
         }
 
-        void             sync_focus_state();
         MonitorId        monitor_index_by_name(const std::string& name) const;
         int              index_of_ws_in_pool(const std::vector<int>& pool, WorkspaceId ws_id) const;
         MonitorId        monitor_of(WorkspaceId ws_id) const;
@@ -196,11 +181,15 @@ class WorkspaceManager {
         const Workspace& workspace(WorkspaceId id) const;
 
         MonitorId get_focused_monitor() const { return focused_monitor_; }
-        const FocusState& get_focus_state() const { return focus_; }
 
-        // Returns the last focused window on mon_idx/ws_id, or NO_WINDOW.
-        // Validates that the window still exists before returning.
-        WindowId last_focused_window(MonitorId mon_idx, WorkspaceId ws_id) const;
+        // Derived view of the intent chain: focused_monitor_ -> active_ws ->
+        // Workspace::current. Cheap — no caching. Builds a fresh FocusState
+        // per call. Do NOT reintroduce a stored cache: that was the exact
+        // source of desync bugs we deleted in phase 2.
+        FocusState get_focus_state() const;
+
+        // Convenience — equivalent to get_focus_state().window.
+        WindowId focused_window_id() const;
 
         // Explicitly set focused monitor (used by FocusMonitor command).
         void set_focused_monitor(MonitorId mon_idx);

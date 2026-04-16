@@ -34,7 +34,6 @@ class KeybindingsModule : public Module {
         void on(event::KeyPressEv) override;
         void on(event::ButtonEv) override;
         void on(event::MotionEv) override;
-        void on(event::FocusChanged) override;
         void on(event::WindowMapped) override;
         void on(event::WindowUnmapped) override;
         void on(event::DestroyNotify) override;
@@ -65,6 +64,5 @@ class KeybindingsModule : public Module {
         TypedSetting<uint16_t> mod_mask_;
         TypedSetting<std::vector<MouseBinding>> mouse_bindings_;
 
-        WindowId  focused_window_ = NO_WINDOW;
         DragState drag;
 };

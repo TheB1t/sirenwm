@@ -571,12 +571,6 @@ void KeybindingsModule::on(event::ButtonEv ev) {
     uint16_t mods = ev.state & ~backend::MOD_STRIP_MASK;
     auto&    in   = backend.ports().input;
 
-    // Click-to-focus grabs (grab_button_any, GrabModeSync) freeze the pointer
-    // until AllowEvents fires; replay so the client still receives the click.
-    // Modifier-bound WM actions come through async grabs — no replay needed.
-    if (!ev.release && mods == 0 && ev.window != focused_window_)
-        in.allow_events(true);
-
     for (auto& mb : mouse_bindings_.get()) {
         if (mb.button != ev.button || mb.mods != mods)
             continue;
@@ -692,28 +686,10 @@ void KeybindingsModule::on(event::MotionEv ev) {
     (void)core.dispatch(command::atom::SetWindowSize{ drag.window, { nw, nh } });
 }
 
-void KeybindingsModule::on(event::FocusChanged ev) {
-    auto& in = backend.ports().input;
-    // Restore click-to-focus grab on the previously focused window.
-    if (focused_window_ != NO_WINDOW && focused_window_ != ev.window)
-        in.grab_button_any(focused_window_);
-    focused_window_ = ev.window;
-    // Remove click-to-focus grab from the newly focused window —
-    // WM action grabs (mod+button) remain in place.
-    if (ev.window != NO_WINDOW) {
-        in.ungrab_all_buttons(ev.window);
-        install_mouse_grabs_for_window(in, ev.window, mouse_bindings_.get());
-    }
-    in.flush();
-}
-
 void KeybindingsModule::on(event::WindowMapped ev) {
     auto& in = backend.ports().input;
     in.ungrab_all_buttons(ev.window);
     install_mouse_grabs_for_window(in, ev.window, mouse_bindings_.get());
-    // Newly mapped windows are unfocused — add click-to-focus grab.
-    if (ev.window != focused_window_)
-        in.grab_button_any(ev.window);
     in.flush();
 }
 

@@ -59,17 +59,9 @@ class InputPort {
         // Implementation handles numlock/capslock variants.
         virtual void grab_button(WindowId window, uint8_t button, uint16_t mods) = 0;
         virtual void ungrab_all_buttons(WindowId window)                         = 0;
-        // Grab any button with any modifier on window using SYNC pointer mode.
-        // Used for click-to-focus on unfocused windows: WM receives the press,
-        // calls allow_events(replay=true) to pass it through to the client.
-        virtual void grab_button_any(WindowId window) = 0;
 
-        virtual void grab_pointer()   = 0;
-        virtual void ungrab_pointer() = 0;
-        // Release the passive button grab after a ButtonPress.
-        // replay=true  → XCB_ALLOW_REPLAY_POINTER: re-deliver the event to the window
-        // replay=false → XCB_ALLOW_ASYNC_POINTER:  discard it (WM consumed the click)
-        virtual void allow_events(bool replay)                  = 0;
+        virtual void grab_pointer()                             = 0;
+        virtual void ungrab_pointer()                           = 0;
         virtual void warp_pointer(WindowId window, Vec2i16 pos) = 0;
         // Warp to absolute root-screen coordinates.
         virtual void warp_pointer_abs(Vec2i16 pos) = 0;

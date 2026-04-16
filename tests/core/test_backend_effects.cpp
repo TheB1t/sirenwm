@@ -129,7 +129,7 @@ TEST(BackendEffects, FocusRootWhenSwitchingToEmptyWorkspace) {
     h.map_window(0x1000, 0);
     drain(h.core);
 
-    // Switch to ws 1 (empty) — sync_current_focus will emit FocusRoot.
+    // Switch to ws 1 (empty) — Core::focus(NO_WINDOW) emits FocusRoot.
     h.core.dispatch(command::atom::SwitchWorkspace{ 1, std::nullopt });
     auto fx = drain(h.core);
     EXPECT_TRUE(has_effect(fx, BackendEffectKind::FocusRoot));

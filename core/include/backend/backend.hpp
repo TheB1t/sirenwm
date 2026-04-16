@@ -28,6 +28,8 @@ struct StartupSnapshot {
     std::vector<struct ExistingWindowSnapshot> windows;
     // monitor_idx -> active_ws_id from exec-restart state file; empty on first start.
     std::unordered_map<MonitorId, WorkspaceId> monitor_active_ws;
+    // Native input focus observed at startup. NO_WINDOW if root/unknown.
+    WindowId                                   focused_window = NO_WINDOW;
 };
 
 struct ExistingWindowSnapshot {

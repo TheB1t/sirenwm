@@ -150,6 +150,22 @@ std::vector<xcb_window_t> Connection::query_tree_children(xcb_window_t parent) c
     return {children, children + n};
 }
 
+std::optional<xcb_window_t> Connection::query_parent(xcb_window_t win) const {
+    auto r = reply(xcb_query_tree_reply(conn_,
+            xcb_query_tree(conn_, win), nullptr));
+    if (!r || r->parent == XCB_WINDOW_NONE || r->parent == r->root)
+        return std::nullopt;
+    return r->parent;
+}
+
+xcb_window_t Connection::get_input_focus() const {
+    auto r = reply(xcb_get_input_focus_reply(conn_,
+            xcb_get_input_focus(conn_), nullptr));
+    if (!r)
+        return XCB_WINDOW_NONE;
+    return r->focus;
+}
+
 std::optional<xcb_window_t> Connection::get_transient_for(xcb_window_t win) const {
     auto r = reply(xcb_get_property_reply(conn_,
             xcb_get_property(conn_, 0, win, XCB_ATOM_WM_TRANSIENT_FOR,

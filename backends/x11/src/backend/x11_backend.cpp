@@ -66,7 +66,7 @@ void X11Backend::on_start(Core& core) {
 
     // Seed focused_monitor from the actual pointer position so that after an
     // exec-restart the WM doesn't assume monitor 0 when the cursor is elsewhere.
-    // Without this, adopt_existing_windows → SwitchWorkspace → sync_current_focus
+    // Without this, adopt_existing_windows → SwitchWorkspace → Core::focus
     // gives X focus to the game on monitor 0 even if the pointer is on monitor 1.
     auto ptr = xconn.query_pointer();
     if (ptr.valid)

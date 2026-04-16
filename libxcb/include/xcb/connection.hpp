@@ -90,6 +90,8 @@ class Connection {
         WindowAttributes            get_window_attributes(xcb_window_t win) const;
         std::optional<Geometry>     get_window_geometry(xcb_window_t win) const;
         std::vector<xcb_window_t>   query_tree_children(xcb_window_t parent) const;
+        std::optional<xcb_window_t> query_parent(xcb_window_t win) const;
+        xcb_window_t                get_input_focus() const;
         std::optional<xcb_window_t> get_transient_for(xcb_window_t win) const;
         int                         get_wm_state_value(xcb_window_t win, xcb_atom_t wm_state_atom) const;
         SizeHints                   get_size_hints(xcb_window_t win) const;

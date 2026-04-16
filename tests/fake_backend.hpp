@@ -29,10 +29,8 @@ class FakeInputPort : public backend::InputPort {
         void ungrab_all_keys() override { log.push_back({ Record::UngrabAll }); }
         void grab_button(WindowId, uint8_t, uint16_t) override {}
         void ungrab_all_buttons(WindowId) override {}
-        void grab_button_any(WindowId) override {}
         void grab_pointer() override {}
         void ungrab_pointer() override {}
-        void allow_events(bool) override {}
         void warp_pointer(WindowId w, Vec2i16 pos) override {
             log.push_back({ Record::WarpAbs, w, pos.x(), pos.y() });
         }
