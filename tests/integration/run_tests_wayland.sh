@@ -30,6 +30,10 @@ DISPLAY_SERVER_LOG="$LOG_DIR/display-server.log"
 DISPLAY_SERVER_STDOUT="$LOG_DIR/display-server.stdout"
 TEST_HOME="$LOG_DIR/home"
 TEST_CONFIG="$TEST_HOME/.config/sirenwm/init.lua"
+# Structured log written by sirenwm itself (FSM transitions, module events…).
+# feat(log) routes it under $XDG_STATE_HOME/sirenwm/ — we override HOME for the
+# child, so the default fallback path resolves here.
+RUNTIME_LOG="$TEST_HOME/.local/state/sirenwm/sirenwm.log"
 XDG_RUNTIME="$LOG_DIR/xdg-runtime"
 BUILD_DIR="$LOG_DIR/build"
 HOST_X_DISPLAY=""
@@ -63,7 +67,7 @@ dump_logs() {
     info "--- display-server stdout (tail 20) ---"
     tail -n 20 "$DISPLAY_SERVER_STDOUT" 2>/dev/null || true
     info "--- runtime.log (tail 40) ---"
-    tail -n 40 "$TEST_HOME/runtime.log" 2>/dev/null || true
+    tail -n 40 "$RUNTIME_LOG" 2>/dev/null || true
     info "--- X server log ---"
     tail -n 20 "$XSERVER_LOG" 2>/dev/null || true
 }
@@ -645,7 +649,7 @@ check_global "wl_data_device_manager"
 # In current display-server mode it may be intentionally absent.
 if grep -q "zwlr_layer_shell_v1" "$WAYLAND_INFO_OUT" 2>/dev/null; then
     pass "compositor advertises zwlr_layer_shell_v1"
-elif grep -q 'Bar: initialized' "$TEST_HOME/runtime.log" 2>/dev/null; then
+elif grep -q 'Bar: initialized' "$RUNTIME_LOG" 2>/dev/null; then
     skip "compositor advertises zwlr_layer_shell_v1" \
          "protocol not exported in display-server mode (bar initialized)"
 else
@@ -656,7 +660,7 @@ fi
 # ===========================================================================
 # Test 11: FSM reaches Running state
 # ===========================================================================
-if grep -q 'FSM: Starting → Running' "$TEST_HOME/runtime.log" 2>/dev/null; then
+if grep -q 'FSM: Starting → Running' "$RUNTIME_LOG" 2>/dev/null; then
     pass "FSM reached Running state"
 else
     fail "FSM reached Running state" "transition not found in runtime.log"
@@ -666,7 +670,7 @@ fi
 # Test 12: monitor layout applied
 # ===========================================================================
 if grep -qE "DisplayServerMonitorPort: applied|monitors: found [1-9][0-9]* monitor\\(s\\):" \
-       "$TEST_HOME/runtime.log" 2>/dev/null; then
+       "$RUNTIME_LOG" 2>/dev/null; then
     pass "monitor layout applied"
 else
     fail "monitor layout applied" "monitor topology apply log not found in runtime.log"
@@ -675,7 +679,7 @@ fi
 # ===========================================================================
 # Test 13: bar initialized
 # ===========================================================================
-if grep -q 'Bar: initialized' "$TEST_HOME/runtime.log" 2>/dev/null; then
+if grep -q 'Bar: initialized' "$RUNTIME_LOG" 2>/dev/null; then
     pass "bar module initialized"
 else
     fail "bar module initialized" "not found in runtime.log"
@@ -696,7 +700,7 @@ fi
 # Test 15: no crashes or assertions in logs
 # ===========================================================================
 if grep -qE 'Assertion.*failed|SIGSEGV|SIGABRT|core dump' \
-       "$SIRENWM_LOG" "$TEST_HOME/runtime.log" 2>/dev/null; then
+       "$SIRENWM_LOG" "$RUNTIME_LOG" 2>/dev/null; then
     fail "no crashes in logs" "assertion/signal found"
 else
     pass "no crashes in logs"
@@ -706,7 +710,7 @@ fi
 # Test 16: no config errors at startup
 # ===========================================================================
 if grep -qE '\[error\].*RuntimeStore|FSM: aborting|failed to load config' \
-       "$TEST_HOME/runtime.log" 2>/dev/null; then
+       "$RUNTIME_LOG" 2>/dev/null; then
     fail "no config errors at startup" "config error found in runtime.log"
 else
     pass "no config errors at startup"
@@ -773,7 +777,7 @@ if [[ -z "$XDG_CLIENT" ]]; then
 else
     # Single window: connect, configure, map, destroy
     XDG_OUT="$LOG_DIR/xdg_client.txt"
-    LOG_BEFORE=$(wc -l < "$TEST_HOME/runtime.log" 2>/dev/null || echo 0)
+    LOG_BEFORE=$(wc -l < "$RUNTIME_LOG" 2>/dev/null || echo 0)
 
     XDG_EXIT=0
     if wl_timeout_run 10 "$XDG_CLIENT" "test-window-1" 800 >"$XDG_OUT" 2>&1; then
@@ -796,7 +800,7 @@ else
     fi
 
     if grep -qE 'WaylandBackend: surface [0-9]+ mapped|DisplayServerBackend: surface [0-9]+ mapped|WindowMapped' \
-           "$TEST_HOME/runtime.log" 2>/dev/null; then
+           "$RUNTIME_LOG" 2>/dev/null; then
         pass "xdg-toplevel: surface mapped logged"
     else
         fail "xdg-toplevel: surface mapped logged" "not found in runtime.log"
@@ -806,7 +810,7 @@ else
     assert_pid_alive "$DISPLAY_SERVER_PID" "xdg-toplevel: display-server alive after window" "display-server crashed"
 
     if grep -qE 'WaylandBackend: surface [0-9]+ destroyed|DisplayServerBackend: surface [0-9]+ destroyed' \
-           "$TEST_HOME/runtime.log" 2>/dev/null; then
+           "$RUNTIME_LOG" 2>/dev/null; then
         pass "xdg-toplevel: surface destroyed cleanly"
     else
         fail "xdg-toplevel: surface destroyed cleanly" "destroy log not found"
@@ -872,7 +876,7 @@ assert_pid_alive "$DISPLAY_SERVER_PID" "SIGHUP: display-server alive after recon
 # ===========================================================================
 # Test 30: reload logged in runtime.log
 # ===========================================================================
-if grep -qE 'reload|Reload|SIGHUP' "$TEST_HOME/runtime.log" 2>/dev/null; then
+if grep -qE 'reload|Reload|SIGHUP' "$RUNTIME_LOG" 2>/dev/null; then
     pass "SIGHUP: reload logged in runtime.log"
 else
     fail "SIGHUP: reload logged in runtime.log" "not found"
@@ -965,7 +969,7 @@ fi
 # ===========================================================================
 # Test 37: FSM: Running → Stopped logged
 # ===========================================================================
-if grep -qE 'FSM:.*Stopp|FSM:.*Running.*Stopp' "$TEST_HOME/runtime.log" 2>/dev/null; then
+if grep -qE 'FSM:.*Stopp|FSM:.*Running.*Stopp' "$RUNTIME_LOG" 2>/dev/null; then
     pass "FSM: Running → Stopped transition logged"
 else
     fail "FSM: Running → Stopped transition logged" "not found in runtime.log"
