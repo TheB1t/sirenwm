@@ -149,6 +149,14 @@ class Core {
         // older queued events — prevents stale focus from overwriting state.
         void emit_focus_changed(WindowId window);
 
+        // Reconcile core's focused-window state with an authoritative value
+        // reported by the backend (e.g. an X FocusIn event). Idempotent: if
+        // the core already believes `window` is focused, does nothing. No
+        // BackendEffect is emitted — this path is for "backend told us the
+        // truth", not "please change X focus". FocusChanged is emitted only
+        // on an actual state transition.
+        void ensure_focused(WindowId window);
+
         void register_layout(const std::string& name, LayoutFn fn) {
             layouts[name] = std::move(fn);
         }
