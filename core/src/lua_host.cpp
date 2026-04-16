@@ -481,6 +481,22 @@ bool LuaHost::call_ref_method_string(const LuaRegistryRef& obj_ref, const char* 
     return true;
 }
 
+bool LuaHost::call_ref_method_void(const LuaRegistryRef& obj_ref, const char* method,
+    const char* context_text) const {
+    if (!push_ref(obj_ref))
+        return false;
+    LuaContext ctx = context();
+    // stack: [obj]
+    ctx.get_field(-1, method);          // stack: [obj, fn]
+    if (!ctx.is_function(-1)) {
+        ctx.pop(2);
+        return false;
+    }
+    ctx.push_value(-2);                 // stack: [obj, fn, obj]  (self)
+    ctx.remove(-3);                     // remove original obj copy → [fn, obj]
+    return pcall(1, 0, context_text);   // fn(obj) → []
+}
+
 bool LuaHost::call_ref_with_int_fields(const LuaRegistryRef& ref,
     std::initializer_list<std::pair<const char*, int64_t>> fields,
     const char* context_text) const {

@@ -59,6 +59,10 @@ static bool parse_slot(LuaContext& lua, LuaHost& host, int val_idx,
         return false;
     }
 
+    lua.get_field(val_idx, "update");
+    bool has_update = lua.is_function(-1);
+    lua.pop();
+
     auto widget_ref = host.ref_value(val_idx);
     if (!widget_ref.valid()) {
         if (err_out)
@@ -74,10 +78,11 @@ static bool parse_slot(LuaContext& lua, LuaHost& host, int val_idx,
     if (interval < 0)
         interval = 0;
 
-    out.kind     = BarSlotKind::Lua;
-    out.widget   = std::move(widget_ref);
-    out.interval = interval;
-    out.ticks    = interval;  // first refresh_slot() renders immediately
+    out.kind       = BarSlotKind::Lua;
+    out.widget     = std::move(widget_ref);
+    out.interval   = interval;
+    out.has_update = has_update;
+    out.ticks      = 0;
     return true;
 }
 
@@ -591,19 +596,18 @@ void BarModule::on(event::ButtonEv ev) {
 }
 
 void BarModule::on_reload() {
+    // Absorb the new config and theme, but do NOT rebuild bar/tray windows
+    // here: process_pending_reload() calls dispatch_display_change() right
+    // after reload() returns, which posts DisplayTopologyChanged — that
+    // handler is the single place that performs the physical rebuild. Doing
+    // it twice (once here, once in the event handler) is what caused visible
+    // flicker on siren.reload().
     bar_set_cfg_ = bar_set_setting_.get();
 
     const ThemeConfig& th = core.current_settings().theme;
     apply_theme_to_monitor_cfg(bar_set_cfg_.default_cfg, th);
     for (auto& [alias, mcfg] : bar_set_cfg_.per_monitor)
         apply_theme_to_monitor_cfg(mcfg, th);
-
-    rebuild_bars();
-    (void)core.dispatch(command::atom::ReconcileNow{});
-    rebuild_trays();
-    rebalance_tray_icons();
-    raise_all();
-    redraw();
 }
 
 void BarModule::rebuild_trays() {
@@ -669,6 +673,7 @@ void BarModule::on(event::DisplayTopologyChanged) {
     rebuild_trays();
     rebalance_tray_icons();
     raise_all();
+    prime_widgets();
     redraw();
 }
 
@@ -741,6 +746,7 @@ void BarModule::on_start() {
         }
     }
 
+    prime_widgets();
     redraw();
     LOG_INFO("Bar: initialized, %d bar window(s)", (int)all_bars_.size());
 }

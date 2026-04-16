@@ -777,7 +777,9 @@ bool Core::dispatch(const command::atom::ApplyMonitorTopology& cmd) {
     // New monitors come in fresh with top/bottom insets = 0; no reset needed.
     wsman.assign_workspaces(settings.monitor_aliases,
         settings.monitor_compose);
-    post(event::DisplayTopologyChanged{});
+    // DisplayTopologyChanged is posted by the caller (runtime hot-plug path),
+    // not here: initial topology apply at startup is not a "change" and must
+    // not trigger reactive rebuilds that duplicate what on_start() already does.
     reconcile();
     return true;
 }

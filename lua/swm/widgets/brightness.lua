@@ -5,9 +5,13 @@ local sys    = require("sysinfo")
 
 local w = Widget:new({ interval = 5 })
 
+function w:update()
+    self.bri = sys.brightness()
+end
+
 function w:render()
-    local b = sys.brightness()
-    if not b.present then return "" end
+    local b = self.bri
+    if not b or not b.present then return "" end
     return string.format(" [BRI %d%%] ", b.percent)
 end
 

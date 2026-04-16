@@ -26,7 +26,8 @@ enum class BarSlotKind { Tags, Title, Tray, Lua };
 struct BarSlot {
     BarSlotKind    kind = BarSlotKind::Lua;
     LuaRegistryRef widget;               // ref to Widget object when kind == Lua
-    int            interval = 1;         // 0 = every redraw; >0 = every N seconds
+    int            interval   = 1;       // 0 = every redraw; >0 = every N seconds
+    bool           has_update = false;   // true when widget defines update() method
 
     // Runtime state (not part of config, mutated during redraw).
     mutable std::string cached_text;

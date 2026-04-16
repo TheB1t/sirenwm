@@ -33,6 +33,7 @@ struct RestartState {
 struct WindowMetadata {
     std::string wm_instance;
     std::string wm_class;
+    std::string title;
     WindowType  type              = WindowType::Normal;
     bool        wm_fixed_size     = false;
     bool        wm_no_decorations = false;
@@ -73,19 +74,18 @@ RestartState load_restart_state() {
     return out;
 }
 
-std::string read_window_title(XConnection& xconn, xcb_window_t win,
-    xcb_atom_t net_wm_name, xcb_atom_t utf8_string) {
-    auto title = xconn.get_text_property(win, net_wm_name, utf8_string);
-    if (title.empty())
-        title = xconn.get_text_property(win, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
-    return title;
-}
-
 WindowMetadata read_window_metadata(XConnection& xconn, WindowId window) {
     WindowMetadata out;
     auto [instance, cls] = xconn.get_wm_class(window);
     out.wm_instance      = std::move(instance);
     out.wm_class         = std::move(cls);
+
+    static const auto named       = xconn.intern_atoms({ "_NET_WM_NAME", "UTF8_STRING" });
+    static xcb_atom_t net_wm_name = named.at("_NET_WM_NAME");
+    static xcb_atom_t utf8_string = named.at("UTF8_STRING");
+    out.title = xconn.get_text_property(window, net_wm_name, utf8_string);
+    if (out.title.empty())
+        out.title = xconn.get_text_property(window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING);
 
     const auto& atoms = window_type_atoms(xconn);
     auto        types = xconn.get_atom_list_property(window, atoms.net_wm_window_type);
@@ -120,8 +120,6 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         "_NET_WM_WINDOW_TYPE_NOTIFICATION",
         "_NET_WM_WINDOW_TYPE_TOOLTIP",
         "_NET_WM_WINDOW_TYPE_DND",
-        "_NET_WM_NAME",
-        "UTF8_STRING",
         "WM_STATE",
     });
     xcb_atom_t NET_WM_WINDOW_TYPE              = atoms["_NET_WM_WINDOW_TYPE"];
@@ -130,8 +128,6 @@ StartupSnapshot X11Backend::scan_existing_windows() {
     xcb_atom_t NET_WM_WINDOW_TYPE_NOTIFICATION = atoms["_NET_WM_WINDOW_TYPE_NOTIFICATION"];
     xcb_atom_t NET_WM_WINDOW_TYPE_TOOLTIP      = atoms["_NET_WM_WINDOW_TYPE_TOOLTIP"];
     xcb_atom_t NET_WM_WINDOW_TYPE_DND          = atoms["_NET_WM_WINDOW_TYPE_DND"];
-    xcb_atom_t NET_WM_NAME                     = atoms["_NET_WM_NAME"];
-    xcb_atom_t UTF8_STRING                     = atoms["UTF8_STRING"];
     xcb_atom_t WM_STATE                        = atoms["WM_STATE"];
 
     auto       children          = xconn.query_tree_children(root_window);
@@ -168,9 +164,8 @@ StartupSnapshot X11Backend::scan_existing_windows() {
             continue;
         }
 
-        auto [instance, cls] = xconn.get_wm_class(win);
-        auto title        = read_window_title(xconn, win, NET_WM_NAME, UTF8_STRING);
-        bool identifiable = !instance.empty() || !cls.empty() || !title.empty();
+        auto meta         = read_window_metadata(xconn, win);
+        bool identifiable = !meta.wm_instance.empty() || !meta.wm_class.empty() || !meta.title.empty();
 
         int  wm_state         = xconn.get_wm_state_value(win, WM_STATE);
         bool iconic           = (wm_state == ICCCM_ICONIC_STATE);
@@ -188,7 +183,6 @@ StartupSnapshot X11Backend::scan_existing_windows() {
                 !unsupported_type &&
                 identifiable;
 
-        auto                   meta = read_window_metadata(xconn, win);
         ExistingWindowSnapshot snap{};
         snap.window               = win;
         snap.currently_viewable   = (attrs.map_state == XCB_MAP_STATE_VIEWABLE);
@@ -196,6 +190,7 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         snap.from_restart         = from_restart;
         snap.wm_instance          = std::move(meta.wm_instance);
         snap.wm_class             = std::move(meta.wm_class);
+        snap.title                = std::move(meta.title);
         snap.type                 = meta.type;
         snap.hints.fixed_size     = meta.wm_fixed_size;
         snap.hints.no_decorations = meta.wm_no_decorations;
@@ -218,7 +213,7 @@ StartupSnapshot X11Backend::scan_existing_windows() {
 
         LOG_DEBUG(
             "scan_existing_windows: candidate %u map_state=%u class='%s' instance='%s' source=%s default_manage=%d",
-            win, attrs.map_state, cls.c_str(), instance.c_str(),
+            win, attrs.map_state, snap.wm_class.c_str(), snap.wm_instance.c_str(),
             from_restart ? "snapshot" : "scan", default_manage ? 1 : 0);
         out.push_back(std::move(snap));
     }

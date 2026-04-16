@@ -213,10 +213,14 @@ TEST(Hotplug, MoveWindowToSameMonitorIsNoop) {
 }
 
 // ---------------------------------------------------------------------------
-// DisplayTopologyChanged domain event emitted
+// DisplayTopologyChanged: NOT emitted by ApplyMonitorTopology dispatch itself.
+// Emission is the caller's responsibility (Runtime::dispatch_display_change()
+// posts it on hot-plug; Runtime::start() intentionally does not, since the
+// initial topology apply is not a "change" and must not trigger reactive
+// rebuilds in modules that already read topology synchronously in on_start()).
 // ---------------------------------------------------------------------------
 
-TEST(Hotplug, TopologyChangeEmitsDomainEvent) {
+TEST(Hotplug, ApplyTopologyDoesNotEmitDomainEvent) {
     CoreHarness h;
     h.start();
     h.take_core_events(); // drain any startup events
@@ -226,13 +230,7 @@ TEST(Hotplug, TopologyChangeEmitsDomainEvent) {
         make_monitor(1, 1920, 0, 1920, 1080, "secondary"),
     });
 
-    auto evts  = h.take_core_events();
-    bool found = false;
-    for (const auto& ev : evts) {
-        if (std::holds_alternative<event::DisplayTopologyChanged>(ev)) {
-            found = true;
-            break;
-        }
-    }
-    EXPECT_TRUE(found);
+    auto evts = h.take_core_events();
+    for (const auto& ev : evts)
+        EXPECT_FALSE(std::holds_alternative<event::DisplayTopologyChanged>(ev));
 }

@@ -3,8 +3,12 @@ local Widget = require("swm.widget")
 
 local w = Widget:new({ interval = 1 })
 
+function w:update()
+    self.text = os.date(" [%d-%m-%Y %H:%M:%S %Z] ")
+end
+
 function w:render()
-    return os.date(" [%d-%m-%Y %H:%M:%S %Z] ")
+    return self.text or ""
 end
 
 return w
