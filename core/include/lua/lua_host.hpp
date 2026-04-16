@@ -157,6 +157,14 @@ class LuaHost : public IEventReceiver, public IHookReceiver {
         bool exec_file(const std::string& path);
         bool exec_string(const char* code, const char* name = "=prelude");
 
+        // Evaluate `code` like a Lua REPL line and return a human-readable
+        // result string (expression value(s), captured print() output, or an
+        // error message). Tries `return <code>` first so bare expressions
+        // print their value; falls back to loading as a statement block.
+        // Intended for debug UIs only — no sandboxing, full access to the
+        // live Lua state.
+        std::string repl_eval(const std::string& code);
+
         // Module table registry: a module calls set_module_table(name) in on_lua_init()
         // to publish its API table (top of stack). lua_module_preload then returns it.
         void           set_module_table(const std::string& name);
