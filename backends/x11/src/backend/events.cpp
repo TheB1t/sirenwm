@@ -8,6 +8,7 @@
 #include <runtime/runtime.hpp>
 #include <x11/xconn.hpp>
 
+#include <xcb/event_dispatch.hpp>
 #include <xcb/xcb_keysyms.h>
 #include <algorithm>
 #include <string>
@@ -1023,8 +1024,44 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     request_focus(ev->event, kFocusPointer);
 }
 
+// TODO: temporary adapter. The cleaner end state is for X11Backend itself to
+// satisfy the dispatch_event() concept (on(xcb_*_t&) directly), eliminating
+// this struct. Blocked by the name clash with Backend::on(event::...)
+// virtuals — renaming the domain-event handler would unblock it. Until then,
+// this adapter forwards typed events to X11Backend's handle_* methods.
+// Overloads for graphics-exposure / visibility / create-notify / no-exposure
+// intentionally do nothing but still mark the opcode as recognized so
+// dispatch_event returns true.
+struct X11EventHandler {
+    X11Backend& self;
+
+    void on(xcb_map_request_event_t& e)       { self.handle_map_request(&e); }
+    void on(xcb_map_notify_event_t& e)        { self.handle_map_notify(&e); }
+    void on(xcb_reparent_notify_event_t& e)   { self.handle_reparent_notify(&e); }
+    void on(xcb_unmap_notify_event_t& e)      { self.handle_unmap_notify(&e); }
+    void on(xcb_destroy_notify_event_t& e)    { self.handle_destroy_notify(&e); }
+    void on(xcb_configure_request_event_t& e) { self.handle_configure_request(&e); }
+    void on(xcb_configure_notify_event_t& e)  { self.handle_configure_notify(&e); }
+    void on(xcb_key_press_event_t& e)         { self.handle_key_event(&e); }
+    void on(xcb_focus_in_event_t& e)          { self.handle_focus_event(&e); }
+    void on(xcb_button_press_event_t& e)      { self.handle_button_event(&e); }
+    void on(xcb_motion_notify_event_t& e)     { self.handle_motion_notify(&e); }
+    void on(xcb_client_message_event_t& e)    { self.handle_client_message(&e); }
+    void on(xcb_property_notify_event_t& e)   { self.handle_property_notify(&e); }
+    void on(xcb_expose_event_t& e)            { self.handle_expose(&e); }
+    void on(xcb_ge_generic_event_t& e)        { self.handle_ge_generic(&e); }
+    void on(xcb_enter_notify_event_t& e)      { self.handle_enter_notify(&e); }
+
+    // Benign render-side notifications (often produced by CopyArea); purely
+    // informative notifications. Acknowledged but do nothing.
+    void on(xcb_graphics_exposure_event_t&)   {}
+    void on(xcb_no_exposure_event_t&)         {}
+    void on(xcb_visibility_notify_event_t&)   {}
+    void on(xcb_create_notify_event_t&)       {}
+};
+
 void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
-    uint8_t type = ev->response_type & ~0x80;
+    const uint8_t type = ev->response_type & 0x7f;
 
     if (type == 0) {
         auto* err = reinterpret_cast<xcb_generic_error_t*>(ev);
@@ -1041,58 +1078,28 @@ void X11Backend::handle_generic_event(xcb_generic_event_t* ev) {
         return;
     }
 
-    switch (type) {
-        case XCB_MAP_REQUEST:      handle_map_request((xcb_map_request_event_t*)ev); break;
-        case XCB_MAP_NOTIFY:       handle_map_notify((xcb_map_notify_event_t*)ev); break;
-        case XCB_REPARENT_NOTIFY:  handle_reparent_notify((xcb_reparent_notify_event_t*)ev); break;
-        case XCB_UNMAP_NOTIFY:     handle_unmap_notify((xcb_unmap_notify_event_t*)ev); break;
-        case XCB_DESTROY_NOTIFY:   handle_destroy_notify((xcb_destroy_notify_event_t*)ev); break;
-        case XCB_CONFIGURE_REQUEST: handle_configure_request((xcb_configure_request_event_t*)ev); break;
-        case XCB_CONFIGURE_NOTIFY:  handle_configure_notify((xcb_configure_notify_event_t*)ev); break;
-        case XCB_KEY_PRESS:
-        case XCB_KEY_RELEASE:      handle_key_event((xcb_key_press_event_t*)ev); break;
-        case XCB_FOCUS_IN:
-        case XCB_FOCUS_OUT:        handle_focus_event((xcb_focus_in_event_t*)ev); break;
-        case XCB_BUTTON_PRESS:
-        case XCB_BUTTON_RELEASE:   handle_button_event((xcb_button_press_event_t*)ev); break;
-        case XCB_MOTION_NOTIFY:    handle_motion_notify((xcb_motion_notify_event_t*)ev); break;
-        case XCB_CLIENT_MESSAGE:   handle_client_message((xcb_client_message_event_t*)ev); break;
-        case XCB_PROPERTY_NOTIFY:  handle_property_notify((xcb_property_notify_event_t*)ev); break;
-        case XCB_EXPOSE:           handle_expose((xcb_expose_event_t*)ev); break;
-        case XCB_GRAPHICS_EXPOSURE:
-        case XCB_NO_EXPOSURE:
-            // Benign render-side notifications (often produced by CopyArea).
-            // They do not require WM-side state changes.
-            break;
-        case XCB_VISIBILITY_NOTIFY:
-        case XCB_CREATE_NOTIFY:
-            // Purely informative; no WM state changes required.
-            break;
-        case XCB_GE_GENERIC:       handle_ge_generic((xcb_ge_generic_event_t*)ev); break;
-        case XCB_ENTER_NOTIFY:
-        case XCB_LEAVE_NOTIFY:     handle_enter_notify((xcb_enter_notify_event_t*)ev); break;
+    X11EventHandler handler{ *this };
+    if (xcb::dispatch_event(ev, handler))
+        return;
 
-        default: {
-            int randr_base = runtime.get_backend_extension_event_base();
-            if (randr_base >= 0 && (type == randr_base + XCB_RANDR_SCREEN_CHANGE_NOTIFY ||
-                type == randr_base + XCB_RANDR_NOTIFY)) {
-                runtime.dispatch_display_change();
-                break;
-            }
-            int xkb_base = xconn.xkb_event_type();
-            if (xkb_base >= 0 && type == (uint8_t)xkb_base) {
-                // XKB state notify — group (layout) may have changed.
-                auto* kp = keyboard_port_impl.get();
-                if (kp) {
-                    std::string layout = kp->current_layout();
-                    runtime.post_event(event::CustomEvent{
-                        MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
-                    });
-                }
-                break;
-            }
-            LOG_DEBUG("No case for %d", type);
-            break;
-        }
+    // Extension events carry dynamic opcode bases and do not fit the static
+    // core-event map dispatched above.
+    const int randr_base = runtime.get_backend_extension_event_base();
+    if (randr_base >= 0 && (type == randr_base + XCB_RANDR_SCREEN_CHANGE_NOTIFY ||
+        type == randr_base + XCB_RANDR_NOTIFY)) {
+        runtime.dispatch_display_change();
+        return;
     }
+    const int xkb_base = xconn.xkb_event_type();
+    if (xkb_base >= 0 && type == (uint8_t)xkb_base) {
+        // XKB state notify — group (layout) may have changed.
+        if (auto* kp = keyboard_port_impl.get()) {
+            std::string layout = kp->current_layout();
+            runtime.post_event(event::CustomEvent{
+                MessageEnvelope::pack(protocol::keyboard::LayoutChanged::from(layout))
+            });
+        }
+        return;
+    }
+    LOG_DEBUG("No case for %d", type);
 }

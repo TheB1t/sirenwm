@@ -18,8 +18,17 @@
 
 class Core;
 class Runtime;
+struct X11EventHandler;
 
 class X11Backend final : public Backend {
+    // TODO: temporary. The cleaner design is to let X11Backend itself be
+    // the handler passed to xcb::dispatch_event() (define on(xcb_*_t&)
+    // directly). Blocked by Backend::on(event::...) virtuals — the X-event
+    // overloads would hide them (-Woverloaded-virtual) and share a name
+    // with a semantically unrelated concern. Revisit once the domain-event
+    // handler name is disambiguated (e.g. on_domain / handle).
+    friend struct X11EventHandler;
+
     private:
         XConnection xconn;
         Core&       core;

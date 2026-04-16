@@ -4,6 +4,7 @@
 #include <support/log.hpp>
 #include <runtime/runtime.hpp>
 #include <x11/xconn.hpp>
+#include <xcb/event_dispatch.hpp>
 
 #include <cstdlib>
 #include <vector>
@@ -172,12 +173,12 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
         if (type == XCB_MOTION_NOTIFY) {
             if (latest_motion)
                 free(latest_motion);
-            latest_motion = (xcb_motion_notify_event_t*)ev;
+            latest_motion = xcb::event_as<xcb_motion_notify_event_t>(ev);
             continue;
         }
 
         if (type == XCB_EXPOSE) {
-            auto* expose   = (xcb_expose_event_t*)ev;
+            auto* expose   = xcb::event_as<xcb_expose_event_t>(ev);
             bool  replaced = false;
             for (auto*& pending : pending_exposes) {
                 if (pending && pending->window == expose->window) {
@@ -197,7 +198,7 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
     }
 
     if (latest_motion) {
-        handle_generic_event((xcb_generic_event_t*)latest_motion);
+        handle_generic_event(reinterpret_cast<xcb_generic_event_t*>(latest_motion));
         free(latest_motion);
         latest_motion = nullptr;
     }
@@ -205,7 +206,7 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
     for (auto* expose : pending_exposes) {
         if (!expose)
             continue;
-        handle_generic_event((xcb_generic_event_t*)expose);
+        handle_generic_event(reinterpret_cast<xcb_generic_event_t*>(expose));
         free(expose);
     }
     pending_exposes.clear();
