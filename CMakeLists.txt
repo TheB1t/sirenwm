@@ -230,6 +230,18 @@ if(BUILD_TESTING)
     set_target_properties(sirenwm_module_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
     )
+
+    # --- libipc tests ---
+    file(GLOB SIRENWM_IPC_TEST_SOURCES tests/libipc/test_*.cpp)
+    add_executable(sirenwm_ipc_tests ${SIRENWM_IPC_TEST_SOURCES})
+    target_include_directories(sirenwm_ipc_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(sirenwm_ipc_tests PRIVATE sirenwm_ipc GTest::gtest GTest::gtest_main)
+    add_test(NAME sirenwm_ipc_tests COMMAND sirenwm_ipc_tests)
+    set_target_properties(sirenwm_ipc_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output
+    )
 endif()
 
 # ---------------------------------------------------------------------------
