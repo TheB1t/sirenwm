@@ -147,38 +147,79 @@ int BarModule::tag_at(WindowId window, int click_x) const {
     return -1;
 }
 
-static void refresh_slot(LuaHost& lua, const BarSlot& slot) {
+// Call widget:update() if defined. Expensive; invoked on load and at every
+// slot.interval seconds thereafter.
+static void update_slot(LuaHost& lua, const BarSlot& slot) {
+    if (slot.kind != BarSlotKind::Lua || !slot.has_update) return;
+    lua.call_ref_method_void(slot.widget, "update", "bar.widget");
+}
+
+// Call widget:render() and store the result into slot.cached_text. Cheap; runs
+// on every repaint.
+static void render_slot(LuaHost& lua, const BarSlot& slot) {
+    if (slot.kind != BarSlotKind::Lua) return;
+    lua.call_ref_method_string(slot.widget, "render", slot.cached_text, "bar.widget");
+}
+
+// Scheduled tick: advance counter and call update() only when interval elapsed.
+// render() is NOT called here — it runs in redraw() every tick.
+static void tick_slot(LuaHost& lua, const BarSlot& slot) {
     if (slot.kind != BarSlotKind::Lua || slot.interval <= 0) return;
     slot.ticks++;
     if (slot.ticks < slot.interval) return;
     slot.ticks = 0;
-    lua.call_ref_method_string(slot.widget, "render", slot.cached_text, "bar.widget");
+    update_slot(lua, slot);
 }
 
 void BarModule::refresh_widgets() {
-    if (runtime_state() != RuntimeState::Running) return;
-    auto& lua = this->lua;
+    RuntimeState rs = runtime_state();
+    if (rs != RuntimeState::Running && rs != RuntimeState::Starting) return;
+    auto&        lua = this->lua;
     for (const auto& b : all_bars_) {
-        for (const auto& s : b.cfg.left)   refresh_slot(lua, s);
-        for (const auto& s : b.cfg.center) refresh_slot(lua, s);
-        for (const auto& s : b.cfg.right)  refresh_slot(lua, s);
+        for (const auto& s : b.cfg.left)   tick_slot(lua, s);
+        for (const auto& s : b.cfg.center) tick_slot(lua, s);
+        for (const auto& s : b.cfg.right)  tick_slot(lua, s);
     }
 }
 
-static void update_reactive_slot(LuaHost& lua, const BarSlot& slot) {
-    if (slot.kind == BarSlotKind::Lua && slot.interval == 0)
-        lua.call_ref_method_string(slot.widget, "render", slot.cached_text, "bar.widget");
+// Called for every slot on every redraw: reactive slots (interval == 0) also
+// get update() here, since they have no scheduled tick.
+static void redraw_slot(LuaHost& lua, const BarSlot& slot) {
+    if (slot.kind != BarSlotKind::Lua) return;
+    if (slot.interval == 0)
+        update_slot(lua, slot);
+    render_slot(lua, slot);
+}
+
+// Initial load: force update() on all scheduled slots once so cached_text is
+// populated from the very first paint. Reactive slots handle themselves in
+// redraw_slot(). Called from on_start()/on_reload() — must run even when the
+// runtime is still in Starting state, so no runtime-state guard here.
+void BarModule::prime_widgets() {
+    auto& lua = this->lua;
+    for (const auto& b : all_bars_) {
+        for (const auto& s : b.cfg.left)
+            if (s.interval > 0) update_slot(lua, s);
+        for (const auto& s : b.cfg.center)
+            if (s.interval > 0) update_slot(lua, s);
+        for (const auto& s : b.cfg.right)
+            if (s.interval > 0) update_slot(lua, s);
+    }
 }
 
 void BarModule::redraw() {
     if (!state_provider) return;
 
-    if (runtime_state() == RuntimeState::Running) {
+    // Allow slot updates/renders during Starting too — on_start() paints the
+    // bar before the runtime transitions to Running. Only skip once we're
+    // tearing down (Stopping/Stopped), when Lua state may be gone.
+    RuntimeState rs = runtime_state();
+    if (rs == RuntimeState::Running || rs == RuntimeState::Starting) {
         auto& lua = this->lua;
         for (const auto& b : all_bars_) {
-            for (const auto& s : b.cfg.left)   update_reactive_slot(lua, s);
-            for (const auto& s : b.cfg.center) update_reactive_slot(lua, s);
-            for (const auto& s : b.cfg.right)  update_reactive_slot(lua, s);
+            for (const auto& s : b.cfg.left)   redraw_slot(lua, s);
+            for (const auto& s : b.cfg.center) redraw_slot(lua, s);
+            for (const auto& s : b.cfg.right)  redraw_slot(lua, s);
         }
     }
 

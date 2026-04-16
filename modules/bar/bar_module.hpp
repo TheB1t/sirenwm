@@ -34,7 +34,7 @@ class BarModule : public Module {
 
         void on_reload() override;
         using Module::on;
-        void on(event::RuntimeStarted) override { refresh_widgets(); redraw(); }
+        void on(event::RuntimeStarted) override { prime_widgets(); redraw(); }
         void on(event::WindowMapped) override { redraw(); }
         void on(event::WindowUnmapped) override;
         void on(event::FocusChanged) override { redraw(); }
@@ -96,6 +96,7 @@ class BarModule : public Module {
         int         tag_at(WindowId window, int click_x) const;
         void        rebuild_bars();
         void        refresh_widgets();
+        void        prime_widgets();
         void        redraw();
         void        raise_all();
         void        stop_runtime();

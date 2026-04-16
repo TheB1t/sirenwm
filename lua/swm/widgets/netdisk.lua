@@ -4,17 +4,21 @@ local sys    = require("sysinfo")
 
 local w = Widget:new({ interval = 10 })
 
+function w:update()
+    self.ip    = sys.net_ip()
+    self.disks = sys.disks()
+end
+
 function w:render()
-    local ip    = sys.net_ip()
-    local disks = sys.disks()
+    if not self.disks then return "" end
     local parts = {}
     local skip  = { ["/boot/efi"] = true }
-    for _, d in ipairs(disks) do
+    for _, d in ipairs(self.disks) do
         if not skip[d.mountpoint] then
             table.insert(parts, string.format("%s %.0f%%", d.mountpoint, d.percent))
         end
     end
-    return string.format(" [IP %s][%s] ", ip, table.concat(parts, "]["))
+    return string.format(" [IP %s][%s] ", self.ip or "?", table.concat(parts, "]["))
 end
 
 return w

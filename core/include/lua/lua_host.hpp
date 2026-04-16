@@ -177,6 +177,7 @@ class LuaHost : public IEventReceiver, public IHookReceiver {
         bool           call_ref(const LuaRegistryRef& ref, int nargs, int nresults, const char* context) const;
         bool           call_ref_string(const LuaRegistryRef& ref, std::string& out, const char* context) const;
         bool           call_ref_method_string(const LuaRegistryRef& obj_ref, const char* method, std::string& out, const char* context) const;
+        bool           call_ref_method_void(const LuaRegistryRef& obj_ref, const char* method, const char* context) const;
         bool           call_ref_with_int_fields(const LuaRegistryRef& ref,
             std::initializer_list<std::pair<const char*, int64_t>> fields,
             const char* context) const;

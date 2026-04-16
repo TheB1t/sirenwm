@@ -15,15 +15,21 @@ local function format_vol(label, info)
     return string.format("%s %d%%", label, info.percent)
 end
 
+function w:update()
+    if not audio then return end
+    self.out = audio.output()
+    self.in_ = audio.input()
+end
+
 function w:render()
     if not audio then return "" end
 
     local parts = {}
 
-    local s = format_vol("OUT", audio.output())
+    local s = format_vol("OUT", self.out)
     if s then parts[#parts + 1] = s end
 
-    s = format_vol("IN", audio.input())
+    s = format_vol("IN", self.in_)
     if s then parts[#parts + 1] = s end
 
     if #parts == 0 then return "" end

@@ -147,7 +147,7 @@ void adopt_existing_windows(Runtime& runtime, Core& core, Backend& backend) {
                 .window      = snap.window,
                 .wm_instance = snap.wm_instance,
                 .wm_class    = snap.wm_class,
-                .title       = {},
+                .title       = snap.title,
                 .pid         = 0,
                 .type        = snap.type,
                 .hints       = hints,
@@ -628,6 +628,9 @@ void Runtime::apply_and_refresh_monitors() {
 
 void Runtime::dispatch_display_change() {
     apply_and_refresh_monitors();
+    // Hot-plug path: notify modules so they can rebuild bar/tray layout.
+    // (Initial topology apply in start() intentionally does not emit this.)
+    post_event(event::DisplayTopologyChanged{});
 }
 
 void Runtime::setup_sigchld_pipe() {

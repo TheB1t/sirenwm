@@ -55,9 +55,11 @@ struct ExistingWindowSnapshot {
     Vec2i geo_pos;
     Vec2i geo_size;
 
-    // Metadata snapshot used by rules/policy.
+    // Metadata read directly from X at adopt time — not persisted across
+    // restarts. Core caches these; refreshed by backend PropertyNotify.
     std::string          wm_instance;
     std::string          wm_class;
+    std::string          title;
     WindowType           type = WindowType::Normal;
     command::WindowHints hints;
 };

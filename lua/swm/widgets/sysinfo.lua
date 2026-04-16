@@ -4,11 +4,15 @@ local sys    = require("sysinfo")
 
 local w = Widget:new({ interval = 2 })
 
+function w:update()
+    self.cpu = sys.cpu()
+    self.mem = sys.mem()
+end
+
 function w:render()
-    local cpu = sys.cpu()
-    local mem = sys.mem()
+    if not self.cpu or not self.mem then return "" end
     return string.format(" [CPU %.2f%%][MEM %.2f/%.2f GB (%.2f%%)] ",
-        cpu, mem.used, mem.total, mem.percent)
+        self.cpu, self.mem.used, self.mem.total, self.mem.percent)
 end
 
 return w

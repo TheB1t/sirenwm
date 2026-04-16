@@ -5,9 +5,13 @@ local sys    = require("sysinfo")
 
 local w = Widget:new({ interval = 30 })
 
+function w:update()
+    self.bat = sys.battery()
+end
+
 function w:render()
-    local b = sys.battery()
-    if not b.present then return "" end
+    local b = self.bat
+    if not b or not b.present then return "" end
 
     local icon
     if b.status == "Charging" or b.status == "Full" then

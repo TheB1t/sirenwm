@@ -7,11 +7,10 @@ local w = Widget:new({ interval = 900 })  -- 15 minutes
 w.city   = ""      -- empty = auto-detect by IP
 w.format = "%c%t"  -- wttr.in format string: %c=icon %t=temperature
 
-local cached = ""
-
-local function fetch()
-    local loc = w.city ~= "" and w.city or ""
-    local url = string.format("wttr.in/%s?format=%s", loc, w.format:gsub(" ", "+"))
+local function fetch(self)
+    local loc = self.city ~= "" and self.city or ""
+    local fmt = (self.format:gsub(" ", "+"))
+    local url = string.format("wttr.in/%s?format=%s", loc, fmt)
     local f = io.popen('curl -sf --max-time 5 "' .. url .. '" 2>/dev/null', "r")
     if not f then return nil end
     local out = f:read("*a")
@@ -20,13 +19,16 @@ local function fetch()
     return out:gsub("%s+$", "")
 end
 
-function w:render()
-    local result = fetch()
+function w:update()
+    local result = fetch(self)
     if result then
-        cached = result
+        self.cached = result
     end
-    if #cached == 0 then return "" end
-    return " [" .. cached .. "] "
+end
+
+function w:render()
+    if not self.cached or #self.cached == 0 then return "" end
+    return " [" .. self.cached .. "] "
 end
 
 return w
