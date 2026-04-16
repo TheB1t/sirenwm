@@ -199,11 +199,17 @@ bool ensure_embedded_display_server(const std::string& exec_path, bool from_exec
 } // namespace
 
 int main(int argc, char** argv) {
-    const char* home     = std::getenv("HOME");
-    std::string log_path = "runtime.log";
-    if (home)
-        log_path = std::string(home) + "/runtime.log";
-    log_init(log_path);
+    // Pick the log file name before parsing CLI so early failures still land
+    // in the right file. The display-server child is launched with the same
+    // argv prefix + "--display-server", so a flat scan is sufficient.
+    std::string app_name = "sirenwm";
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] && std::string_view(argv[i]) == "--display-server") {
+            app_name = "sirenwm-display";
+            break;
+        }
+    }
+    log_init(app_name);
 
     std::string exec_path = resolve_exec_path(argc, argv);
 
