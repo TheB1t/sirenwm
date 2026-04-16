@@ -463,10 +463,10 @@ void BarModule::on_init() {
             }
 
             if (mon_ws >= 0) {
-                WindowId w = core.ws().last_focused_window(safe_mon_idx, mon_ws);
-                if (w == NO_WINDOW && safe_mon_idx == core.focused_monitor_index())
-                    if (auto focused = core.focused_window_state())
-                        w = focused->id;
+                WindowId w = NO_WINDOW;
+                if (auto ws_state = core.workspace_state(mon_ws))
+                    if (auto fw = ws_state->focused())
+                        w = fw->id;
                 if (w != NO_WINDOW) {
                     if (auto ws = core.window_state_any(w))
                         s.title = ws->title;

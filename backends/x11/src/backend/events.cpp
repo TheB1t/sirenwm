@@ -387,9 +387,8 @@ void X11Backend::handle_map_request(xcb_map_request_event_t* ev) {
         mapped_window &&
         mapped_window->is_visible()) {
         (void)core.dispatch(command::atom::FocusWindow{ ev->window });
-        request_focus(ev->window, kFocusEWMH);
     } else {
-        restore_visible_focus();
+        core.focus(NO_WINDOW);
     }
 
     LOG_DEBUG("MapRequest(%d): parent %d", ev->window, ev->parent);
@@ -491,10 +490,8 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
         (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
         ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
         runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
-        if (ws_visible) {
+        if (ws_visible)
             (void)core.dispatch(command::atom::ReconcileNow{});
-            restore_visible_focus();
-        }
         LOG_DEBUG("UnmapNotify(%d): borderless client withdrawal, unmanaging", ev->window);
         return;
     }
@@ -510,10 +507,8 @@ void X11Backend::handle_unmap_notify(xcb_unmap_notify_event_t* ev) {
     (void)core.dispatch(command::atom::RemoveWindowFromAllWorkspaces{ ev->window });
     ewmh_on_window_unmapped(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
-    if (ws_visible) {
+    if (ws_visible)
         (void)core.dispatch(command::atom::ReconcileNow{});
-        restore_visible_focus();
-    }
 
     LOG_DEBUG("UnmapNotify(%d): client withdrawal, unmanaging", ev->window);
 }
@@ -544,10 +539,8 @@ void X11Backend::handle_destroy_notify(xcb_destroy_notify_event_t* ev) {
     runtime.post_event(event::WindowUnmapped{ ev->window, /*withdrawn=*/ true });
     ewmh_update_client_list();
 
-    if (ws_visible) {
+    if (ws_visible)
         (void)core.dispatch(command::atom::ReconcileNow{});
-        restore_visible_focus();
-    }
 
     LOG_DEBUG("DestroyNotify(%d)", ev->window);
 }
@@ -903,42 +896,15 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
         return;
     }
 
+    // Pure theft-protection (mirrors dwm's focusin(), dwm.c:814). Core owns
+    // the "who is focused" decision — this path ONLY re-asserts X focus when
+    // the X server disagrees with core. Never writes core state from FocusIn:
+    // that inversion is what the focus refactor deleted.
     if (ev->event == root_window)
         return;
-
-    // dwm-style focusin: if a window stole focus from our selection via an
-    // indirect/synthetic route (NotifyWhileGrabbed, NotifyPointerRoot, etc.),
-    // reassert focus. Only act on NotifyNormal/NotifyWhileGrabbed and only
-    // when the event is not from a pointer crossing (detail != NotifyInferior).
-    // Do NOT reassert for NotifyPointer/NotifyVirtual — those are legitimate
-    // focus changes initiated by us or the user.
     auto sel = core.focused_window_state();
-    if (sel && ev->event != sel->id &&
-        (ev->detail != XCB_NOTIFY_DETAIL_POINTER &&
-        ev->detail != XCB_NOTIFY_DETAIL_POINTER_ROOT &&
-        ev->detail != XCB_NOTIFY_DETAIL_NONE) &&
-        ev->mode == XCB_NOTIFY_MODE_WHILE_GRABBED) {
+    if (sel && ev->event != sel->id)
         xconn.focus_window(sel->id);
-        return;
-    }
-
-    auto window = core.window_state_any(ev->event);
-    if (!window || !window->is_visible())
-        return;
-
-    // Sync internal focus state only — do NOT call xconn.focus_window() here.
-    // Calling xcb_set_input_focus in response to a FocusIn event creates a
-    // ping-pong loop: our set_input_focus → X sends FocusOut(A)+FocusIn(B) →
-    // we call set_input_focus again → FocusOut(B)+FocusIn(A) → ... This
-    // causes thousands of FocusIn/FocusOut events per second and makes the
-    // focused application (e.g. VSCode with multiple managed child windows)
-    // freeze: it keeps receiving FocusIn/FocusOut and cannot process input.
-    // The actual X focus has already been set by whichever path triggered this
-    // FocusIn (EnterNotify, button press, EWMH, keybinding). ensure_focused()
-    // is idempotent and does not emit a BackendEffect, so there is no
-    // feedback loop — it only reconciles core state and fires FocusChanged
-    // exactly once per real transition.
-    core.ensure_focused(ev->event);
 }
 
 void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
@@ -954,6 +920,12 @@ void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
 
 void X11Backend::handle_motion_notify(xcb_motion_notify_event_t* ev) {
     last_pointer_ = { ev->root_x, ev->root_y };
+    // Follow pointer across monitors even when it's over empty root area
+    // (between windows, on bar strips, between monitors). EnterNotify alone
+    // isn't enough — it only fires on window boundaries, so crossing via
+    // root would leave focused_monitor stale until the pointer hits a window.
+    if (ev->event == root_window)
+        core.focus_monitor_at_point(ev->root_x, ev->root_y);
     runtime.post_event(event::MotionEv{ ev->event, { ev->root_x, ev->root_y }, ev->state });
 }
 
@@ -1009,23 +981,14 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     last_event_time_ = ev->time;
     last_pointer_    = { ev->root_x, ev->root_y };
 
-    // Use window_state_any so that windows on the second monitor's active
-    // workspace are found even when focused_monitor hasn't been updated yet
-    // (focused_monitor is only updated on button press / motion, not on enter).
     auto window = core.window_state_any(ev->event);
     if (!window || !window->is_visible())
         return;
 
-    // Keep focused_monitor in sync so subsequent workspace/layout ops target
-    // the correct monitor without requiring a click first.
-    core.focus_monitor_at_point(ev->root_x, ev->root_y);
-
-    // Request focus at kPointer priority — applied after apply_core_backend_effects()
-    // so pointer always wins over stale workspace-switch FocusWindow effects.
-    // Core state is reconciled later via ensure_focused() from the FocusIn
-    // X event that this request produces, so we don't dispatch FocusWindow
-    // here (that would double-fire FocusChanged).
-    request_focus(ev->event, kFocusPointer);
+    // Route pointer-enter focus through the single source of truth.
+    // Focusing a window on another monitor updates focused_monitor_ as
+    // part of the focus intent, so no separate focus_monitor_at_point call.
+    (void)core.dispatch(command::atom::FocusWindow{ ev->event });
 }
 
 // TODO: temporary adapter. The cleaner end state is for X11Backend itself to

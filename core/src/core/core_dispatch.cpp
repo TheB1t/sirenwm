@@ -102,13 +102,49 @@ void Core::sync_workspace_visibility() {
     }
 }
 
-void Core::sync_current_focus() {
-    auto f = wsman.current().advance_focus();
-    if (f && f->is_visible()) {
-        wsman.focus_window(f->id);
-        emit_backend_effect(BackendEffectKind::FocusWindow, f->id);
-        emit_focus_changed(f->id);
+// ─── FOCUS INTENT — dwm-style focus() ─────────────────────────────────────
+// All focus entry points route through here. If you add a new one, ALSO
+// route it through here. Do not add a parallel path "because this one
+// doesn't emit in my edge case" — instead fix the edge case here.
+// ─────────────────────────────────────────────────────────────────────────
+void Core::focus(WindowId window) {
+    // NO_WINDOW: pick the best visible candidate on the currently focused
+    // workspace (dwm: `for (c = selmon->stack; c && !ISVISIBLE(c); c = c->snext)`).
+    if (window == NO_WINDOW) {
+        auto& ws = wsman.current();
+        if (auto cand = ws.focused(); cand&& cand->is_visible())
+            window = cand->id;
+    }
+
+    // Validate the target exists on the currently focused monitor's active
+    // workspace. If not, we fall through to root focus — mirrors dwm's
+    // focus(NULL) fallback when the chosen client is stale.
+    if (window != NO_WINDOW) {
+        auto w = wsman.find_window(window);
+        if (!w || !w->is_visible())
+            window = NO_WINDOW;
+    }
+
+    if (window != NO_WINDOW) {
+        if (!wsman.focus_window(window))
+            window = NO_WINDOW;
+    }
+
+    if (window != NO_WINDOW) {
+        // Mirrors dwm's focus(c) in dwm.c:789: always assert X focus and
+        // always redraw/emit. Consumers (border painter, EWMH) are
+        // idempotent — redundant FocusChanged on no-op is harmless, but
+        // SKIPPING it after reload/restart leaves borders unpainted.
+        emit_backend_effect(BackendEffectKind::FocusWindow, window);
+        emit_focus_changed(window);
     } else {
+        // Symmetric with the branch above: always emit FocusChanged, let
+        // consumers be idempotent. Skipping when "prev was NO_WINDOW" is
+        // unreliable — callers routinely mutate workspace state (e.g.
+        // SwitchWorkspace) before calling focus(), so `prev` read from
+        // wsman here reflects the *new* workspace, not the window we are
+        // defocusing. That left _NET_WM_STATE_FOCUSED stuck on windows
+        // after switching to an empty workspace.
         emit_backend_effect(BackendEffectKind::FocusRoot);
         emit_focus_changed(NO_WINDOW);
     }
@@ -179,23 +215,12 @@ void Core::evaluate_workspace_fullscreen(WorkspaceId ws_id) {
 }
 
 bool Core::focus_monitor_at_point(int x, int y) {
-    bool changed = wsman.focus_monitor_at_point(x, y);
-    if (!changed)
+    // Intent entry point — route through Core::focus(). wsman updates
+    // focused_monitor_, then focus(NO_WINDOW) picks the best visible window
+    // on the new monitor's active workspace and emits the single transition.
+    if (!wsman.focus_monitor_at_point(x, y))
         return false;
-
-    // Clear X focus on the old monitor: send focus to root.
-    emit_backend_effect(BackendEffectKind::FocusRoot);
-    emit_focus_changed(NO_WINDOW);
-
-    // Restore the last focused window on the new monitor, if any.
-    int      mon = wsman.get_focused_monitor();
-    int      ws  = wsman.active_workspace(mon);
-    WindowId win = wsman.last_focused_window(mon, ws);
-    if (win != NO_WINDOW && wsman.find_window_in_all(win)) {
-        wsman.focus_window(win);
-        emit_backend_effect(BackendEffectKind::FocusWindow, win);
-        emit_focus_changed(win);
-    }
+    focus(NO_WINDOW);
     return true;
 }
 
@@ -220,7 +245,7 @@ void Core::init(std::vector<Monitor> initial_monitors) {
 void Core::reconcile() {
     sync_workspace_visibility();
     arrange();
-    sync_current_focus();
+    focus(NO_WINDOW);
 }
 
 void Core::arrange() {
@@ -329,26 +354,12 @@ bool Core::dispatch(const command::CommandComposite& cmd) {
 }
 
 bool Core::dispatch(const command::atom::FocusWindow& cmd) {
-    auto cur             = focused_window_state();
-    bool already_focused = cur && cur->id == cmd.window;
-    if (!wsman.focus_window(cmd.window))
+    // Intent entry point — single source of truth. All focus state writes
+    // go through Core::focus(). Do NOT emit FocusChanged here.
+    if (!wsman.find_window_in_all(cmd.window))
         return false;
-    // Always request the X-side effect: core may already track this window
-    // as focused while the X server does not (e.g. new window adopted).
-    emit_backend_effect(BackendEffectKind::FocusWindow, cmd.window);
-    if (!already_focused)
-        emit_focus_changed(cmd.window);
+    focus(cmd.window);
     return true;
-}
-
-void Core::ensure_focused(WindowId window) {
-    auto     cur     = focused_window_state();
-    WindowId cur_win = cur ? cur->id : NO_WINDOW;
-    if (cur_win == window)
-        return;
-    if (window != NO_WINDOW && !wsman.focus_window(window))
-        return;
-    emit_focus_changed(window);
 }
 
 bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {
@@ -370,7 +381,7 @@ bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {
     // Only update X focus when switching workspace on the focused monitor.
     // Switching on a background monitor must not steal keyboard input.
     if (target_mon == wsman.get_focused_monitor())
-        sync_current_focus();
+        focus(NO_WINDOW);
 
     evaluate_workspace_fullscreen(cmd.workspace_id);
     post(event::WorkspaceSwitched{cmd.workspace_id});
@@ -404,13 +415,7 @@ bool Core::dispatch(const command::atom::MoveWindowToWorkspace& cmd) {
 
     bool moved_ws_visible = is_workspace_visible(cmd.workspace_id);
     bool focus_moved      = moved_ws_visible && w->is_visible() && !w->suppress_focus_once;
-    if (focus_moved) {
-        wsman.focus_window(w->id);
-        emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
-        emit_focus_changed(w->id);
-    } else {
-        sync_current_focus();
-    }
+    focus(focus_moved ? w->id : NO_WINDOW);
     return true;
 }
 
@@ -486,11 +491,10 @@ bool Core::dispatch(const command::atom::SetWindowFullscreen& cmd) {
         }
         arrange();
         post(event::RaiseDocks{});
-        if (ws_id >= 0 && is_workspace_visible(ws_id) && w->is_visible()) {
-            wsman.focus_window(cmd.window);
-            emit_backend_effect(BackendEffectKind::FocusWindow, cmd.window);
-            emit_focus_changed(cmd.window);
-        }
+        if (ws_id >= 0 && is_workspace_visible(ws_id) && w->is_visible())
+            focus(cmd.window);
+        else if (ws_id >= 0)
+            evaluate_workspace_fullscreen(ws_id);
         return true;
     }
 
@@ -692,50 +696,31 @@ FullscreenLikeDecision Core::evaluate_fullscreen_like_request(WindowId win,
 }
 
 bool Core::dispatch(const command::composite::FocusNextWindow&) {
+    // Intent: advance workspace cursor, then route through Core::focus.
     auto w = wsman.focus_next();
-    if (!w || !w->is_visible()) {
-        emit_focus_changed(NO_WINDOW);
-        return true;
-    }
-    emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
-    emit_focus_changed(w->id);
+    focus((w && w->is_visible()) ? w->id : NO_WINDOW);
     return true;
 }
 
 bool Core::dispatch(const command::composite::FocusPrevWindow&) {
     auto w = wsman.focus_prev();
-    if (!w || !w->is_visible()) {
-        emit_focus_changed(NO_WINDOW);
-        return true;
-    }
-    emit_backend_effect(BackendEffectKind::FocusWindow, w->id);
-    emit_focus_changed(w->id);
+    focus((w && w->is_visible()) ? w->id : NO_WINDOW);
     return true;
 }
 
 bool Core::dispatch(const command::atom::FocusMonitor& cmd) {
+    // Intent entry point — route through Core::focus(). set_focused_monitor
+    // updates wsman state, then focus(NO_WINDOW) picks the best visible
+    // window on the new monitor's active workspace and emits a single
+    // transition if focus actually changes.
     int  n   = cmd.monitor_index;
     auto mon = monitor_state(n);
     if (!mon || mon->active_ws < 0)
         return false;
 
-    int old_mon = wsman.get_focused_monitor();
-    if (n != old_mon) {
-        // Clear X focus on the old monitor.
-        emit_backend_effect(BackendEffectKind::FocusRoot);
-        emit_focus_changed(NO_WINDOW);
-
+    if (n != wsman.get_focused_monitor()) {
         wsman.set_focused_monitor(n);
-
-        // Restore last focused window on the new monitor.
-        WindowId win = wsman.last_focused_window(n, mon->active_ws);
-        if (win != NO_WINDOW && wsman.find_window_in_all(win)) {
-            wsman.focus_window(win);
-            emit_backend_effect(BackendEffectKind::FocusWindow, win);
-            emit_focus_changed(win);
-        } else {
-            sync_current_focus();
-        }
+        focus(NO_WINDOW);
     }
 
     emit_warp_pointer(mon->center());

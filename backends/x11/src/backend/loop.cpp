@@ -53,13 +53,6 @@ void apply_window_flush(const WindowFlush& flush, X11Window& xw) {
 
 } // namespace
 
-void X11Backend::request_focus(WindowId win, FocusPriority priority) {
-    if (priority >= pending_focus_priority_) {
-        pending_focus_win_      = win;
-        pending_focus_priority_ = priority;
-    }
-}
-
 int X11Backend::event_fd() const {
     return xconn.fd();
 }
@@ -87,6 +80,15 @@ void X11Backend::apply_core_backend_effects() {
                                 apply_window_flush(*flush, *xw);
                         }
                     }
+                    // Re-assert managed event mask on every map. After exec-restart
+                    // adopt sets it once, but some clients replace their own event
+                    // mask on unmap/re-map cycles, which silently drops our
+                    // Enter/Focus/Structure subscriptions.
+                    uint32_t mask = XCB_EVENT_MASK_STRUCTURE_NOTIFY
+                        | XCB_EVENT_MASK_ENTER_WINDOW
+                        | XCB_EVENT_MASK_FOCUS_CHANGE
+                        | XCB_EVENT_MASK_PROPERTY_CHANGE;
+                    xconn.change_window_attributes(e.window, XCB_CW_EVENT_MASK, &mask);
                     xw->set_wm_state_normal();
                     xw->map();
                     xw->send_expose();
@@ -109,11 +111,10 @@ void X11Backend::apply_core_backend_effects() {
             }
             case BackendEffectKind::FocusWindow:
                 if (e.window != NO_WINDOW)
-                    request_focus(e.window, kFocusWorkspace);
+                    focus_window(e.window);
                 break;
             case BackendEffectKind::FocusRoot:
-                // Focus root only if no higher-priority request is pending.
-                if (root_window != NO_WINDOW && pending_focus_priority_ == kFocusNone)
+                if (root_window != NO_WINDOW)
                     xconn.focus_window(root_window);
                 break;
             case BackendEffectKind::UpdateWindow:
@@ -150,9 +151,6 @@ void X11Backend::apply_core_backend_effects() {
 }
 
 void X11Backend::pump_events(std::size_t max_events_per_tick) {
-    pending_focus_win_      = NO_WINDOW;
-    pending_focus_priority_ = kFocusNone;
-
     xcb_motion_notify_event_t*       latest_motion = nullptr;
     std::vector<xcb_expose_event_t*> pending_exposes;
     pending_exposes.reserve(32);
@@ -221,19 +219,6 @@ void X11Backend::pump_events(std::size_t max_events_per_tick) {
 void X11Backend::render_frame() {
     apply_core_backend_effects();
 
-    // Apply the highest-priority focus request accumulated this tick.
-    // Runs after drain_events + apply_core_backend_effects so pointer focus
-    // always wins over stale workspace-switch FocusWindow effects from the
-    // same tick.
-    if (pending_focus_win_ != NO_WINDOW) {
-        // Arbiter only applies the X-side effect. It must not emit
-        // FocusChanged — the domain event is owned by Core and fires from
-        // the command/ensure-focused path that originated this request.
-        focus_window(pending_focus_win_);
-        pending_focus_win_      = NO_WINDOW;
-        pending_focus_priority_ = kFocusNone;
-    }
-
     auto visible_windows = core.visible_window_ids();
     for (auto win : visible_windows) {
         if (auto flush = core.take_window_flush(win)) {
@@ -251,14 +236,9 @@ void X11Backend::on_reload_applied() {
     // Re-raise bars: borderless/fullscreen windows don't go through MapNotify on reload,
     // so RaiseDocks would never fire without this explicit call.
     runtime.post_event(event::RaiseDocks{});
-    // Apply focus immediately (not via arbiter) — reload happens between pump_events
-    // and drain_events, so the arbiter won't fire until the next tick.
-    if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
-        focus_window(focused->id);
-        core.ensure_focused(focused->id);
-    } else {
-        xconn.focus_window(root_window);
-        core.ensure_focused(NO_WINDOW);
-    }
+    // Re-assert focus through the single source of truth. Core::focus()
+    // always emits FocusChanged on a valid window, which repaints borders
+    // that reload_border_colors cleared.
+    core.focus(NO_WINDOW);
     xconn.flush();
 }

@@ -23,10 +23,8 @@ class DisplayServerInputPort final : public InputPort {
         void ungrab_all_keys() override;
         void grab_button(WindowId window, uint8_t button, uint16_t mods) override;
         void ungrab_all_buttons(WindowId window) override;
-        void grab_button_any(WindowId window) override;
         void grab_pointer() override;
         void ungrab_pointer() override;
-        void allow_events(bool replay) override;
         void warp_pointer(WindowId window, Vec2i16 pos) override;
         void warp_pointer_abs(Vec2i16 pos) override;
         void flush() override;

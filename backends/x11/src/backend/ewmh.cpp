@@ -49,18 +49,6 @@ void X11Backend::set_border_color(WindowId win, uint32_t pixel) {
         xw->set_border_color(pixel);
 }
 
-void X11Backend::restore_visible_focus() {
-    if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
-        request_focus(focused->id, kFocusWorkspace);
-    } else {
-        // No visible focused window — fall back to root. X side is direct;
-        // core reconciliation goes through ensure_focused() so FocusChanged
-        // fires exactly once per real transition.
-        xconn.focus_window(root_window);
-        core.ensure_focused(NO_WINDOW);
-    }
-}
-
 void X11Backend::ewmh_intern_atoms() {
     ewmh_atoms_.resolve(xconn.raw());
 }
@@ -450,7 +438,6 @@ bool X11Backend::handle(event::ClientMessageEv ev) {
             return true;
 
         (void)core.dispatch(command::atom::FocusWindow{ ev.window });
-        request_focus(ev.window, kFocusEWMH);
         return true;
     }
 

@@ -130,8 +130,7 @@ class Core {
         WindowFlush& ensure_window_flush(WindowId win);
         void         mark_window_dirty(WindowId win, uint8_t bits);
         void         sync_workspace_visibility();
-        void         sync_current_focus();
-        void         reconcile(); // sync_workspace_visibility + arrange + sync_current_focus
+        void         reconcile(); // sync_workspace_visibility + arrange + focus(NO_WINDOW)
 
         // Fire-and-forget event onto the unified queue. Use directly at
         // call sites — no per-event wrapper methods needed.
@@ -149,13 +148,26 @@ class Core {
         // older queued events — prevents stale focus from overwriting state.
         void emit_focus_changed(WindowId window);
 
-        // Reconcile core's focused-window state with an authoritative value
-        // reported by the backend (e.g. an X FocusIn event). Idempotent: if
-        // the core already believes `window` is focused, does nothing. No
-        // BackendEffect is emitted — this path is for "backend told us the
-        // truth", not "please change X focus". FocusChanged is emitted only
-        // on an actual state transition.
-        void ensure_focused(WindowId window);
+        // ─── SINGLE SOURCE OF TRUTH ──────────────────────────────────────
+        // Intent chain:
+        //   focused_monitor_id  ->  Monitor.active_ws  ->  Workspace::current
+        // Nothing else stores "who is focused". All reads are derived. All
+        // writes happen here. The intent entry points — FocusWindow atom,
+        // FocusMonitor, focus_monitor_at_point, SwitchWorkspace,
+        // Focus{Next,Prev}Window — are the ONLY writers. FocusChanged is
+        // emitted HERE, ONCE PER REAL TRANSITION, and nowhere else in the
+        // codebase.
+        //
+        // Mirrors dwm's focus(Client *c) in dwm.c:789.
+        //
+        // window == NO_WINDOW behaves like dwm's focus(NULL): pick the best
+        // visible window on the currently focused workspace, or fall back
+        // to root focus if none.
+        //
+        // If you are about to add a sixth writer, stop. Make it call this
+        // function instead.
+        // ─────────────────────────────────────────────────────────────────
+        void focus(WindowId window);
 
         void register_layout(const std::string& name, LayoutFn fn) {
             layouts[name] = std::move(fn);
@@ -293,7 +305,7 @@ class Core {
         WorkspaceId active_workspace_on_monitor(MonitorId mon_idx) const {
             return wsman.active_workspace(mon_idx);
         }
-        const FocusState& focus_state()       const { return wsman.get_focus_state(); }
+        FocusState focus_state()              const { return wsman.get_focus_state(); }
         MonitorId focused_monitor_index()     const { return wsman.get_focused_monitor(); }
         bool focus_monitor_at_point(int x, int y);
         WorkspaceId active_workspace_at_point(int x, int y) const {
@@ -308,13 +320,7 @@ class Core {
         std::vector<WindowId> all_window_ids() const;
 
         WindowRef focused_window_state() const {
-            MonitorId   mon = wsman.get_focused_monitor();
-            WorkspaceId ws  = wsman.active_workspace(mon);
-            WindowId    w   = wsman.last_focused_window(mon, ws);
-            if (w == NO_WINDOW) {
-                // Fall back to workspace cursor (covers fresh windows not yet recorded).
-                w = wsman.get_focus_state().window;
-            }
+            WindowId w = wsman.get_focus_state().window;
             if (w == NO_WINDOW)
                 return nullptr;
             return wsman.find_window_in_all(w);

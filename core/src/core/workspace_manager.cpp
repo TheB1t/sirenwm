@@ -79,33 +79,6 @@ std::shared_ptr<swm::Window> Workspace::focused() {
     return nullptr;
 }
 
-std::shared_ptr<swm::Window> Workspace::advance_focus() {
-    bool any_visible = false;
-    for (auto& w : windows)
-        if (w && w->is_visible()) {
-            any_visible = true;
-            break;
-        }
-
-    if (current >= 0 && current < (int)windows.size()) {
-        auto cur = windows[current];
-        if (cur && (!any_visible || cur->is_visible()))
-            return cur;
-    }
-
-    for (int i = 0; i < (int)windows.size(); i++) {
-        auto& w = windows[i];
-        if (!w)
-            continue;
-        if (any_visible && !w->is_visible())
-            continue;
-        current = i;
-        return w;
-    }
-
-    return nullptr;
-}
-
 std::shared_ptr<const swm::Window> Workspace::focused() const {
     bool any_visible = false;
     for (const auto& w : windows)
@@ -253,21 +226,19 @@ void WorkspaceManager::sync_monitors_active_ws() {
         monitors[i].active_ws = active_ws_of_monitor(MonitorId{ i });
 }
 
-void WorkspaceManager::ensure_monitor_focus_size() {
-    if ((int)monitor_focus_.size() < (int)monitors.size())
-        monitor_focus_.resize(monitors.size());
+FocusState WorkspaceManager::get_focus_state() const {
+    FocusState out;
+    out.monitor = focused_monitor_;
+    out.ws_id   = active_ws_of_monitor(focused_monitor_);
+    if (is_ws_valid(out.ws_id)) {
+        auto w = workspaces[(size_t)out.ws_id].focused();
+        out.window = w ? w->id : NO_WINDOW;
+    }
+    return out;
 }
 
-void WorkspaceManager::sync_focus_state() {
-    ensure_monitor_focus_size();
-    focus_.monitor = focused_monitor_;
-    focus_.ws_id   = active_ws_of_monitor(focused_monitor_);
-    if (is_ws_valid(focus_.ws_id)) {
-        auto w = workspaces[focus_.ws_id].focused();
-        focus_.window = w ? w->id : NO_WINDOW;
-    } else {
-        focus_.window = NO_WINDOW;
-    }
+WindowId WorkspaceManager::focused_window_id() const {
+    return get_focus_state().window;
 }
 
 void WorkspaceManager::select_valid_focused_monitor() {
@@ -288,25 +259,10 @@ void WorkspaceManager::select_valid_focused_monitor() {
     focused_monitor_ = MonitorId{ 0 };
 }
 
-WindowId WorkspaceManager::last_focused_window(MonitorId mon_idx, WorkspaceId ws_id) const {
-    if (mon_idx < 0 || mon_idx >= (int)monitor_focus_.size())
-        return NO_WINDOW;
-    auto it = monitor_focus_[mon_idx].last_window_per_ws.find(ws_id);
-    if (it == monitor_focus_[mon_idx].last_window_per_ws.end())
-        return NO_WINDOW;
-    WindowId win = it->second;
-    // Validate that the window still exists in this workspace.
-    auto     wit = window_workspace.find(win);
-    if (wit == window_workspace.end() || wit->second != ws_id)
-        return NO_WINDOW;
-    return win;
-}
-
 void WorkspaceManager::set_focused_monitor(MonitorId mon_idx) {
     if (!is_mon_valid(mon_idx))
         return;
     focused_monitor_ = mon_idx;
-    sync_focus_state();
 }
 
 MonitorId WorkspaceManager::resolve_alias_monitor(const std::string& alias,
@@ -391,19 +347,6 @@ void WorkspaceManager::index_window(WindowId win, const std::shared_ptr<swm::Win
 void WorkspaceManager::unindex_window(WindowId win) {
     window_index.erase(win);
     window_workspace.erase(win);
-
-    // Purge stale focus references so we never try to restore focus
-    // to a window that no longer exists.
-    for (auto& mf : monitor_focus_) {
-        for (auto it = mf.last_window_per_ws.begin(); it != mf.last_window_per_ws.end(); ) {
-            if (it->second == win)
-                it = mf.last_window_per_ws.erase(it);
-            else
-                ++it;
-        }
-    }
-    if (focus_.window == win)
-        focus_.window = NO_WINDOW;
 }
 
 void WorkspaceManager::rebuild_window_indexes() {
@@ -497,7 +440,6 @@ void WorkspaceManager::update_workspace_defs(const std::vector<WorkspaceDef>& de
         workspaces.erase(workspaces.begin() + new_count, workspaces.end());
         ws_owner.resize(new_count);
 
-        sync_focus_state();
     }
 }
 
@@ -573,7 +515,6 @@ void WorkspaceManager::assign_workspaces(const std::vector<MonitorAlias>& aliase
     rebuild_pools_from_owner(seed_pools, preferred_active_ws);
     select_valid_focused_monitor();
     sync_monitors_active_ws();
-    sync_focus_state();
 }
 
 void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
@@ -589,11 +530,6 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
     std::string old_focused_name;
     if (focused_monitor_ >= 0 && focused_monitor_ < (int)old_monitors.size())
         old_focused_name = old_monitors[focused_monitor_].name;
-
-    // Snapshot per-monitor focus keyed by monitor name for migration.
-    std::unordered_map<std::string, MonitorFocusState> old_mfocus;
-    for (int i = 0; i < (int)old_monitors.size() && i < (int)monitor_focus_.size(); i++)
-        old_mfocus[old_monitors[i].name] = monitor_focus_[i];
 
     std::unordered_map<std::string, int> old_index;
     for (int i = 0; i < (int)old_monitors.size(); i++)
@@ -664,14 +600,6 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
     ws_owner = std::move(new_owner);
     rebuild_pools_from_owner(seed_pools, preferred_active_ws);
 
-    // Migrate per-monitor focus state by monitor name.
-    monitor_focus_.assign(monitors.size(), MonitorFocusState{});
-    for (int i = 0; i < (int)monitors.size(); i++) {
-        auto it = old_mfocus.find(monitors[i].name);
-        if (it != old_mfocus.end())
-            monitor_focus_[i] = std::move(it->second);
-    }
-
     int focused_by_name = monitor_index_by_name(old_focused_name);
     if (focused_by_name >= 0)
         focused_monitor_ = focused_by_name;
@@ -680,7 +608,6 @@ void WorkspaceManager::set_monitors(std::vector<Monitor> mons) {
 
     select_valid_focused_monitor();
     sync_monitors_active_ws();
-    sync_focus_state();
 }
 
 void WorkspaceManager::adjust_monitor_inset(MonitorId mon_idx, MonitorEdge edge, int delta) {
@@ -833,7 +760,6 @@ bool WorkspaceManager::switch_to(WorkspaceId ws_id,
     // Do NOT update focused_monitor_ here: switching a workspace on any monitor
     // must not steal focus from the monitor the user is currently on.
     sync_monitors_active_ws();
-    sync_focus_state();
     return true;
 }
 
@@ -876,7 +802,6 @@ void WorkspaceManager::remove_window(WindowId win, WorkspaceId ws_id) {
         if (workspaces[ws_id].remove_window(win))
             unindex_window(win);
         WS_ASSERT_CONSISTENT();
-        sync_focus_state();
         return;
     }
     int active = active_ws_of_monitor(focused_monitor_);
@@ -884,7 +809,6 @@ void WorkspaceManager::remove_window(WindowId win, WorkspaceId ws_id) {
         if (workspaces[active].remove_window(win))
             unindex_window(win);
     WS_ASSERT_CONSISTENT();
-    sync_focus_state();
 }
 
 std::shared_ptr<swm::Window> WorkspaceManager::find_window(WindowId win, WorkspaceId ws_id) {
@@ -943,14 +867,12 @@ void WorkspaceManager::remove_window_from_all(WindowId win) {
         workspaces[it->second].remove_window(win);
         unindex_window(win);
         WS_ASSERT_CONSISTENT();
-        sync_focus_state();
         return;
     }
     for (auto& ws : workspaces)
         ws.remove_window(win);
     unindex_window(win);
     WS_ASSERT_CONSISTENT();
-    sync_focus_state();
 }
 
 void WorkspaceManager::move_window_to(WorkspaceId ws_id, std::shared_ptr<swm::Window> w) {
@@ -969,7 +891,6 @@ void WorkspaceManager::move_window_to(WorkspaceId ws_id, std::shared_ptr<swm::Wi
     workspaces[ws_id].add_window(w);
     index_window(win, w, ws_id);
     WS_ASSERT_CONSISTENT();
-    sync_focus_state();
 }
 
 bool WorkspaceManager::focus_window(WindowId win) {
@@ -990,13 +911,12 @@ bool WorkspaceManager::focus_window(WindowId win) {
             int li = local_index_of(mon, ws.id);
             if (li >= 0)
                 monitor_active_local[mon] = li;
-            // Record last focused window per monitor/workspace.
-            ensure_monitor_focus_size();
-            monitor_focus_[mon].last_window_per_ws[ws.id] = win;
-            // Do NOT update focused_monitor_ here — focus_window() syncs state
-            // but the active monitor is determined by user input, not window focus events.
+            // Focusing a window is an intent — the monitor that owns it
+            // becomes the active monitor. Required so EnterNotify on window
+            // at other monitor doesn't leave focused_monitor_ stale (the
+            // old two-step path emitted FocusChanged twice to compensate).
+            focused_monitor_ = MonitorId{ mon };
             sync_monitors_active_ws();
-            sync_focus_state();
         }
         return true;
     }
@@ -1005,13 +925,11 @@ bool WorkspaceManager::focus_window(WindowId win) {
 
 std::shared_ptr<swm::Window> WorkspaceManager::focus_next() {
     current().focus_next();
-    sync_focus_state();
     return current().focused();
 }
 
 std::shared_ptr<swm::Window> WorkspaceManager::focus_prev() {
     current().focus_prev();
-    sync_focus_state();
     return current().focused();
 }
 
@@ -1023,7 +941,6 @@ bool WorkspaceManager::switch_local_index(MonitorId mon_idx, int local_idx) {
         return false;
     monitor_active_local[mon_idx] = local_idx;
     sync_monitors_active_ws();
-    sync_focus_state();
     return true;
 }
 
@@ -1061,7 +978,6 @@ bool WorkspaceManager::focus_monitor_at_point(int x, int y) {
         return false;
     bool changed = (mon != focused_monitor_);
     focused_monitor_ = mon;
-    sync_focus_state();
     return changed;
 }
 

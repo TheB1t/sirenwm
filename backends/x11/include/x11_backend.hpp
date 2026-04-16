@@ -60,17 +60,6 @@ class X11Backend final : public Backend {
         void set_wm_state_normal(WindowId win);
         void reload_border_colors();
 
-        // Focus arbiter: one pending focus request per tick, highest priority wins.
-        // Consumed at end of pump_events() after all X events and backend effects.
-        // kPointer  — EnterNotify / button click (always wins)
-        // kEWMH     — _NET_ACTIVE_WINDOW client message, new window at MapRequest
-        // kWorkspace — workspace switch, restore_visible_focus, reload
-        // kNone     — no request this tick
-        enum FocusPriority { kFocusNone = 0, kFocusWorkspace = 1, kFocusEWMH = 2, kFocusPointer = 3 };
-        WindowId      pending_focus_win_      = NO_WINDOW;
-        FocusPriority pending_focus_priority_ = kFocusNone;
-        void request_focus(WindowId win, FocusPriority priority);
-
         // Timestamp from the most recent user-input X event (button/key/motion/enter).
         // Used for xcb_set_input_focus to satisfy clients that reject timestamp=0.
         xcb_timestamp_t last_event_time_ = XCB_CURRENT_TIME;
@@ -127,7 +116,6 @@ class X11Backend final : public Backend {
         void handle_enter_notify(xcb_enter_notify_event_t* ev);
         void apply_core_backend_effects();
         void apply_xresources(Core& core);
-        void restore_visible_focus();
         void update_focus(event::FocusChanged ev); // X11 state only, no emit
         // ewmh_on_* — synchronous EWMH/ICCCM reactions called from X event
         // handlers BEFORE core.dispatch runs, because WindowUnmapped needs the

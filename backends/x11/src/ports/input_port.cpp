@@ -66,19 +66,6 @@ class X11InputPort final : public backend::InputPort {
             xconn.ungrab_button(XCB_BUTTON_INDEX_ANY, (xcb_window_t)window, XCB_MOD_MASK_ANY);
         }
 
-        void grab_button_any(WindowId window) override {
-            constexpr uint32_t evmask =
-                XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE;
-            xconn.grab_button_sync((xcb_window_t)window, evmask,
-                XCB_BUTTON_INDEX_ANY, XCB_MOD_MASK_ANY);
-        }
-
-        void allow_events(bool replay) override {
-            uint8_t mode = replay ? XCB_ALLOW_REPLAY_POINTER : XCB_ALLOW_ASYNC_POINTER;
-            xconn.allow_events(mode);
-            xconn.flush();
-        }
-
         void grab_pointer() override {
             constexpr uint32_t mask =
                 XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION;

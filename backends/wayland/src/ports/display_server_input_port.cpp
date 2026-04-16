@@ -24,7 +24,6 @@ void DisplayServerInputPort::send_intercepts() {
 
 void DisplayServerInputPort::grab_button(WindowId, uint8_t, uint16_t) {}
 void DisplayServerInputPort::ungrab_all_buttons(WindowId) {}
-void DisplayServerInputPort::grab_button_any(WindowId) {}
 
 void DisplayServerInputPort::grab_pointer() {
     backend_.grab_pointer();
@@ -33,8 +32,6 @@ void DisplayServerInputPort::grab_pointer() {
 void DisplayServerInputPort::ungrab_pointer() {
     backend_.ungrab_pointer();
 }
-
-void DisplayServerInputPort::allow_events(bool) {}
 
 void DisplayServerInputPort::warp_pointer(WindowId, Vec2i16 pos) {
     backend_.warp_pointer(pos.x(), pos.y());

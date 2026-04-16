@@ -45,9 +45,7 @@ X2=$(geom_x "$G2"); Y2=$(geom_y "$G2"); W2W=$(geom_w "$G2"); H2=$(geom_h "$G2")
 CX1=$(( X1 + W1W / 2 )); CY1=$(( Y1 + H1 / 2 ))
 CX2=$(( X2 + W2W / 2 )); CY2=$(( Y2 + H2 / 2 ))
 
-# NOTE: click-to-focus uses passive button grabs (grab_button_any) which
-# XTEST synthetic events cannot trigger. Skipping click-to-focus tests.
-# These are covered by the unit test harness instead.
+# Focus follows the pointer (no click-to-focus grab).
 
 # --- EnterNotify: move pointer into W1 (no click) ---
 # Park at neutral position first

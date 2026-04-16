@@ -105,7 +105,8 @@ StartupSnapshot X11Backend::scan_existing_windows() {
     constexpr uint32_t kManagedEventMask  =
         XCB_EVENT_MASK_STRUCTURE_NOTIFY |
         XCB_EVENT_MASK_ENTER_WINDOW |
-        XCB_EVENT_MASK_FOCUS_CHANGE;
+        XCB_EVENT_MASK_FOCUS_CHANGE |
+        XCB_EVENT_MASK_PROPERTY_CHANGE;
 
     StartupSnapshot result;
     auto&           out = result.windows;
@@ -222,6 +223,30 @@ StartupSnapshot X11Backend::scan_existing_windows() {
         out.push_back(std::move(snap));
     }
 
-    LOG_INFO("scan_existing_windows: discovered %d candidate window(s)", (int)out.size());
+    // Resolve native X input focus up to a top-level (direct child of root).
+    // Electron/VSCode give input focus to an unmanaged sub-surface; walk the
+    // parent chain until we land on a window that's a direct child of root.
+    xcb_window_t focus = xconn.get_input_focus();
+    if (focus != XCB_WINDOW_NONE && focus != root_window) {
+        for (int depth = 0; depth < 8; depth++) {
+            bool is_toplevel = false;
+            for (auto c : children) {
+                if (c == focus) {
+                    is_toplevel = true; break;
+                }
+            }
+            if (is_toplevel) {
+                result.focused_window = focus;
+                break;
+            }
+            auto parent = xconn.query_parent(focus);
+            if (!parent)
+                break;
+            focus = *parent;
+        }
+    }
+
+    LOG_INFO("scan_existing_windows: discovered %d candidate window(s), focus=%u",
+        (int)out.size(), (unsigned)result.focused_window);
     return result;
 }
