@@ -42,7 +42,11 @@ class XwmSurfaceSink {
         virtual void     surface_committed(uint32_t id, int32_t width, int32_t height)  = 0;
 };
 
+struct XwmEventHandler;
+
 class XWindowManager : protected xcb::Connection {
+    friend struct XwmEventHandler;
+
     public:
         XWindowManager(int wm_fd, wl_client* xwl_client,
             XWaylandShell& shell,

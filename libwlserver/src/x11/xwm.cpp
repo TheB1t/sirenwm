@@ -7,6 +7,23 @@ extern "C" {
 #include <xcb/composite.h>
 }
 
+#include <xcb/event_dispatch.hpp>
+
+// TODO: temporary adapter, mirrors the one in backends/x11/src/backend/events.cpp.
+// Once the handle_* → on() rename is safe to do in both classes, XWindowManager
+// can be passed directly to xcb::dispatch_event() and this struct disappears.
+struct XwmEventHandler {
+    XWindowManager& self;
+
+    void on(xcb_create_notify_event_t& e)     { self.handle_create_notify(&e); }
+    void on(xcb_map_request_event_t& e)       { self.handle_map_request(&e); }
+    void on(xcb_configure_request_event_t& e) { self.handle_configure_request(&e); }
+    void on(xcb_unmap_notify_event_t& e)      { self.handle_unmap_notify(&e); }
+    void on(xcb_destroy_notify_event_t& e)    { self.handle_destroy_notify(&e); }
+    void on(xcb_property_notify_event_t& e)   { self.handle_property_notify(&e); }
+    void on(xcb_client_message_event_t& e)    { self.handle_client_message(&e); }
+};
+
 XWindowManager::XWindowManager(int wm_fd, wl_client* xwl_client,
     XWaylandShell& shell,
     wl::server::Compositor& compositor,
@@ -83,34 +100,10 @@ void XWindowManager::create_wm_window() {
 
 void XWindowManager::dispatch() {
     if (!conn_) return;
+    XwmEventHandler      handler{ *this };
     xcb_generic_event_t* ev;
     while ((ev = poll_event())) {
-        uint8_t type = ev->response_type & 0x7f;
-        switch (type) {
-            case XCB_CREATE_NOTIFY:
-                handle_create_notify(reinterpret_cast<xcb_create_notify_event_t*>(ev));
-                break;
-            case XCB_MAP_REQUEST:
-                handle_map_request(reinterpret_cast<xcb_map_request_event_t*>(ev));
-                break;
-            case XCB_CONFIGURE_REQUEST:
-                handle_configure_request(reinterpret_cast<xcb_configure_request_event_t*>(ev));
-                break;
-            case XCB_UNMAP_NOTIFY:
-                handle_unmap_notify(reinterpret_cast<xcb_unmap_notify_event_t*>(ev));
-                break;
-            case XCB_DESTROY_NOTIFY:
-                handle_destroy_notify(reinterpret_cast<xcb_destroy_notify_event_t*>(ev));
-                break;
-            case XCB_PROPERTY_NOTIFY:
-                handle_property_notify(reinterpret_cast<xcb_property_notify_event_t*>(ev));
-                break;
-            case XCB_CLIENT_MESSAGE:
-                handle_client_message(reinterpret_cast<xcb_client_message_event_t*>(ev));
-                break;
-            default:
-                break;
-        }
+        xcb::dispatch_event(ev, handler);
         free(ev);
     }
     flush();
