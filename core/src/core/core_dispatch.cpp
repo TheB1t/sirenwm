@@ -329,11 +329,26 @@ bool Core::dispatch(const command::CommandComposite& cmd) {
 }
 
 bool Core::dispatch(const command::atom::FocusWindow& cmd) {
+    auto cur             = focused_window_state();
+    bool already_focused = cur && cur->id == cmd.window;
     if (!wsman.focus_window(cmd.window))
         return false;
+    // Always request the X-side effect: core may already track this window
+    // as focused while the X server does not (e.g. new window adopted).
     emit_backend_effect(BackendEffectKind::FocusWindow, cmd.window);
-    emit_focus_changed(cmd.window);
+    if (!already_focused)
+        emit_focus_changed(cmd.window);
     return true;
+}
+
+void Core::ensure_focused(WindowId window) {
+    auto     cur     = focused_window_state();
+    WindowId cur_win = cur ? cur->id : NO_WINDOW;
+    if (cur_win == window)
+        return;
+    if (window != NO_WINDOW && !wsman.focus_window(window))
+        return;
+    emit_focus_changed(window);
 }
 
 bool Core::dispatch(const command::atom::SwitchWorkspace& cmd) {

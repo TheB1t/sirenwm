@@ -934,9 +934,11 @@ void X11Backend::handle_focus_event(xcb_focus_in_event_t* ev) {
     // focused application (e.g. VSCode with multiple managed child windows)
     // freeze: it keeps receiving FocusIn/FocusOut and cannot process input.
     // The actual X focus has already been set by whichever path triggered this
-    // FocusIn (EnterNotify, button press, EWMH, keybinding). Here we only need
-    // to keep the WM's internal focused-window pointer in sync.
-    (void)core.dispatch(command::atom::FocusWindow{ ev->event });
+    // FocusIn (EnterNotify, button press, EWMH, keybinding). ensure_focused()
+    // is idempotent and does not emit a BackendEffect, so there is no
+    // feedback loop — it only reconciles core state and fires FocusChanged
+    // exactly once per real transition.
+    core.ensure_focused(ev->event);
 }
 
 void X11Backend::handle_button_event(xcb_button_press_event_t* ev) {
@@ -1018,9 +1020,11 @@ void X11Backend::handle_enter_notify(xcb_enter_notify_event_t* ev) {
     // the correct monitor without requiring a click first.
     core.focus_monitor_at_point(ev->root_x, ev->root_y);
 
-    (void)core.dispatch(command::atom::FocusWindow{ ev->event });
     // Request focus at kPointer priority — applied after apply_core_backend_effects()
     // so pointer always wins over stale workspace-switch FocusWindow effects.
+    // Core state is reconciled later via ensure_focused() from the FocusIn
+    // X event that this request produces, so we don't dispatch FocusWindow
+    // here (that would double-fire FocusChanged).
     request_focus(ev->event, kFocusPointer);
 }
 

@@ -226,8 +226,10 @@ void X11Backend::render_frame() {
     // always wins over stale workspace-switch FocusWindow effects from the
     // same tick.
     if (pending_focus_win_ != NO_WINDOW) {
+        // Arbiter only applies the X-side effect. It must not emit
+        // FocusChanged — the domain event is owned by Core and fires from
+        // the command/ensure-focused path that originated this request.
         focus_window(pending_focus_win_);
-        core.emit_focus_changed(pending_focus_win_);
         pending_focus_win_      = NO_WINDOW;
         pending_focus_priority_ = kFocusNone;
     }
@@ -253,10 +255,10 @@ void X11Backend::on_reload_applied() {
     // and drain_events, so the arbiter won't fire until the next tick.
     if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
         focus_window(focused->id);
-        core.emit_focus_changed(focused->id);
+        core.ensure_focused(focused->id);
     } else {
         xconn.focus_window(root_window);
-        core.emit_focus_changed(NO_WINDOW);
+        core.ensure_focused(NO_WINDOW);
     }
     xconn.flush();
 }

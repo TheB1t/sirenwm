@@ -53,9 +53,11 @@ void X11Backend::restore_visible_focus() {
     if (auto focused = core.focused_window_state(); focused && focused->is_visible()) {
         request_focus(focused->id, kFocusWorkspace);
     } else {
-        // No visible focused window — fall back to root immediately (no arbiter needed).
+        // No visible focused window — fall back to root. X side is direct;
+        // core reconciliation goes through ensure_focused() so FocusChanged
+        // fires exactly once per real transition.
         xconn.focus_window(root_window);
-        core.emit_focus_changed(NO_WINDOW);
+        core.ensure_focused(NO_WINDOW);
     }
 }
 
