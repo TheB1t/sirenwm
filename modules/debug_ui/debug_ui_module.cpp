@@ -11,6 +11,8 @@
 #include <imgui_impl_opengl3.h>
 #include <GL/gl.h>
 
+#include <array>
+#include <cfloat>
 #include <chrono>
 #include <deque>
 #include <string>
@@ -95,6 +97,7 @@ class DebugUIModule : public Module {
         void panel_windows();
         void panel_focus();
         void panel_events();
+        void panel_repl();
 
         void log_event(const char* type, std::string detail = {});
 
@@ -112,6 +115,11 @@ class DebugUIModule : public Module {
 
         std::deque<EventEntry>  event_log_;
         static constexpr size_t kMaxEvents = 300;
+
+        // REPL state.
+        std::array<char, 4096> repl_input_{};
+        std::string repl_output_;
+        bool        repl_focus_input_ = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -337,6 +345,9 @@ void DebugUIModule::render_frame() {
         if (ImGui::BeginTabItem("Events")) {
             panel_events();     ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("REPL")) {
+            panel_repl();       ImGui::EndTabItem();
+        }
         ImGui::EndTabBar();
     }
 
@@ -546,6 +557,54 @@ void DebugUIModule::panel_focus() {
         ImGui::Text("Type:       %s", type_str);
     } else {
         ImGui::TextDisabled("No focused window");
+    }
+}
+
+void DebugUIModule::panel_repl() {
+    // Output pane: scroll-locked, multiline, read-only.
+    float  footer_h = ImGui::GetFrameHeightWithSpacing() * 4.5f;
+    ImVec2 out_size(-FLT_MIN, -footer_h);
+    if (ImGui::BeginChild("repl_output", out_size, true,
+        ImGuiWindowFlags_HorizontalScrollbar)) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted(repl_output_.c_str(),
+            repl_output_.c_str() + repl_output_.size());
+        ImGui::PopTextWrapPos();
+        if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+            ImGui::SetScrollHereY(1.0f);
+    }
+    ImGui::EndChild();
+
+    ImGui::Separator();
+
+    ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput
+        | ImGuiInputTextFlags_CtrlEnterForNewLine;
+    if (repl_focus_input_) {
+        ImGui::SetKeyboardFocusHere();
+        repl_focus_input_ = false;
+    }
+    ImVec2 in_size(-FLT_MIN, ImGui::GetFrameHeightWithSpacing() * 3.0f);
+    ImGui::InputTextMultiline("##repl_input", repl_input_.data(), repl_input_.size(),
+        in_size, flags);
+
+    bool exec = ImGui::Button("Exec");
+    ImGui::SameLine();
+    if (ImGui::Button("Clear"))
+        repl_output_.clear();
+    ImGui::SameLine();
+    ImGui::TextDisabled("(Shift+Enter in field, then Exec)");
+
+    if (exec) {
+        std::string code(repl_input_.data());
+        if (!code.empty()) {
+            repl_output_.append(">>> ");
+            repl_output_.append(code);
+            if (repl_output_.empty() || repl_output_.back() != '\n')
+                repl_output_.push_back('\n');
+            repl_output_.append(lua.repl_eval(code));
+            repl_input_[0]    = '\0';
+            repl_focus_input_ = true;
+        }
     }
 }
 

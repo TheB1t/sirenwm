@@ -309,6 +309,99 @@ bool LuaHost::exec_string(const char* code, const char* name) {
     return true;
 }
 
+namespace {
+
+// Captured print() output — thread_local since the Lua state is single-
+// threaded and re-entrant calls should nest cleanly if one ever happens.
+thread_local std::string* g_repl_capture = nullptr;
+
+int repl_print(lua_State* L) {
+    if (!g_repl_capture) return 0;
+    int n = lua_gettop(L);
+    // Mimic Lua's print: separate args with \t, end with \n.
+    for (int i = 1; i <= n; ++i) {
+        size_t len = 0;
+        // luaL_tolstring respects __tostring metamethods and leaves the
+        // string on the stack; we pop it below.
+        const char* str = luaL_tolstring(L, i, &len);
+        if (i > 1) g_repl_capture->push_back('\t');
+        g_repl_capture->append(str, len);
+        lua_pop(L, 1);
+    }
+    g_repl_capture->push_back('\n');
+    return 0;
+}
+
+} // namespace
+
+std::string LuaHost::repl_eval(const std::string& code) {
+    auto* L = as_state(state_);
+    if (!L) return "<lua not initialized>";
+
+    LuaStackGuard guard(L);
+
+    std::string   out;
+
+    // Save previous `print` so we can restore it if the chunk mutates it.
+    lua_getglobal(L, "print");
+    int prev_print_idx = lua_gettop(L);
+
+    // Install capture-print for the duration of the call.
+    std::string* prev_capture = g_repl_capture;
+    g_repl_capture = &out;
+    lua_pushcfunction(L, repl_print);
+    lua_setglobal(L, "print");
+
+    auto restore = [&]() {
+            lua_pushvalue(L, prev_print_idx);
+            lua_setglobal(L, "print");
+            g_repl_capture = prev_capture;
+        };
+
+    // Try as expression (`return <code>`) first so bare expressions print
+    // their value, fall back to loading the raw code as a statement block.
+    std::string wrapped = "return " + code;
+    int         load_rc = luaL_loadbuffer(L, wrapped.data(), wrapped.size(), "=repl");
+    if (load_rc != LUA_OK) {
+        lua_pop(L, 1);
+        load_rc = luaL_loadbuffer(L, code.data(), code.size(), "=repl");
+    }
+    if (load_rc != LUA_OK) {
+        out.append(lua_tostring(L, -1));
+        out.push_back('\n');
+        lua_pop(L, 1);
+        restore();
+        return out;
+    }
+
+    // Stack right now: [..., prev_print, chunk]. After pcall:
+    //   success → [..., prev_print, r1, r2, ...]
+    //   error   → [..., prev_print, errmsg]
+    int call_rc  = lua_pcall(L, 0, LUA_MULTRET, 0);
+    int nresults = lua_gettop(L) - prev_print_idx;
+
+    if (call_rc != LUA_OK) {
+        out.append(lua_tostring(L, -1));
+        out.push_back('\n');
+        restore();
+        return out;
+    }
+
+    for (int i = 0; i < nresults; ++i) {
+        int         idx = prev_print_idx + 1 + i;
+        size_t      len = 0;
+        const char* str = luaL_tolstring(L, idx, &len);
+        if (i > 0) out.push_back('\t');
+        out.append(str, len);
+        lua_pop(L, 1); // pop the tolstring copy
+    }
+    if (nresults > 0)
+        out.push_back('\n');
+
+    restore();
+    return out;
+}
+
 LuaRegistryRef LuaHost::ref_value(int index) const {
     LuaContext     ctx = context();
     LuaRegistryRef out;
